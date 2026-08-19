@@ -37,12 +37,75 @@ def run_web():
     app.run(host="0.0.0.0", port=PORT)
 
 
-# Global Memory Caches
+# Caches
 active_spawns = {}
 chat_counts = {}
 user_last_msg_time = {}
 user_spam_count = {}
 user_ignored_until = {}
+
+# ==========================================
+# 🌐 LANGUAGE DICTIONARY
+# ==========================================
+LANGUAGES = {
+    "en": {
+        "start": "👋 **Welcome to Nexus Card Bot!**\nUse `/help` for available commands.",
+        "help_user": (
+            "👤 **USER COMMANDS:**\n"
+            "• `/profile` - View your status & balance\n"
+            "• `/collection` - View collected cards\n"
+            "• `/catch` - Catch active spawned card\n"
+            "• `/search` - Search cards (Inline & Text)\n"
+            "• `/cardlist` - View database cards\n"
+            "• `/gift <user_id> <card_uuid>` - Gift a card\n"
+            "• `/language` - Switch language"
+        ),
+        "help_owner": (
+            "👑 **OWNER COMMANDS:**\n"
+            "• `/addcard ID | Name | Rarity | Power` (Reply image)\n"
+            "• `/forcespawn` - Force spawn a card\n"
+            "• `/give <user_id> <coins/tokens> <amount>`\n"
+            "• `/banuser <user_id> <ban/unban>`"
+        ),
+        "no_spawn": "❌ No active character to catch right now!",
+        "caught": "🎉 **{name}** caught **{card}**!\n🏷️ **Print:** #{print_num}\n✨ **Quality:** {quality}%\n⭐ **Rarity:** {rarity}\n🆔 `{uuid}`",
+        "banned": "🚫 You are banned from using this bot.",
+    },
+    "my": {
+        "start": "👋 **Nexus Card Bot မှ ကြိုဆိုပါသည်!**\nCommands များကိုကြည့်ရန် `/help` ကိုသုံးပါ။",
+        "help_user": (
+            "👤 **အသုံးပြုသူ COMMANDS:**\n"
+            "• `/profile` - မိမိ ပရိုဖိုင်နှင့် လက်ကျန်ငွေကြည့်ရန်\n"
+            "• `/collection` - မိမိ ရရှိထားသော ကဒ်များ ကြည့်ရန်\n"
+            "• `/catch` - ထွက်လာသော ကဒ်ကို ဖမ်းယူရန်\n"
+            "• `/search` - Inline Button ဖြင့် ကဒ် ရှာရန်\n"
+            "• `/cardlist` - Bot ထဲရှိ ကဒ်များ စာရင်း ကြည့်ရန်\n"
+            "• `/gift <user_id> <card_uuid>` - ကဒ် လက်ဆောင်ပေးရန်\n"
+            "• `/language` - ဘာသာစကား ပြောင်းရန်"
+        ),
+        "help_owner": (
+            "👑 **ထိန်းချုပ်သူ COMMANDS:**\n"
+            "• `/addcard ID | Name | Rarity | Power` (ပုံကို Reply ပြန်၍)\n"
+            "• `/forcespawn` - ကဒ် ချက်ချင်း ချပေးရန်\n"
+            "• `/give <user_id> <coins/tokens> <amount>`\n"
+            "• `/banuser <user_id> <ban/unban>`"
+        ),
+        "no_spawn": "❌ ဖမ်းယူရန် ကဒ် မရှိသေးပါ!",
+        "caught": "🎉 **{name}** သည် **{card}** ကို ဖမ်းယူရရှိခဲ့သည်!\n🏷️ **Print:** #{print_num}\n✨ **Quality:** {quality}%\n⭐ **Rarity:** {rarity}\n🆔 `{uuid}`",
+        "banned": "🚫 သင့်အား ဘော့အသုံးပြုခွင့် ပိတ်ပင်ထားပါသည်။",
+    },
+}
+
+
+def get_msg(user_lang, key, **kwargs):
+    lang = user_lang if user_lang in LANGUAGES else "en"
+    text = LANGUAGES[lang].get(key, LANGUAGES["en"].get(key, ""))
+    return text.format(**kwargs) if kwargs else text
+
+
+def is_owner(user_id: int) -> bool:
+    return user_id in OWNER_IDS
+
 
 # ==========================================
 # 🚫 ANTI-SPAM & FLOOD CONTROL ENGINE
@@ -56,7 +119,6 @@ async def check_anti_spam(update: Update) -> bool:
     user_id = update.effective_user.id
     current_time = time.time()
 
-    # မိနစ် ၁၀ Ignores ပြုလုပ်ထားခြင်း ရှိ/မရှိ စစ်ဆေးခြင်း
     if user_id in user_ignored_until:
         if current_time < user_ignored_until[user_id]:
             return False
@@ -66,16 +128,13 @@ async def check_anti_spam(update: Update) -> bool:
     last_time = user_last_msg_time.get(user_id, 0)
     user_last_msg_time[user_id] = current_time
 
-    # ၁ စက္ကန့်အတွင်း အမိန့်ဆက်တိုက် ပေးပါက Spam အဖြစ် မှတ်ယူမည်
     if current_time - last_time < 1.0:
         user_spam_count[user_id] = user_spam_count.get(user_id, 0) + 1
     else:
         user_spam_count[user_id] = 0
 
     if user_spam_count[user_id] >= 4:
-        user_ignored_until[user_id] = (
-            current_time + 600
-        )  # မိနစ် ၁၀ (600 seconds)
+        user_ignored_until[user_id] = current_time + 600
         user_spam_count[user_id] = 0
         if update.message:
             await update.message.reply_text(
@@ -86,33 +145,6 @@ async def check_anti_spam(update: Update) -> bool:
         return False
 
     return True
-
-
-# Helper Functions
-def is_owner(user_id: int) -> bool:
-    return user_id in OWNER_IDS
-
-
-def select_card_by_rarity(cards):
-    """
-    Rarity Drop Probability:
-    Common (⚪): 50% | Rare (🔵): 25% | Epic (🟣): 15% | Legendary (🟡): 8% | Mythic/UR (👑): 2%
-    """
-    weights = []
-    for c in cards:
-        r = (c.rarity or "").lower()
-        if "common" in r:
-            weights.append(50)
-        elif "rare" in r:
-            weights.append(25)
-        elif "epic" in r:
-            weights.append(15)
-        elif "legendary" in r:
-            weights.append(8)
-        else:
-            weights.append(2)
-
-    return random.choices(cards, weights=weights, k=1)[0]
 
 
 # ==========================================
@@ -211,7 +243,7 @@ async def search_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
-# 👤 USER COMMANDS
+# 👤 USER COMMANDS & LANGUAGE SYSTEM
 # ==========================================
 
 
@@ -226,34 +258,65 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.add(user)
         session.commit()
 
+    msg = get_msg(user.language, "start")
     session.close()
-    await update.message.reply_text(
-        "👋 **Welcome to Nexus Card Bot!**\nUse `/help` for available commands.",
-        parse_mode="Markdown",
-    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_anti_spam(update):
         return
-    text = (
-        "👤 **USER COMMANDS:**\n"
-        "• `/profile` - View your status & balance\n"
-        "• `/collection` or `/inv` - View collected cards\n"
-        "• `/catch` or `/nexus` - Catch active spawned card\n"
-        "• `/search` - Search cards (Inline Button & Text)\n"
-        "• `/cardlist` - View all registered database cards\n"
-        "• `/gift <user_id> <card_uuid>` - Gift a card"
-    )
-    if is_owner(update.effective_user.id):
-        text += (
-            "\n\n👑 **OWNER CONTROL COMMANDS:**\n"
-            "• `/addcard ID | Name | Rarity | Power` (Reply image)\n"
-            "• `/forcespawn` - Force spawn a card in chat\n"
-            "• `/give <user_id> <coins/tokens> <amount>`\n"
-            "• `/banuser <user_id> <ban/unban>`"
-        )
+    user_id = update.effective_user.id
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == str(user_id)).first()
+    lang = user.language if user else "en"
+    session.close()
+
+    text = get_msg(lang, "help_user")
+    if is_owner(user_id):
+        text += "\n\n" + get_msg(lang, "help_owner")
+
     await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    keyboard = [
+        [
+            InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
+            InlineKeyboardButton("🇲🇲 မြန်မာစာ", callback_data="lang_my"),
+        ]
+    ]
+    await update.message.reply_text(
+        "🌐 Choose Language / ဘာသာစကား ရွေးချယ်ပါ:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def language_button_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = str(query.from_user.id)
+    selected_lang = "en" if query.data == "lang_en" else "my"
+
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == user_id).first()
+    if not user:
+        user = User(id=user_id, name=query.from_user.first_name)
+        session.add(user)
+
+    user.language = selected_lang
+    session.commit()
+    session.close()
+
+    await query.edit_message_text(
+        f"✅ Language updated to **{selected_lang.upper()}**!",
+        parse_mode="Markdown",
+    )
 
 
 async def user_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -269,7 +332,7 @@ async def user_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.commit()
 
     if user.is_banned:
-        await update.message.reply_text("🚫 သင့်အား အသုံးပြုခွင့် ပိတ်ထားပါသည်။")
+        await update.message.reply_text(get_msg(user.language, "banned"))
         session.close()
         return
 
@@ -364,8 +427,26 @@ async def gift_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
-# 🎴 CARD GAMEPLAY & AUTO SPAWN
+# 🎴 CATCH & AUTO SPAWN ENGINE
 # ==========================================
+
+
+def select_card_by_rarity(cards):
+    weights = []
+    for c in cards:
+        r = (c.rarity or "").lower()
+        if "common" in r:
+            weights.append(50)
+        elif "rare" in r:
+            weights.append(25)
+        elif "epic" in r:
+            weights.append(15)
+        elif "legendary" in r:
+            weights.append(8)
+        else:
+            weights.append(2)
+
+    return random.choices(cards, weights=weights, k=1)[0]
 
 
 async def catch_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -381,12 +462,12 @@ async def catch_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.add(user)
 
     if user.is_banned:
-        await update.message.reply_text("🚫 သင့်အား ဘော့အသုံးပြုခွင့် ပိတ်ပင်ထားပါသည်။")
+        await update.message.reply_text(get_msg(user.language, "banned"))
         session.close()
         return
 
     if chat_id not in active_spawns or not active_spawns[chat_id]:
-        await update.message.reply_text("❌ ဖမ်းယူရန် ကဒ် မရှိသေးပါ!")
+        await update.message.reply_text(get_msg(user.language, "no_spawn"))
         session.close()
         return
 
@@ -408,12 +489,15 @@ async def catch_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.add(new_card)
     session.commit()
 
-    msg = (
-        f"🎉 **{user.name}** သည် **{card_base.name}** ကို ဖမ်းယူရရှိခဲ့သည်!\n"
-        f"🏷️ **Print:** #{card_base.total_prints}\n"
-        f"✨ **Quality:** {quality}%\n"
-        f"⭐ **Rarity:** {card_base.rarity}\n"
-        f"🆔 `{new_card.uuid}`"
+    msg = get_msg(
+        user.language,
+        "caught",
+        name=user.name,
+        card=card_base.name,
+        print_num=card_base.total_prints,
+        quality=quality,
+        rarity=card_base.rarity,
+        uuid=new_card.uuid,
     )
     session.close()
     await update.message.reply_text(msg, parse_mode="Markdown")
@@ -603,10 +687,14 @@ if __name__ == "__main__":
 
     bot = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # User Command Handlers
+    # User & Language Handlers
     bot.add_handler(CommandHandler("start", start_cmd))
     bot.add_handler(CommandHandler("help", help_cmd))
     bot.add_handler(CommandHandler("profile", user_profile))
+    bot.add_handler(CommandHandler("language", set_language))
+    bot.add_handler(
+        CallbackQueryHandler(language_button_callback, pattern="^lang_")
+    )
 
     # Card & Search Handlers
     bot.add_handler(CommandHandler("search", search_card))
@@ -617,7 +705,7 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("cardlist", list_all_cards))
     bot.add_handler(CommandHandler("gift", gift_card))
 
-    # Control Handlers (Owner)
+    # Owner Handlers
     bot.add_handler(CommandHandler("addcard", admin_add_card))
     bot.add_handler(CommandHandler("forcespawn", admin_force_spawn))
     bot.add_handler(CommandHandler("give", admin_give_currency))
@@ -631,5 +719,5 @@ if __name__ == "__main__":
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spawns)
     )
 
-    print("Complete Card Engine Fully Operational...")
+    print("Complete Bot System Fully Running...")
     bot.run_polling()
