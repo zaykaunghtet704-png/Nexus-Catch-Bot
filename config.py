@@ -1,8 +1,7 @@
 import os
 
-# Render Environment Variables မှ ယူမည် (သို့မဟုတ် တိုက်ရိုက်ထည့်ပါ)
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8823072889:AAHKIzIzYVm4CjRJzoJWCktJhI5ZYn4mn4Y")
-OWNER_IDS = [7974865879, 7869852655]
-
-SPAWN_THRESHOLD = 5   # Message ၅ စာ ရိုက်လျှင် ၁ ကတ် ကျမည်
-PORT = int(os.getenv("PORT", 8080))
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+OWNER_IDS = [123456789]  # သင်၏ Telegram User ID
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///nexus.db")
+SPAWN_THRESHOLD = 15
+PORT = int(os.environ.get("PORT", 8080))
