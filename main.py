@@ -31,51 +31,51 @@ def run_web():
 active_spawns = {}
 chat_counts = {}
 
-# --- DYNAMIC MULTI-LANGUAGE DICTIONARY ---
+# --- MULTI-LANGUAGE DICTIONARY ---
 LANGUAGES = {
     "en": {
-        "start": "👋 **Welcome to Nexus Card Bot!**\nUse `/help` to see all commands or `/language` to change language.",
+        "start": "👋 **Welcome to Nexus Card Bot!**\nUse `/help` for commands.",
         "help": (
             "📜 **COMMANDS LIST**\n\n"
             "👤 **User Commands:**\n"
-            "• `/start` - Start the bot\n"
-            "• `/profile` - View your profile & balance\n"
-            "• `/catch` or `/nexus` - Catch spawned character\n"
-            "• `/language` - Change language (EN/MY)\n\n"
+            "• `/start` - Start bot\n"
+            "• `/profile` - View profile\n"
+            "• `/catch` or `/nexus` - Catch card\n"
+            "• `/language` - Change language\n\n"
             "👑 **Owner Commands:**\n"
-            "• `/addcard` - Create new card base\n"
-            "• `/give` - Give coins/tokens to user\n"
-            "• `/banuser` - Ban or Unban user\n"
-            "• `/forcespawn` - Force spawn a card"
+            "• Reply photo with `/addcard ID | Name` - Quick Add Card\n"
+            "• `/addcard ID | Name | Image_URL` - Add Card with Link\n"
+            "• `/give` - Give coins/tokens\n"
+            "• `/forcespawn` - Force spawn in group"
         ),
-        "lang_select": "🌐 **Select your preferred language:**",
+        "lang_select": "🌐 **Select your language:**",
         "lang_changed": "✅ Language set to **English**!",
-        "no_spawn": "❌ No character active to catch in this group!",
+        "no_spawn": "❌ No character active to catch!",
         "caught": "🎉 **{name}** captured **{card}**!\n🏷️ **Print:** #{print_num}\n✨ **Quality:** {quality}%\n⭐ **Rarity:** {rarity}\n🆔 `{uuid}`",
-        "profile": "👤 **PROFILE:** {name}\n💰 Coins: `{coins}` | 🪙 Tokens: `{tokens}`\n🎴 Cards Collected: `{cards_count}`\n🌐 Language: English",
-        "banned": "🚫 You are banned from using this bot.",
+        "profile": "👤 **PROFILE:** {name}\n💰 Coins: `{coins}` | 🪙 Tokens: `{tokens}`\n🎴 Cards: `{cards_count}`",
+        "banned": "🚫 You are banned.",
     },
     "my": {
-        "start": "👋 **Nexus Card Bot မှ ကြိုဆိုပါသည်!**\nCommands များကိုကြည့်ရန် `/help` ကိုသုံးပါ။ ဘာသာစကားပြောင်းရန် `/language` ကိုနှိပ်ပါ။",
+        "start": "👋 **Nexus Card Bot မှ ကြိုဆိုပါသည်!**\nCommands များကြည့်ရန် `/help` ကိုသုံးပါ။",
         "help": (
-            "📜 **အသုံးပြုနိုင်သော Commands များ**\n\n"
-            "👤 **အသုံးပြုသူ Commands များ:**\n"
-            "• `/start` - ဘော့အား စတင်ရန်\n"
-            "• `/profile` - မိမိ ပရိုဖိုင်နှင့် လက်ကျန်ငွေကြည့်ရန်\n"
-            "• `/catch` သို့ `/nexus` - ထွက်လာသော ကဒ်ကို ဖမ်းရန်\n"
-            "• `/language` - ဘာသာစကား ပြောင်းရန် (မြန်မာ/Eng)\n\n"
-            "👑 **Owner Commands များ:**\n"
-            "• `/addcard` - ကဒ်အသစ် ထည့်ရန်\n"
+            "📜 **COMMANDS စာရင်း**\n\n"
+            "👤 **အသုံးပြုသူ Commands:**\n"
+            "• `/start` - စတင်ရန်\n"
+            "• `/profile` - ပရိုဖိုင်ကြည့်ရန်\n"
+            "• `/catch` သို့ `/nexus` - ကဒ်ဖမ်းရန်\n"
+            "• `/language` - ဘာသာစကားပြောင်းရန်\n\n"
+            "👑 **Owner Commands:**\n"
+            "• ပုံကို Reply ပြန်၍ `/addcard ID | Name` - အလွယ်ကဒ်ထည့်ရန်\n"
+            "• `/addcard ID | Name | Image_URL` - Link ဖြင့် ကဒ်ထည့်ရန်\n"
             "• `/give` - Coins/Tokens ပေးရန်\n"
-            "• `/banuser` - User အား Ban/Unban လုပ်ရန်\n"
-            "• `/forcespawn` - ကဒ် ချက်ချင်း Spawn ခေါ်ရန်"
+            "• `/forcespawn` - ကဒ် ချက်ချင်း ချပေးရန်"
         ),
-        "lang_select": "🌐 **အသုံးပြုလိုသော ဘာသာစကားကို ရွေးချယ်ပါ:**",
-        "lang_changed": "✅ ဘာသာစကားကို **မြန်မာဘာသာ** သို့ ပြောင်းလိုက်ပါပြီ!",
-        "no_spawn": "❌ ဖမ်းယူရန် Character မရှိသေးပါ!",
+        "lang_select": "🌐 **ဘာသာစကား ရွေးချယ်ပါ:**",
+        "lang_changed": "✅ ဘာသာစကားကို **မြန်မာစာ** သို့ ပြောင်းလိုက်ပါပြီ!",
+        "no_spawn": "❌ ဖမ်းယူရန် ကဒ်မရှိသေးပါ!",
         "caught": "🎉 **{name}** သည် **{card}** ကို ဖမ်းယူရရှိခဲ့သည်!\n🏷️ **Print:** #{print_num}\n✨ **Quality:** {quality}%\n⭐ **Rarity:** {rarity}\n🆔 `{uuid}`",
-        "profile": "👤 **အသုံးပြုသူ ပရိုဖိုင်:** {name}\n💰 Coins: `{coins}` | 🪙 Tokens: `{tokens}`\n🎴 စုဆောင်းထားသော ကဒ်များ: `{cards_count}`\n🌐 ဘာသာစကား: မြန်မာ",
-        "banned": "🚫 သင့်အား ဘော့အသုံးပြုခွင့် ပိတ်ပင်ထားပါသည်။",
+        "profile": "👤 **အသုံးပြုသူ ပရိုဖိုင်:** {name}\n💰 Coins: `{coins}` | 🪙 Tokens: `{tokens}`\n🎴 စုဆောင်းထားသော ကဒ်များ: `{cards_count}`",
+        "banned": "🚫 သင့်အား ပိတ်ပင်ထားပါသည်။",
     },
 }
 
@@ -91,7 +91,107 @@ def is_owner(user_id: int) -> bool:
 
 
 # ==========================================
-# 🌐 USER COMMANDS
+# 🖼️ 1. SMART PHOTO REPLY ADD CARD (အလွယ်ဆုံး ကဒ်ထည့်နည်း)
+# ==========================================
+
+
+async def admin_add_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+
+    try:
+        raw = " ".join(context.args)
+        image_url = None
+
+        # ၁။ ပုံကို Reply ပြန်ပြီး /addcard ID | Name ရိုက်သည့်စနစ်
+        if update.message.reply_to_message and (
+            update.message.reply_to_message.photo
+            or update.message.reply_to_message.document
+        ):
+            photo = update.message.reply_to_message.photo[-1]
+            image_url = photo.file_id  # Telegram File ID ကို တိုက်ရိုက်ယူမည်
+            cid, name = [x.strip() for x in raw.split("|")]
+
+        # ၂။ Normal Link ဖြင့် /addcard ID | Name | Image_URL ထည့်သည့်စနစ်
+        else:
+            cid, name, image_url = [x.strip() for x in raw.split("|")]
+
+        session = SessionLocal()
+        new_card = CardBase(
+            id=cid,
+            name=name,
+            anime="General",
+            rarity="UR 👑",
+            base_power=5000,
+            element="Neutral",
+            image_url=image_url,
+        )
+        session.add(new_card)
+        session.commit()
+        session.close()
+
+        await update.message.reply_text(
+            f"✅ **[ကဒ်အသစ် အောင်မြင်စွာ ထည့်ပြီးပါပြီ]**\n🆔 ID: `{cid}`\n👤 အမည်: **{name}**",
+            parse_mode="Markdown",
+        )
+    except Exception:
+        await update.message.reply_text(
+            "❌ **ကဒ်ထည့်နည်း ပုံစံ (၂) မျိုး:**\n\n"
+            "1️⃣ **ပုံကို Reply ပြန်၍ ရိုက်ရန်:**\n`/addcard ID | Name`\n\n"
+            "2️⃣ **Link ဖြင့် တိုက်ရိုက် ရိုက်ရန်:**\n`/addcard ID | Name | Image_URL`",
+            parse_mode="Markdown",
+        )
+
+
+# ==========================================
+# 💬 2. AUTO SPAWN ENGINE (စာအကြောင်းရေ ၁၀၀ ပြည့်မှ ကဒ်ချပေးမည့်စနစ်)
+# ==========================================
+
+
+async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if (
+        not update.message
+        or not update.message.text
+        or update.message.text.startswith("/")
+    ):
+        return
+
+    chat_id = update.effective_chat.id
+    chat_counts[chat_id] = chat_counts.get(chat_id, 0) + 1
+
+    # စာအကြောင်းရေ ၁၀၀ ပြည့်/မပြည့် စစ်ဆေးခြင်း
+    if chat_counts[chat_id] >= 100:
+        session = SessionLocal()
+        cards = session.query(CardBase).all()
+
+        if cards:
+            chat_counts[chat_id] = 0  # Counter ကို ပြန် 0 လုပ်မည်
+            selected_card = random.choice(cards)
+            active_spawns[chat_id] = selected_card.id
+            caption = f"⚡ **A WILD CHARACTER APPEARED!**\nName: **{selected_card.name}**\nRarity: {selected_card.rarity}\nUse `/nexus` or `/catch`!"
+
+            try:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=selected_card.image_url,
+                    caption=caption,
+                    parse_mode="Markdown",
+                )
+            except RetryAfter as e:
+                await asyncio.sleep(e.retry_after)
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=selected_card.image_url,
+                    caption=caption,
+                    parse_mode="Markdown",
+                )
+            except Exception as err:
+                print(f"Spawn Error: {err}")
+        session.close()
+
+
+# ==========================================
+# 🌐 3. USER & OWNER COMMANDS
 # ==========================================
 
 
@@ -115,9 +215,9 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = session.query(User).filter(User.id == user_id).first()
     lang = user.language if user else "en"
     session.close()
-
-    msg = get_msg(lang, "help")
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(
+        get_msg(lang, "help"), parse_mode="Markdown"
+    )
 
 
 async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,10 +233,9 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🇲🇲 မြန်မာစာ", callback_data="lang_my"),
         ]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         get_msg(lang, "lang_select"),
-        reply_markup=reply_markup,
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
 
@@ -158,11 +257,11 @@ async def language_button_callback(
 
     user.language = selected_lang
     session.commit()
-
-    msg = get_msg(selected_lang, "lang_changed")
     session.close()
 
-    await query.edit_message_text(msg, parse_mode="Markdown")
+    await query.edit_message_text(
+        get_msg(selected_lang, "lang_changed"), parse_mode="Markdown"
+    )
 
 
 async def user_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -247,42 +346,6 @@ async def catch_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 
-# ==========================================
-# 👑 OWNER COMMANDS
-# ==========================================
-
-
-async def admin_add_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-    try:
-        raw = " ".join(context.args)
-        cid, name, anime, rarity, power, element, img = [
-            x.strip() for x in raw.split("|")
-        ]
-        session = SessionLocal()
-        new_card = CardBase(
-            id=cid,
-            name=name,
-            anime=anime,
-            rarity=rarity,
-            base_power=int(power),
-            element=element,
-            image_url=img,
-        )
-        session.add(new_card)
-        session.commit()
-        session.close()
-        await update.message.reply_text(
-            f"✅ **[CARD CREATED]**\n👑 Name: {name} | ID: `{cid}`",
-            parse_mode="Markdown",
-        )
-    except Exception as e:
-        await update.message.reply_text(
-            f"❌ Format: `/addcard ID | Name | Anime | Rarity | Power | Element | Image_URL`\nError: `{e}`"
-        )
-
-
 async def admin_give_currency(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -312,26 +375,6 @@ async def admin_give_currency(
         )
 
 
-async def admin_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-    try:
-        target_id, action = str(context.args[0]), context.args[1].lower()
-        session = SessionLocal()
-        user = session.query(User).filter(User.id == target_id).first()
-        if user:
-            user.is_banned = True if action == "ban" else False
-            session.commit()
-            await update.message.reply_text(
-                f"👤 User `{target_id}` {action.upper()}ED successfully."
-            )
-        session.close()
-    except Exception:
-        await update.message.reply_text(
-            "❌ Format: `/banuser <user_id> <ban/unban>`"
-        )
-
-
 async def admin_force_spawn(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -357,76 +400,23 @@ async def admin_force_spawn(
     session.close()
 
 
-# ==========================================
-# ⚙️ AUTO SPAWN & HANDLERS
-# ==========================================
-
-
-async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if (
-        not update.message
-        or not update.message.text
-        or update.message.text.startswith("/")
-    ):
-        return
-
-    chat_id = update.effective_chat.id
-    chat_counts[chat_id] = chat_counts.get(chat_id, 0) + 1
-
-    if chat_counts[chat_id] >= SPAWN_THRESHOLD:
-        session = SessionLocal()
-        cards = session.query(CardBase).all()
-
-        if cards:
-            chat_counts[chat_id] = 0
-            selected_card = random.choice(cards)
-            active_spawns[chat_id] = selected_card.id
-            caption = f"⚡ **A WILD CHARACTER APPEARED!**\nName: **{selected_card.name}**\nRarity: {selected_card.rarity}\nUse `/nexus` or `/catch`!"
-
-            try:
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=selected_card.image_url,
-                    caption=caption,
-                    parse_mode="Markdown",
-                )
-            except RetryAfter as e:
-                await asyncio.sleep(e.retry_after)
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=selected_card.image_url,
-                    caption=caption,
-                    parse_mode="Markdown",
-                )
-            except Exception as err:
-                print(f"Spawn Error: {err}")
-        session.close()
-
-
 if __name__ == "__main__":
     Thread(target=run_web).start()
     bot = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Register User Commands
     bot.add_handler(CommandHandler("start", start_cmd))
     bot.add_handler(CommandHandler("help", help_cmd))
     bot.add_handler(CommandHandler("language", set_language))
     bot.add_handler(CommandHandler("profile", user_profile))
     bot.add_handler(CommandHandler("nexus", catch_card))
     bot.add_handler(CommandHandler("catch", catch_card))
-
-    # Register Button Handler
     bot.add_handler(
         CallbackQueryHandler(language_button_callback, pattern="^lang_")
     )
 
-    # Register Owner Commands
     bot.add_handler(CommandHandler("addcard", admin_add_card))
     bot.add_handler(CommandHandler("give", admin_give_currency))
-    bot.add_handler(CommandHandler("banuser", admin_ban_user))
     bot.add_handler(CommandHandler("forcespawn", admin_force_spawn))
-
-    # Register Spawn Listener
     bot.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spawns)
     )
