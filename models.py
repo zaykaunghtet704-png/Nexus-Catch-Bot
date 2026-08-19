@@ -17,19 +17,29 @@ Base = declarative_base()
 engine = create_engine("sqlite:///bot_database.db", echo=False)
 SessionLocal = sessionmaker(bind=engine)
 
-# Advanced Rarity Matrix with 8 Tiers & Weights
+# 10-Tier Rarity Matrix
 ADVANCED_RARITIES = {
-    "⚪ Common": 0.45,       # 45%
-    "🟢 Uncommon": 0.25,     # 25%
-    "🔵 Rare": 0.15,         # 15%
-    "🟣 Epic": 0.08,         # 8%
-    "🟡 Legendary": 0.04,    # 4%
-    "🟠 Mythic": 0.018,      # 1.8%
-    "🔴 Celestial": 0.0015,  # 0.15%
-    "🌌 Godlike": 0.0005     # 0.05%
+    "⚪ Common": 0.38,
+    "🟢 Uncommon": 0.25,
+    "🔵 Rare": 0.15,
+    "🟣 Epic": 0.10,
+    "🟡 Legendary": 0.06,
+    "🟠 Mythic": 0.03,
+    "🔴 Celestial": 0.015,
+    "🌌 Godlike": 0.008,
+    "✨ Omnipotent": 0.005,  # Tier 9
+    "👑 Sovereign": 0.002,  # Tier 10
 }
 
-ELEMENTS = ["🔥 Fire", "💧 Water", "⚡ Thunder", "🌪️ Wind", "✨ Light", "🖤 Dark"]
+ELEMENTS = [
+    "🔥 Fire",
+    "💧 Water",
+    "⚡ Thunder",
+    "🌪️ Wind",
+    "✨ Light",
+    "🖤 Dark",
+    "☯️ Chaos",
+]
 
 
 class User(Base):
@@ -37,17 +47,21 @@ class User(Base):
     id = Column(String, primary_key=True)
     name = Column(String)
     coins = Column(Integer, default=2000)
-    tokens = Column(Integer, default=20)
+    shards = Column(Integer, default=0)
     fav_card_id = Column(String, nullable=True)
     last_daily = Column(DateTime, nullable=True)
+    last_grab = Column(DateTime, nullable=True)
+    daily_streak = Column(Integer, default=0)
 
-    cards = relationship("UserCard", back_populates="owner", cascade="all, delete-orphan")
+    cards = relationship(
+        "UserCard", back_populates="owner", cascade="all, delete-orphan"
+    )
 
 
 class ChatSettings(Base):
     __tablename__ = "chat_settings"
     chat_id = Column(String, primary_key=True)
-    spawn_threshold = Column(Integer, default=80)
+    spawn_threshold = Column(Integer, default=50)
     current_msg_count = Column(Integer, default=0)
 
 
@@ -65,13 +79,14 @@ class CardBase(Base):
 
 class UserCard(Base):
     __tablename__ = "user_cards"
-    uuid = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())[:8])
+    uuid = Column(
+        String, primary_key=True, default=lambda: str(uuid.uuid4())[:8]
+    )
     user_id = Column(String, ForeignKey("users.id"))
     card_id = Column(String, ForeignKey("card_base.id"))
     print_number = Column(Integer)
     quality = Column(Float)
-    level = Column(Integer, default=1)       # Card Level system
-    experience = Column(Integer, default=0)  # Exp for level up
+    level = Column(Integer, default=1)
     is_market = Column(Boolean, default=False)
     market_price = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
