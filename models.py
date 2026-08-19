@@ -14,7 +14,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 
 Base = declarative_base()
-engine = create_engine("sqlite:///bot_database.db", echo=False)
+engine = create_engine(
+    "sqlite:///bot_database.db", echo=False, connect_args={"timeout": 15}
+)
 SessionLocal = sessionmaker(bind=engine)
 
 
@@ -30,7 +32,17 @@ class User(Base):
     fav_card_id = Column(String, nullable=True)
     last_daily = Column(DateTime, nullable=True)
 
-    cards = relationship("UserCard", back_populates="owner")
+    cards = relationship(
+        "UserCard", back_populates="owner", cascade="all, delete-orphan"
+    )
+
+
+class ChatSettings(Base):
+    __tablename__ = "chat_settings"
+
+    chat_id = Column(String, primary_key=True)
+    spawn_threshold = Column(Integer, default=100)
+    current_msg_count = Column(Integer, default=0)
 
 
 class CardBase(Base):
@@ -58,6 +70,7 @@ class UserCard(Base):
     quality = Column(Float)
     is_market = Column(Boolean, default=False)
     market_price = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="cards")
     card_info = relationship("CardBase")
