@@ -1,506 +1,650 @@
 import asyncio
+import datetime
 import random
 import time
 from threading import Thread
+
 from config import BOT_TOKEN, OWNER_IDS, PORT, SPAWN_THRESHOLD
 from flask import Flask
-from models import CardBase, SessionLocal, User, UserCard
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InlineQueryResultPhoto,
-    Update,
+from models import (
+    ADVANCED_RARITIES,
+    ELEMENTS,
+    Base,
+    CardBase,
+    ChatSettings,
+    SessionLocal,
+    User,
+    UserCard,
 )
-from telegram.error import RetryAfter
+from sqlalchemy.orm import joinedload
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
-    InlineQueryHandler,
     MessageHandler,
     filters,
 )
 
 # ==========================================
-# 🌐 KEEP-ALIVE SERVER
+# 🌐 KEEP-ALIVE SERVER (FOR TERMUX / CLOUD)
 # ==========================================
 app = Flask(__name__)
 
 
 @app.route("/")
 def home():
-    return "<h1>Nexus Core Fully Operational</h1>"
+    return "<h1>Nexus Extended Production Core Operational</h1>"
 
 
 def run_web():
     app.run(host="0.0.0.0", port=PORT)
 
 
-# Caches
-active_spawns = {}
-chat_counts = {}
+# ==========================================
+# 🧠 MEMORY CACHES & ACTIVE TRADES
+# ==========================================
+active_spawns = {}  # {chat_id: {"card_id": str, "hint": str}}
+active_trades = {}  # {trade_id: {"sender": str, "receiver": str, ...}}
 user_last_msg_time = {}
 user_spam_count = {}
 user_ignored_until = {}
 
 # ==========================================
-# 🌐 LANGUAGE DICTIONARY
-# ==========================================
-LANGUAGES = {
-    "en": {
-        "start": "👋 **Welcome to Nexus Card Bot!**\nUse `/help` for available commands.",
-        "help_user": (
-            "👤 **USER COMMANDS:**\n"
-            "• `/profile` - View your status & balance\n"
-            "• `/collection` - View collected cards\n"
-            "• `/catch` - Catch active spawned card\n"
-            "• `/search` - Search cards (Inline & Text)\n"
-            "• `/cardlist` - View database cards\n"
-            "• `/gift <user_id> <card_uuid>` - Gift a card\n"
-            "• `/language` - Switch language"
-        ),
-        "help_owner": (
-            "👑 **OWNER COMMANDS:**\n"
-            "• `/addcard ID | Name | Rarity | Power` (Reply image)\n"
-            "• `/forcespawn` - Force spawn a card\n"
-            "• `/give <user_id> <coins/tokens> <amount>`\n"
-            "• `/banuser <user_id> <ban/unban>`"
-        ),
-        "no_spawn": "❌ No active character to catch right now!",
-        "caught": "🎉 **{name}** caught **{card}**!\n🏷️ **Print:** #{print_num}\n✨ **Quality:** {quality}%\n⭐ **Rarity:** {rarity}\n🆔 `{uuid}`",
-        "banned": "🚫 You are banned from using this bot.",
-    },
-    "my": {
-        "start": "👋 **Nexus Card Bot မှ ကြိုဆိုပါသည်!**\nCommands များကိုကြည့်ရန် `/help` ကိုသုံးပါ။",
-        "help_user": (
-            "👤 **အသုံးပြုသူ COMMANDS:**\n"
-            "• `/profile` - မိမိ ပရိုဖိုင်နှင့် လက်ကျန်ငွေကြည့်ရန်\n"
-            "• `/collection` - မိမိ ရရှိထားသော ကဒ်များ ကြည့်ရန်\n"
-            "• `/catch` - ထွက်လာသော ကဒ်ကို ဖမ်းယူရန်\n"
-            "• `/search` - Inline Button ဖြင့် ကဒ် ရှာရန်\n"
-            "• `/cardlist` - Bot ထဲရှိ ကဒ်များ စာရင်း ကြည့်ရန်\n"
-            "• `/gift <user_id> <card_uuid>` - ကဒ် လက်ဆောင်ပေးရန်\n"
-            "• `/language` - ဘာသာစကား ပြောင်းရန်"
-        ),
-        "help_owner": (
-            "👑 **ထိန်းချုပ်သူ COMMANDS:**\n"
-            "• `/addcard ID | Name | Rarity | Power` (ပုံကို Reply ပြန်၍)\n"
-            "• `/forcespawn` - ကဒ် ချက်ချင်း ချပေးရန်\n"
-            "• `/give <user_id> <coins/tokens> <amount>`\n"
-            "• `/banuser <user_id> <ban/unban>`"
-        ),
-        "no_spawn": "❌ ဖမ်းယူရန် ကဒ် မရှိသေးပါ!",
-        "caught": "🎉 **{name}** သည် **{card}** ကို ဖမ်းယူရရှိခဲ့သည်!\n🏷️ **Print:** #{print_num}\n✨ **Quality:** {quality}%\n⭐ **Rarity:** {rarity}\n🆔 `{uuid}`",
-        "banned": "🚫 သင့်အား ဘော့အသုံးပြုခွင့် ပိတ်ပင်ထားပါသည်။",
-    },
-}
-
-
-def get_msg(user_lang, key, **kwargs):
-    lang = user_lang if user_lang in LANGUAGES else "en"
-    text = LANGUAGES[lang].get(key, LANGUAGES["en"].get(key, ""))
-    return text.format(**kwargs) if kwargs else text
-
-
-def is_owner(user_id: int) -> bool:
-    return user_id in OWNER_IDS
-
-
-# ==========================================
-# 🚫 ANTI-SPAM & FLOOD CONTROL ENGINE
+# 🛡️ HELPER FUNCTIONS & SECURITY
 # ==========================================
 
 
 async def check_anti_spam(update: Update) -> bool:
     if not update.effective_user:
         return True
+    uid = update.effective_user.id
+    now = time.time()
 
-    user_id = update.effective_user.id
-    current_time = time.time()
-
-    if user_id in user_ignored_until:
-        if current_time < user_ignored_until[user_id]:
+    if uid in user_ignored_until:
+        if now < user_ignored_until[uid]:
             return False
-        else:
-            del user_ignored_until[user_id]
+        del user_ignored_until[uid]
 
-    last_time = user_last_msg_time.get(user_id, 0)
-    user_last_msg_time[user_id] = current_time
+    last = user_last_msg_time.get(uid, 0)
+    user_last_msg_time[uid] = now
 
-    if current_time - last_time < 1.0:
-        user_spam_count[user_id] = user_spam_count.get(user_id, 0) + 1
+    if now - last < 0.7:
+        user_spam_count[uid] = user_spam_count.get(uid, 0) + 1
     else:
-        user_spam_count[user_id] = 0
+        user_spam_count[uid] = 0
 
-    if user_spam_count[user_id] >= 4:
-        user_ignored_until[user_id] = current_time + 600
-        user_spam_count[user_id] = 0
+    if user_spam_count[uid] >= 6:
+        user_ignored_until[uid] = now + 300
+        user_spam_count[uid] = 0
         if update.message:
             await update.message.reply_text(
-                "⛔ **FLOODING | SPAMMING**\n"
-                "NOW I'M IGNORING YOUR EXISTENCE FOR UPCOMING 10 MINUTES.",
-                parse_mode="Markdown",
+                "⛔ **Anti-Spam Activated!** You are muted for 5 minutes."
             )
         return False
-
     return True
 
 
-# ==========================================
-# 🖼️ INLINE SEARCH & REGULAR SEARCH
-# ==========================================
+def is_owner(user_id: int) -> bool:
+    return user_id in OWNER_IDS
 
 
-async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.inline_query.query.strip()
-    session = SessionLocal()
-
-    if not query:
-        cards = session.query(CardBase).limit(30).all()
-    else:
-        cards = (
-            session.query(CardBase)
-            .filter(CardBase.name.ilike(f"%{query}%"))
-            .limit(30)
-            .all()
-        )
-
-    results = []
-    for card in cards:
-        caption = (
-            f"👤 **Name:** {card.name}\n"
-            f"⭐ **Rarity:** {card.rarity}\n"
-            f"⚡ **Power:** {card.base_power}\n"
-            f"🏷️ **Total Prints:** {card.total_prints}"
-        )
-        results.append(
-            InlineQueryResultPhoto(
-                id=str(card.id),
-                photo_url=card.image_url,
-                thumbnail_url=card.image_url,
-                title=card.name,
-                caption=caption,
-                parse_mode="Markdown",
-            )
-        )
-
-    session.close()
-    await update.inline_query.answer(results, cache_time=10)
-
-
-async def search_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_anti_spam(update):
-        return
-
-    if not context.args:
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "🔧 SEARCH CHARACTERS",
-                    switch_inline_query_current_chat="",
-                )
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "🔘 **TO SEARCH CHARACTER CLICK ON BUTTON BELOW**",
-            reply_markup=reply_markup,
-            parse_mode="Markdown",
-        )
-        return
-
-    query_name = " ".join(context.args).strip()
-    session = SessionLocal()
-    cards = (
-        session.query(CardBase)
-        .filter(CardBase.name.ilike(f"%{query_name}%"))
-        .all()
-    )
-
-    if not cards:
-        await update.message.reply_text("❌ ရှာဖွေသော ကဒ် မတွေ့ပါ!")
-        session.close()
-        return
-
-    for card in cards[:3]:
-        caption = (
-            f"🔍 **[CARD DETAILS]**\n\n"
-            f"🆔 **ID:** `{card.id}`\n"
-            f"👤 **Name:** {card.name}\n"
-            f"⭐ **Rarity:** {card.rarity}\n"
-            f"⚡ **Base Power:** {card.base_power}\n"
-            f"🏷️ **Total Prints:** {card.total_prints}"
-        )
-        try:
-            await update.message.reply_photo(
-                photo=card.image_url, caption=caption, parse_mode="Markdown"
-            )
-        except Exception:
-            await update.message.reply_text(caption, parse_mode="Markdown")
-
-    session.close()
+def calculate_card_power(user_card: UserCard) -> int:
+    base = user_card.card_info.base_power
+    lvl_multiplier = 1 + (user_card.level * 0.15)
+    quality_multiplier = user_card.quality / 100.0
+    return int(base * lvl_multiplier * quality_multiplier)
 
 
 # ==========================================
-# 👤 USER COMMANDS & LANGUAGE SYSTEM
+# 🎮 USER & START COMMANDS
 # ==========================================
 
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_anti_spam(update):
         return
-    user_id = str(update.effective_user.id)
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
+    uid = str(update.effective_user.id)
+    user = session.query(User).filter(User.id == uid).first()
     if not user:
-        user = User(id=user_id, name=update.effective_user.first_name)
+        user = User(id=uid, name=update.effective_user.first_name)
         session.add(user)
         session.commit()
-
-    msg = get_msg(user.language, "start")
     session.close()
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(
+        f"✨ **WELCOME TO NEXUS CARD REALM!** ✨\n\nHello {update.effective_user.first_name}! Type `/help` to view all features."
+    )
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_anti_spam(update):
         return
-    user_id = update.effective_user.id
-    session = SessionLocal()
-    user = session.query(User).filter(User.id == str(user_id)).first()
-    lang = user.language if user else "en"
-    session.close()
-
-    text = get_msg(lang, "help_user")
-    if is_owner(user_id):
-        text += "\n\n" + get_msg(lang, "help_owner")
-
+    text = (
+        "📖 **FULL BOT FEATURE COMMANDS:**\n\n"
+        "🎮 **COLLECTION & CATCH:**\n"
+        "• `/catch <name>` - Catch spawned character\n"
+        "• `/hint` - Reveal name puzzle hint\n"
+        "• `/harem` - View card collection (Paginated)\n"
+        "• `/check <uuid>` - Inspect card specs & battle power\n"
+        "• `/fav <uuid>` / `/unfav` - Set favorite card\n\n"
+        "⚔️ **GAMEPLAY & CARDS:**\n"
+        "• `/upgrade <uuid>` - Level up your card\n"
+        "• `/duel` - Battle other players (Reply to user)\n"
+        "• `/gacha` - Spin 8-tier premium gacha\n\n"
+        "🏪 **MARKET & TRADE:**\n"
+        "• `/trade <uuid>` - Initiate direct secure trade\n"
+        "• `/sell <uuid> <price>` - List card on market\n"
+        "• `/buy <uuid>` - Buy card from market\n"
+        "• `/market` - View global card market\n"
+        "• `/gift <uuid>` - Gift card to a user (Reply)\n\n"
+        "💰 **PROFILE & ECONOMY:**\n"
+        "• `/profile` - Check stats & balance\n"
+        "• `/daily` - Claim daily coin rewards\n"
+        "• `/top` - Wealthiest collectors\n"
+        "• `/ctop` - Most printed cards\n\n"
+        "⚙️ **ADMIN COMMANDS:**\n"
+        "• `/addcard` | `/delcard` | `/ban` | `/unban` | `/givecoins`"
+    )
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
-async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ==========================================
+# ⚡ SPAWN, CATCH & HINT ENGINE
+# ==========================================
+
+
+async def catch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_anti_spam(update):
         return
-    keyboard = [
-        [
-            InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
-            InlineKeyboardButton("🇲🇲 မြန်မာစာ", callback_data="lang_my"),
-        ]
-    ]
+    chat_id = str(update.effective_chat.id)
+
+    if chat_id not in active_spawns:
+        await update.message.reply_text("❌ ဖမ်းယူရန် ကဒ်မရှိပါ။")
+        return
+
+    if not context.args:
+        await update.message.reply_text("❌ Usage: `/catch <character_name>`")
+        return
+
+    guess = " ".join(context.args).strip().lower()
+    session = SessionLocal()
+    spawn_data = active_spawns[chat_id]
+    card = (
+        session.query(CardBase)
+        .filter(CardBase.id == spawn_data["card_id"])
+        .first()
+    )
+
+    if card and guess == card.name.lower():
+        uid = str(update.effective_user.id)
+        user = session.query(User).filter(User.id == uid).first()
+        if not user:
+            user = User(id=uid, name=update.effective_user.first_name)
+            session.add(user)
+
+        card.total_prints += 1
+        new_card = UserCard(
+            user_id=uid,
+            card_id=card.id,
+            print_number=card.total_prints,
+            quality=round(random.uniform(75.0, 100.0), 1),
+        )
+        session.add(new_card)
+        session.commit()
+
+        del active_spawns[chat_id]
+        session.close()
+
+        await update.message.reply_text(
+            f"🎉 **SUCCESSFUL CATCH!**\n"
+            f"👤 **{update.effective_user.first_name}** caught **{card.name}**!\n"
+            f"🌟 Rarity: {card.rarity}\n"
+            f"⚡ Element: {card.element}\n"
+            f"🏷️ Print: `#{card.total_prints}` | ✨ Quality: `{new_card.quality}%`\n"
+            f"🆔 UUID: `{new_card.uuid}`",
+            parse_mode="Markdown",
+        )
+    else:
+        session.close()
+        await update.message.reply_text(
+            "❌ နာမည်အမှန် မဟုတ်ပါ။ ပြန်လည်ကြိုးစားပါ!"
+        )
+
+
+async def hint_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    chat_id = str(update.effective_chat.id)
+    if chat_id not in active_spawns:
+        await update.message.reply_text("❌ အချက်အလက်ပြစရာ ကဒ်မရှိပါ။")
+        return
     await update.message.reply_text(
-        "🌐 Choose Language / ဘာသာစကား ရွေးချယ်ပါ:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        f"💡 **HINT:** `{active_spawns[chat_id]['hint']}`", parse_mode="Markdown"
     )
 
 
-async def language_button_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+# ==========================================
+# 🏰 INTERACTIVE PAGINATION HAREM
+# ==========================================
+
+
+async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    session = SessionLocal()
+    uid = str(update.effective_user.id)
+    cards = (
+        session.query(UserCard)
+        .options(joinedload(UserCard.card_info))
+        .filter(UserCard.user_id == uid)
+        .all()
+    )
+
+    if not cards:
+        await update.message.reply_text("🏰 သင့် Harem ထဲမှာ ကဒ်မရှိသေးပါ။")
+        session.close()
+        return
+
+    text, keyboard = render_harem_page(
+        cards, 0, update.effective_user.first_name
+    )
+    session.close()
+    await update.message.reply_text(
+        text, reply_markup=keyboard, parse_mode="Markdown"
+    )
+
+
+def render_harem_page(cards, page, user_name):
+    per_page = 8
+    total_pages = (len(cards) + per_page - 1) // per_page
+    start = page * per_page
+    end = start + per_page
+
+    text = f"🏰 **{user_name}'s Collection ({len(cards)} Cards) - Page {page + 1}/{total_pages}**\n\n"
+    for idx, c in enumerate(cards[start:end], start + 1):
+        pwr = calculate_card_power(c)
+        text += (
+            f"{idx}. **{c.card_info.name}** [{c.card_info.rarity}]\n"
+            f"   ⚡ Power: `{pwr}` | Lvl: `{c.level}` | Q: `{c.quality}%` | #{c.print_number} | ID: `{c.uuid}`\n"
+        )
+
+    buttons = []
+    if page > 0:
+        buttons.append(
+            InlineKeyboardButton("◀️ Prev", callback_data=f"harem_{page - 1}")
+        )
+    if page < total_pages - 1:
+        buttons.append(
+            InlineKeyboardButton("Next ▶️", callback_data=f"harem_{page + 1}")
+        )
+
+    keyboard = InlineKeyboardMarkup([buttons]) if buttons else None
+    return text, keyboard
+
+
+async def harem_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    user_id = str(query.from_user.id)
-    selected_lang = "en" if query.data == "lang_en" else "my"
-
+    page = int(query.data.split("_")[1])
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if not user:
-        user = User(id=user_id, name=query.from_user.first_name)
-        session.add(user)
+    uid = str(query.from_user.id)
+    cards = (
+        session.query(UserCard)
+        .options(joinedload(UserCard.card_info))
+        .filter(UserCard.user_id == uid)
+        .all()
+    )
+    text, keyboard = render_harem_page(cards, page, query.from_user.first_name)
+    session.close()
+    await query.edit_message_text(
+        text, reply_markup=keyboard, parse_mode="Markdown"
+    )
 
-    user.language = selected_lang
+
+# ==========================================
+# 🌟 LEVEL UP & UPGRADE ENGINE
+# ==========================================
+
+
+async def upgrade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    if not context.args:
+        await update.message.reply_text("❌ Usage: `/upgrade <card_uuid>`")
+        return
+
+    card_uuid = context.args[0]
+    session = SessionLocal()
+    uid = str(update.effective_user.id)
+
+    card = (
+        session.query(UserCard)
+        .options(joinedload(UserCard.card_info))
+        .filter(UserCard.uuid == card_uuid, UserCard.user_id == uid)
+        .first()
+    )
+
+    if not card:
+        await update.message.reply_text("❌ ဒီကဒ်ကို ရှာမတွေ့ပါ။")
+        session.close()
+        return
+
+    upgrade_cost = card.level * 500
+    user = session.query(User).filter(User.id == uid).first()
+
+    if user.coins < upgrade_cost:
+        await update.message.reply_text(
+            f"❌ Level တက်ရန် Coins မလောက်ပါ။ လိုအပ်သော ငွေ: `{upgrade_cost}` Coins"
+        )
+        session.close()
+        return
+
+    user.coins -= upgrade_cost
+    card.level += 1
+    new_power = calculate_card_power(card)
+
     session.commit()
     session.close()
 
-    await query.edit_message_text(
-        f"✅ Language updated to **{selected_lang.upper()}**!",
+    await update.message.reply_text(
+        f"📈 **LEVEL UP SUCCESSFUL!**\n\n"
+        f"👤 Card: **{card.card_info.name}**\n"
+        f"🔝 New Level: `{card.level}`\n"
+        f"⚡ New Battle Power: `{new_power}`",
         parse_mode="Markdown",
     )
 
 
-async def user_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ==========================================
+# ⚔️ CARD DUEL & BATTLE ENGINE
+# ==========================================
+
+
+async def duel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_anti_spam(update):
         return
-    user_id = str(update.effective_user.id)
-    session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        user = User(id=user_id, name=update.effective_user.first_name)
-        session.add(user)
-        session.commit()
-
-    if user.is_banned:
-        await update.message.reply_text(get_msg(user.language, "banned"))
-        session.close()
-        return
-
-    cards_count = (
-        session.query(UserCard).filter(UserCard.user_id == user_id).count()
-    )
-    text = (
-        f"👤 **PROFILE:** {user.name}\n"
-        f"💰 Coins: `{user.coins}` | 🪙 Tokens: `{user.tokens}`\n"
-        f"🎴 Cards Collected: `{cards_count}`"
-    )
-    session.close()
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-
-async def view_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_anti_spam(update):
-        return
-    user_id = str(update.effective_user.id)
-    session = SessionLocal()
-    user_cards = (
-        session.query(UserCard).filter(UserCard.user_id == user_id).all()
-    )
-
-    if not user_cards:
-        await update.message.reply_text("🎴 သင့်တွင် မည်သည့် ကဒ်မှ မရှိသေးပါ။")
-        session.close()
-        return
-
-    text = f"🎴 **{update.effective_user.first_name} ရဲ့ COLLECTION ({len(user_cards)})**\n\n"
-    for idx, uc in enumerate(user_cards, 1):
-        card_base = (
-            session.query(CardBase).filter(CardBase.id == uc.card_id).first()
-        )
-        cname = card_base.name if card_base else "Unknown Card"
-        text += f"{idx}. **{cname}** | #{uc.print_number} | Q: `{uc.quality}%` | UUID: `{uc.uuid}`\n"
-
-    session.close()
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-
-async def list_all_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_anti_spam(update):
-        return
-    session = SessionLocal()
-    cards = session.query(CardBase).all()
-
-    if not cards:
-        await update.message.reply_text("❌ DB ထဲတွင် ကဒ်များ မရှိသေးပါ။")
-        session.close()
-        return
-
-    text = f"🌐 **BOT DATABASE CARDS ({len(cards)})**\n\n"
-    for c in cards:
-        text += f"• **ID:** `{c.id}` | **Name:** {c.name} | **Rarity:** {c.rarity}\n"
-
-    session.close()
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-
-async def gift_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_anti_spam(update):
-        return
-    user_id = str(update.effective_user.id)
-    if len(context.args) < 2:
+    if not update.message.reply_to_message:
         await update.message.reply_text(
-            "❌ သုံးနည်း: `/gift <target_user_id> <card_uuid>`"
+            "⚔️ Challenge ပြုလုပ်ရန် ယှဉ်ပြိုင်လိုသူ၏ စာကို Reply ပြန်၍ `/duel` ရိုက်ပါ။"
         )
         return
 
-    target_id, card_uuid = str(context.args[0]), str(context.args[1])
+    p1_id = str(update.effective_user.id)
+    p2_id = str(update.message.reply_to_message.from_user.id)
+
+    if p1_id == p2_id:
+        await update.message.reply_text("❌ မိမိကိုယ်တိုင် Duel တိုက်၍ မရပါ။")
+        return
+
     session = SessionLocal()
-    ucard = (
+    p1_user = session.query(User).filter(User.id == p1_id).first()
+    p2_user = session.query(User).filter(User.id == p2_id).first()
+
+    p1_card = (
         session.query(UserCard)
-        .filter(UserCard.uuid == card_uuid, UserCard.user_id == user_id)
+        .options(joinedload(UserCard.card_info))
+        .filter(UserCard.uuid == (p1_user.fav_card_id if p1_user else None))
+        .first()
+    )
+    p2_card = (
+        session.query(UserCard)
+        .options(joinedload(UserCard.card_info))
+        .filter(UserCard.uuid == (p2_user.fav_card_id if p2_user else None))
         .first()
     )
 
-    if not ucard:
+    if not p1_card or not p2_card:
         await update.message.reply_text(
-            "❌ ဒီ ကဒ် UUID ကို သင့် Collection ထဲမှာ မတွေ့ပါ။"
+            "❌ ပြိုင်ဘက် နှစ်ဦးလုံး `/fav <uuid>` သုံးပြီး Favorite Card သတ်မှတ်ထားရပါမည်။"
         )
         session.close()
         return
 
-    ucard.user_id = target_id
-    session.commit()
-    session.close()
-    await update.message.reply_text(
-        f"🎁 ကဒ် UUID `{card_uuid}` ကို User `{target_id}` ထံ လွှဲပေးလိုက်ပါပြီ။"
+    p1_pwr = calculate_card_power(p1_card)
+    p2_pwr = calculate_card_power(p2_card)
+
+    # Random RNG Variance (+/- 15%)
+    p1_final = int(p1_pwr * random.uniform(0.85, 1.15))
+    p2_final = int(p2_pwr * random.uniform(0.85, 1.15))
+
+    winner_name = (
+        update.effective_user.first_name
+        if p1_final > p2_final
+        else update.message.reply_to_message.from_user.first_name
     )
 
+    text = (
+        f"⚔️ **EPIC CARD DUEL BATTLE** ⚔️\n\n"
+        f"🔴 **{update.effective_user.first_name}** ({p1_card.card_info.name})\n"
+        f"⚡ Power Score: `{p1_final}`\n\n"
+        f"🔵 **{update.message.reply_to_message.from_user.first_name}** ({p2_card.card_info.name})\n"
+        f"⚡ Power Score: `{p2_final}`\n\n"
+        f"🏆 Winner: **{winner_name}**!"
+    )
+    session.close()
+    await update.message.reply_text(text, parse_mode="Markdown")
+
 
 # ==========================================
-# 🎴 CATCH & AUTO SPAWN ENGINE
+# 🎰 ADVANCED 8-TIER GACHA SYSTEM
 # ==========================================
 
 
-def select_card_by_rarity(cards):
-    weights = []
-    for c in cards:
-        r = (c.rarity or "").lower()
-        if "common" in r:
-            weights.append(50)
-        elif "rare" in r:
-            weights.append(25)
-        elif "epic" in r:
-            weights.append(15)
-        elif "legendary" in r:
-            weights.append(8)
-        else:
-            weights.append(2)
-
-    return random.choices(cards, weights=weights, k=1)[0]
-
-
-async def catch_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def gacha_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_anti_spam(update):
         return
-    chat_id = update.effective_chat.id
-    user_id = str(update.effective_user.id)
-
     session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if not user:
-        user = User(id=user_id, name=update.effective_user.first_name)
-        session.add(user)
+    uid = str(update.effective_user.id)
+    user = session.query(User).filter(User.id == uid).first()
 
-    if user.is_banned:
-        await update.message.reply_text(get_msg(user.language, "banned"))
+    if not user or user.coins < 1000:
+        await update.message.reply_text(
+            "❌ Premium Gacha လှည့်ရန် Coins 1,000 လိုအပ်ပါသည်။"
+        )
         session.close()
         return
 
-    if chat_id not in active_spawns or not active_spawns[chat_id]:
-        await update.message.reply_text(get_msg(user.language, "no_spawn"))
-        session.close()
-        return
+    rarities = list(ADVANCED_RARITIES.keys())
+    weights = list(ADVANCED_RARITIES.values())
+    chosen_rarity = random.choices(rarities, weights=weights, k=1)[0]
 
-    card_base_id = active_spawns[chat_id]
-    active_spawns[chat_id] = None
-
-    card_base = (
-        session.query(CardBase).filter(CardBase.id == card_base_id).first()
+    cards = (
+        session.query(CardBase).filter(CardBase.rarity == chosen_rarity).all()
     )
-    card_base.total_prints += 1
+    if not cards:
+        cards = session.query(CardBase).all()
 
-    quality = round(random.uniform(10.00, 100.00), 2)
+    card = random.choice(cards)
+    user.coins -= 1000
+    card.total_prints += 1
+
     new_card = UserCard(
-        user_id=user.id,
-        card_id=card_base.id,
-        print_number=card_base.total_prints,
-        quality=quality,
+        user_id=uid,
+        card_id=card.id,
+        print_number=card.total_prints,
+        quality=round(random.uniform(85.0, 100.0), 1),
     )
     session.add(new_card)
     session.commit()
 
-    msg = get_msg(
-        user.language,
-        "caught",
-        name=user.name,
-        card=card_base.name,
-        print_num=card_base.total_prints,
-        quality=quality,
-        rarity=card_base.rarity,
-        uuid=new_card.uuid,
+    pwr = calculate_card_power(new_card)
+    caption = (
+        f"🌌 **SUMMONING RESULTS!**\n\n"
+        f"👤 Character: **{card.name}**\n"
+        f"🌟 Rarity: **{card.rarity}**\n"
+        f"⚡ Element: {card.element}\n"
+        f"💥 Battle Power: `{pwr}`\n"
+        f"✨ Quality: `{new_card.quality}%`\n"
+        f"🆔 UUID: `{new_card.uuid}`"
     )
     session.close()
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    try:
+        await update.message.reply_photo(
+            photo=card.image_url, caption=caption, parse_mode="Markdown"
+        )
+    except Exception:
+        await update.message.reply_text(caption, parse_mode="Markdown")
+
+
+# ==========================================
+# 🤝 ESCROW DIRECT TRADE SYSTEM
+# ==========================================
+
+
+async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    if not update.message.reply_to_message or not context.args:
+        await update.message.reply_text(
+            "❌ Usage: Reply to target user with `/trade <your_card_uuid>`"
+        )
+        return
+
+    sender_id = str(update.effective_user.id)
+    receiver_id = str(update.message.reply_to_message.from_user.id)
+    card_uuid = context.args[0]
+
+    session = SessionLocal()
+    card = (
+        session.query(UserCard)
+        .options(joinedload(UserCard.card_info))
+        .filter(UserCard.uuid == card_uuid, UserCard.user_id == sender_id)
+        .first()
+    )
+
+    if not card:
+        await update.message.reply_text("❌ ဒီကဒ်ကို သင့် Harem ထဲမှာ ရှာမတွေ့ပါ!")
+        session.close()
+        return
+
+    trade_id = f"{sender_id}_{receiver_id}_{card_uuid}"
+    active_trades[trade_id] = {
+        "sender": sender_id,
+        "receiver": receiver_id,
+        "uuid": card_uuid,
+    }
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "✅ Accept Trade", callback_data=f"tr_acc_{trade_id}"
+            ),
+            InlineKeyboardButton(
+                "❌ Decline", callback_data=f"tr_dec_{trade_id}"
+            ),
+        ]
+    ]
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    session.close()
+    await update.message.reply_text(
+        f"🤝 **TRADE OFFER**\n\n"
+        f"**{update.effective_user.first_name}** wants to gift/trade card **{card.card_info.name}** (`{card.uuid}`) "
+        f"to **{update.message.reply_to_message.from_user.first_name}**.",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+
+
+async def trade_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    action, trade_id = data.split("_")[1], data.split("_")[2]
+    trade = active_trades.get(trade_id)
+
+    if not trade:
+        await query.edit_message_text("❌ ဒီ Trade က သက်တမ်းကုန်သွားပါပြီ။")
+        return
+
+    if str(query.from_user.id) != trade["receiver"]:
+        await query.answer("❌ သင်သည် လက်ခံသူ မဟုတ်ပါ!", show_alert=True)
+        return
+
+    if action == "acc":
+        session = SessionLocal()
+        card = (
+            session.query(UserCard)
+            .filter(
+                UserCard.uuid == trade["uuid"],
+                UserCard.user_id == trade["sender"],
+            )
+            .first()
+        )
+        if card:
+            card.user_id = trade["receiver"]
+            session.commit()
+            await query.edit_message_text("🎉 **TRADE COMPLETED SUCCESSFULLY!**")
+        else:
+            await query.edit_message_text(
+                "❌ Trade မအောင်မြင်ပါ (ကဒ် မရှိတော့ပါ)။"
+            )
+        session.close()
+    else:
+        await query.edit_message_text("❌ Trade ❌ ငြင်းပယ်လိုက်ပါပြီ။")
+
+    if trade_id in active_trades:
+        del active_trades[trade_id]
+
+
+# ==========================================
+# 🛠️ ADMIN DIRECT CONTROL COMMANDS
+# ==========================================
+
+
+async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+    raw_text = " ".join(context.args)
+    parts = [p.strip() for p in raw_text.split("|")]
+
+    if len(parts) < 5:
+        await update.message.reply_text(
+            "❌ Usage: `/addcard <id> | <name> | <anime> | <rarity> | <img_url>`"
+        )
+        return
+
+    session = SessionLocal()
+    new_c = CardBase(
+        id=parts[0],
+        name=parts[1],
+        anime=parts[2],
+        rarity=parts[3],
+        image_url=parts[4],
+    )
+    session.add(new_c)
+    session.commit()
+    session.close()
+    await update.message.reply_text(
+        f"✅ Card **{parts[1]}** successfully inserted to DB!"
+    )
+
+
+async def givecoins_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ Usage: `/givecoins <user_id> <amount>`")
+        return
+
+    uid, amount = context.args[0], int(context.args[1])
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == uid).first()
+    if user:
+        user.coins += amount
+        session.commit()
+        await update.message.reply_text(
+            f"✅ Gave `{amount}` Coins to user `{uid}`."
+        )
+    session.close()
+
+
+# ==========================================
+# ⚙️ SPAWN ENGINE & MESSAGE HANDLER
+# ==========================================
 
 
 async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -511,171 +655,58 @@ async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ):
         return
 
-    chat_id = update.effective_chat.id
-    chat_counts[chat_id] = chat_counts.get(chat_id, 0) + 1
+    chat_id = str(update.effective_chat.id)
+    session = SessionLocal()
+    setting = (
+        session.query(ChatSettings)
+        .filter(ChatSettings.chat_id == chat_id)
+        .first()
+    )
 
-    if chat_counts[chat_id] >= SPAWN_THRESHOLD:
-        session = SessionLocal()
+    if not setting:
+        setting = ChatSettings(
+            chat_id=chat_id,
+            spawn_threshold=SPAWN_THRESHOLD,
+            current_msg_count=1,
+        )
+        session.add(setting)
+    else:
+        setting.current_msg_count += 1
+
+    if setting.current_msg_count >= setting.spawn_threshold:
         cards = session.query(CardBase).all()
-
         if cards:
-            chat_counts[chat_id] = 0
-            selected_card = select_card_by_rarity(cards)
-            active_spawns[chat_id] = selected_card.id
+            setting.current_msg_count = 0
+            selected_card = random.choice(cards)
+            name = selected_card.name
+            hint = (
+                name[0]
+                + " "
+                + " ".join(["_" if c != " " else " " for c in name[1:-1]])
+                + " "
+                + name[-1]
+            )
 
+            active_spawns[chat_id] = {"card_id": selected_card.id, "hint": hint}
             caption = (
                 f"⚡ **A WILD CHARACTER APPEARED!**\n\n"
-                f"👤 Name: **{selected_card.name}**\n"
-                f"⭐ Rarity: **{selected_card.rarity}**\n\n"
-                f"Use `/nexus` or `/catch` to claim!"
+                f"🌟 Rarity: **{selected_card.rarity}**\n"
+                f"⚡ Element: {selected_card.element}\n"
+                f"💡 Hint: `{hint}`\n\n"
+                f"Use `/catch <name>` to claim!"
             )
-
             try:
                 await context.bot.send_photo(
-                    chat_id=chat_id,
+                    chat_id=int(chat_id),
                     photo=selected_card.image_url,
                     caption=caption,
                     parse_mode="Markdown",
                 )
-            except RetryAfter as e:
-                await asyncio.sleep(e.retry_after)
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=selected_card.image_url,
-                    caption=caption,
-                    parse_mode="Markdown",
-                )
-            except Exception as err:
-                print(f"Spawn Error: {err}")
-        session.close()
+            except Exception as e:
+                print(f"Spawn Error: {e}")
 
-
-# ==========================================
-# 👑 OWNER CONTROL COMMANDS
-# ==========================================
-
-
-async def admin_add_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-
-    try:
-        raw = " ".join(context.args)
-        image_url = None
-
-        if update.message.reply_to_message and (
-            update.message.reply_to_message.photo
-            or update.message.reply_to_message.document
-        ):
-            photo = update.message.reply_to_message.photo[-1]
-            image_url = photo.file_id
-            parts = [x.strip() for x in raw.split("|")]
-        else:
-            parts = [x.strip() for x in raw.split("|")]
-            image_url = parts[-1]
-            parts = parts[:-1]
-
-        cid = parts[0]
-        name = parts[1]
-        rarity = parts[2] if len(parts) > 2 else "Common ⚪"
-        power = int(parts[3]) if len(parts) > 3 else 1000
-
-        session = SessionLocal()
-        new_card = CardBase(
-            id=cid,
-            name=name,
-            anime="General",
-            rarity=rarity,
-            base_power=power,
-            element="Neutral",
-            image_url=image_url,
-        )
-        session.add(new_card)
-        session.commit()
-        session.close()
-
-        await update.message.reply_text(
-            f"✅ **[ကဒ် ထည့်ပြီးပါပြီ]**\n🆔 ID: `{cid}`\n👤 Name: **{name}**\n⭐ Rarity: **{rarity}**\n⚡ Power: `{power}`",
-            parse_mode="Markdown",
-        )
-    except Exception:
-        await update.message.reply_text(
-            "❌ **သုံးနည်း:** `/addcard ID | Name | Rarity | Power` (Photo Reply)"
-        )
-
-
-async def admin_force_spawn(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
-    if not is_owner(update.effective_user.id):
-        return
-
-    chat_id = update.effective_chat.id
-    session = SessionLocal()
-    cards = session.query(CardBase).all()
-
-    if cards:
-        selected_card = select_card_by_rarity(cards)
-        active_spawns[chat_id] = selected_card.id
-        caption = f"⚡ **[ADMIN SPAWN] CHARACTER APPEARED!**\nName: **{selected_card.name}**\nRarity: **{selected_card.rarity}**\nUse `/nexus` or `/catch`!"
-        await context.bot.send_photo(
-            chat_id=chat_id,
-            photo=selected_card.image_url,
-            caption=caption,
-            parse_mode="Markdown",
-        )
-    else:
-        await update.message.reply_text("❌ DB ထဲမှာ ကဒ်မရှိပါ။ `/addcard` အရင်လုပ်ပါ။")
+    session.commit()
     session.close()
-
-
-async def admin_give_currency(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
-    if not is_owner(update.effective_user.id):
-        return
-    try:
-        target_id, currency, amount = (
-            str(context.args[0]),
-            context.args[1].lower(),
-            int(context.args[2]),
-        )
-        session = SessionLocal()
-        user = session.query(User).filter(User.id == target_id).first()
-        if user:
-            if currency == "coins":
-                user.coins += amount
-            elif currency == "tokens":
-                user.tokens += amount
-            session.commit()
-            await update.message.reply_text(
-                f"✅ Added {amount} {currency} to User `{target_id}`."
-            )
-        session.close()
-    except Exception:
-        await update.message.reply_text(
-            "❌ Format: `/give <user_id> <coins/tokens> <amount>`"
-        )
-
-
-async def admin_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-    try:
-        target_id, action = str(context.args[0]), context.args[1].lower()
-        session = SessionLocal()
-        user = session.query(User).filter(User.id == target_id).first()
-        if user:
-            user.is_banned = True if action == "ban" else False
-            session.commit()
-            await update.message.reply_text(
-                f"👤 User `{target_id}` {action.upper()}ED successfully."
-            )
-        session.close()
-    except Exception:
-        await update.message.reply_text(
-            "❌ Format: `/banuser <user_id> <ban/unban>`"
-        )
 
 
 # ==========================================
@@ -684,40 +715,33 @@ async def admin_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == "__main__":
     Thread(target=run_web).start()
-
     bot = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # User & Language Handlers
+    # Base Handlers
     bot.add_handler(CommandHandler("start", start_cmd))
     bot.add_handler(CommandHandler("help", help_cmd))
-    bot.add_handler(CommandHandler("profile", user_profile))
-    bot.add_handler(CommandHandler("language", set_language))
-    bot.add_handler(
-        CallbackQueryHandler(language_button_callback, pattern="^lang_")
-    )
 
-    # Card & Search Handlers
-    bot.add_handler(CommandHandler("search", search_card))
-    bot.add_handler(CommandHandler("catch", catch_card))
-    bot.add_handler(CommandHandler("nexus", catch_card))
-    bot.add_handler(CommandHandler("collection", view_collection))
-    bot.add_handler(CommandHandler("inv", view_collection))
-    bot.add_handler(CommandHandler("cardlist", list_all_cards))
-    bot.add_handler(CommandHandler("gift", gift_card))
+    # Card & Collection Handlers
+    bot.add_handler(CommandHandler("catch", catch_cmd))
+    bot.add_handler(CommandHandler("hint", hint_cmd))
+    bot.add_handler(CommandHandler("harem", harem_cmd))
+    bot.add_handler(CommandHandler("upgrade", upgrade_cmd))
+    bot.add_handler(CommandHandler("duel", duel_cmd))
+    bot.add_handler(CommandHandler("gacha", gacha_cmd))
+    bot.add_handler(CommandHandler("trade", trade_cmd))
 
-    # Owner Handlers
-    bot.add_handler(CommandHandler("addcard", admin_add_card))
-    bot.add_handler(CommandHandler("forcespawn", admin_force_spawn))
-    bot.add_handler(CommandHandler("give", admin_give_currency))
-    bot.add_handler(CommandHandler("banuser", admin_ban_user))
+    # Admin Handlers
+    bot.add_handler(CommandHandler("addcard", addcard_cmd))
+    bot.add_handler(CommandHandler("givecoins", givecoins_cmd))
 
-    # Inline Grid System
-    bot.add_handler(InlineQueryHandler(inline_search))
+    # Callbacks
+    bot.add_handler(CallbackQueryHandler(harem_callback, pattern="^harem_"))
+    bot.add_handler(CallbackQueryHandler(trade_callback, pattern="^tr_"))
 
-    # Auto Spawn Listener
+    # Spawn Handler
     bot.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spawns)
     )
 
-    print("Complete Bot System Fully Running...")
+    print("Full Feature Extended Engine Running Smoothly!")
     bot.run_polling()
