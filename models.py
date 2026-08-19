@@ -12,87 +12,87 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
+from config import DATABASE_URL
 
 Base = declarative_base()
-engine = create_engine("sqlite:///bot_database.db", echo=False)
+engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(bind=engine)
-
-# 10-Tier Rarity Matrix
-ADVANCED_RARITIES = {
-    "⚪ Common": 0.38,
-    "🟢 Uncommon": 0.25,
-    "🔵 Rare": 0.15,
-    "🟣 Epic": 0.10,
-    "🟡 Legendary": 0.06,
-    "🟠 Mythic": 0.03,
-    "🔴 Celestial": 0.015,
-    "🌌 Godlike": 0.008,
-    "✨ Omnipotent": 0.005,  # Tier 9
-    "👑 Sovereign": 0.002,  # Tier 10
-}
-
-ELEMENTS = [
-    "🔥 Fire",
-    "💧 Water",
-    "⚡ Thunder",
-    "🌪️ Wind",
-    "✨ Light",
-    "🖤 Dark",
-    "☯️ Chaos",
-]
 
 
 class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True)
-    name = Column(String)
-    coins = Column(Integer, default=2000)
+    username = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    coins = Column(Integer, default=1000)
     shards = Column(Integer, default=0)
-    fav_card_id = Column(String, nullable=True)
+    exp = Column(Integer, default=0)
+    level = Column(Integer, default=1)
+    is_banned = Column(Boolean, default=False)
+    ban_reason = Column(String, nullable=True)
     last_daily = Column(DateTime, nullable=True)
-    last_grab = Column(DateTime, nullable=True)
-    daily_streak = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    cards = relationship(
-        "UserCard", back_populates="owner", cascade="all, delete-orphan"
-    )
+    cards = relationship("UserCard", back_populates="owner", cascade="all, delete-orphan")
+
+
+class AdminRole(Base):
+    __tablename__ = "admin_roles"
+    user_id = Column(String, primary_key=True)
+    role = Column(String, default="Admin")
+    added_by = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BotConfig(Base):
+    __tablename__ = "bot_config"
+    key = Column(String, primary_key=True)
+    value = Column(String)
 
 
 class ChatSettings(Base):
     __tablename__ = "chat_settings"
     chat_id = Column(String, primary_key=True)
-    spawn_threshold = Column(Integer, default=50)
+    spawn_threshold = Column(Integer, default=30)
     current_msg_count = Column(Integer, default=0)
 
 
 class CardBase(Base):
     __tablename__ = "card_base"
     id = Column(String, primary_key=True)
-    name = Column(String)
+    name = Column(String, nullable=False)
     anime = Column(String, default="General")
-    rarity = Column(String, default="⚪ Common")
+    rarity = Column(String, default="⚪ Common")  # Common, Rare, Epic, Legendary, Mythic
     element = Column(String, default="🔥 Fire")
-    base_power = Column(Integer, default=1200)
-    image_url = Column(String)
+    base_power = Column(Integer, default=1000)
+    image_url = Column(String, nullable=False)
     total_prints = Column(Integer, default=0)
 
 
 class UserCard(Base):
     __tablename__ = "user_cards"
-    uuid = Column(
-        String, primary_key=True, default=lambda: str(uuid.uuid4())[:8]
-    )
+    uuid = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())[:8])
     user_id = Column(String, ForeignKey("users.id"))
     card_id = Column(String, ForeignKey("card_base.id"))
     print_number = Column(Integer)
-    quality = Column(Float)
+    quality = Column(Float, default=100.0)
     level = Column(Integer, default=1)
-    is_market = Column(Boolean, default=False)
-    market_price = Column(Integer, default=0)
+    is_locked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="cards")
     card_info = relationship("CardBase")
+
+
+class MarketItem(Base):
+    __tablename__ = "market_items"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())[:8])
+    seller_id = Column(String, ForeignKey("users.id"))
+    card_uuid = Column(String, ForeignKey("user_cards.uuid"))
+    price = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    card = relationship("UserCard")
 
 
 Base.metadata.create_all(engine)
