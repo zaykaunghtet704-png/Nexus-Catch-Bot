@@ -1,16 +1,23 @@
 import asyncio
 import random
+import time
 from threading import Thread
 from config import BOT_TOKEN, OWNER_IDS, PORT, SPAWN_THRESHOLD
 from flask import Flask
 from models import CardBase, SessionLocal, User, UserCard
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InlineQueryResultPhoto,
+    Update,
+)
 from telegram.error import RetryAfter
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    InlineQueryHandler,
     MessageHandler,
     filters,
 )
@@ -23,88 +30,138 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "<h1>Nexus Core Active</h1>"
+    return "<h1>Nexus Core Fully Operational</h1>"
 
 
 def run_web():
     app.run(host="0.0.0.0", port=PORT)
 
 
+# Global Memory Caches
 active_spawns = {}
 chat_counts = {}
+user_last_msg_time = {}
+user_spam_count = {}
+user_ignored_until = {}
 
 # ==========================================
-# 🌐 LANGUAGE DICTIONARY
+# 🚫 ANTI-SPAM & FLOOD CONTROL ENGINE
 # ==========================================
-LANGUAGES = {
-    "en": {
-        "start": "👋 **Welcome to Nexus Card Bot!**\nUse `/help` for available commands.",
-        "help_user": (
-            "👤 **USER COMMANDS:**\n"
-            "• `/profile` - View status\n"
-            "• `/collection` - View collected cards\n"
-            "• `/catch` - Catch spawned character\n"
-            "• `/search` - Search cards with inline button\n"
-            "• `/cardlist` - View database cards\n"
-            "• `/gift <user_id> <card_uuid>` - Gift a card\n"
-            "• `/language` - Switch language"
-        ),
-        "help_owner": (
-            "👑 **OWNER COMMANDS:**\n"
-            "• `/addcard ID | Name | Rarity | Power` (Reply image)\n"
-            "• `/forcespawn` - Force spawn a card\n"
-            "• `/give <user_id> <coins/tokens> <amount>`\n"
-            "• `/banuser <user_id> <ban/unban>`"
-        ),
-        "no_spawn": "❌ No active character to catch right now!",
-        "caught": "🎉 **{name}** caught **{card}**!\n🏷️ **Print:** #{print_num}\n✨ **Quality:** {quality}%\n⭐ **Rarity:** {rarity}\n🆔 `{uuid}`",
-        "banned": "🚫 You are banned from using this bot.",
-    },
-    "my": {
-        "start": "👋 **Nexus Card Bot မှ ကြိုဆိုပါသည်!**\nCommands များကိုကြည့်ရန် `/help` ကိုသုံးပါ။",
-        "help_user": (
-            "👤 **အသုံးပြုသူ COMMANDS:**\n"
-            "• `/profile` - ပရိုဖိုင်နှင့် လက်ကျန်ငွေကြည့်ရန်\n"
-            "• `/collection` - မိမိ ရရှိထားသော ကဒ်များ ကြည့်ရန်\n"
-            "• `/catch` - ထွက်လာသော ကဒ်ကို ဖမ်းယူရန်\n"
-            "• `/search` - Inline Button ဖြင့် ကဒ် ရှာရန်\n"
-            "• `/cardlist` - Bot ထဲရှိ ကဒ်များ ကြည့်ရန်\n"
-            "• `/gift <user_id> <card_uuid>` - ကဒ် လက်ဆောင်ပေးရန်\n"
-            "• `/language` - ဘာသာစကား ပြောင်းရန်"
-        ),
-        "help_owner": (
-            "👑 **ထိန်းချုပ်သူ COMMANDS:**\n"
-            "• `/addcard ID | Name | Rarity | Power` (ပုံကို Reply ပြန်၍)\n"
-            "• `/forcespawn` - ကဒ် ချက်ချင်း ချပေးရန်\n"
-            "• `/give <user_id> <coins/tokens> <amount>`\n"
-            "• `/banuser <user_id> <ban/unban>`"
-        ),
-        "no_spawn": "❌ ဖမ်းယူရန် ကဒ် မရှိသေးပါ!",
-        "caught": "🎉 **{name}** သည် **{card}** ကို ဖမ်းယူရရှိခဲ့သည်!\n🏷️ **Print:** #{print_num}\n✨ **Quality:** {quality}%\n⭐ **Rarity:** {rarity}\n🆔 `{uuid}`",
-        "banned": "🚫 သင့်အား ဘော့အသုံးပြုခွင့် ပိတ်ပင်ထားပါသည်။",
-    },
-}
 
 
-def get_msg(user_lang, key, **kwargs):
-    lang = user_lang if user_lang in LANGUAGES else "en"
-    text = LANGUAGES[lang].get(key, LANGUAGES["en"].get(key, ""))
-    return text.format(**kwargs) if kwargs else text
+async def check_anti_spam(update: Update) -> bool:
+    if not update.effective_user:
+        return True
+
+    user_id = update.effective_user.id
+    current_time = time.time()
+
+    # မိနစ် ၁၀ Ignores ပြုလုပ်ထားခြင်း ရှိ/မရှိ စစ်ဆေးခြင်း
+    if user_id in user_ignored_until:
+        if current_time < user_ignored_until[user_id]:
+            return False
+        else:
+            del user_ignored_until[user_id]
+
+    last_time = user_last_msg_time.get(user_id, 0)
+    user_last_msg_time[user_id] = current_time
+
+    # ၁ စက္ကန့်အတွင်း အမိန့်ဆက်တိုက် ပေးပါက Spam အဖြစ် မှတ်ယူမည်
+    if current_time - last_time < 1.0:
+        user_spam_count[user_id] = user_spam_count.get(user_id, 0) + 1
+    else:
+        user_spam_count[user_id] = 0
+
+    if user_spam_count[user_id] >= 4:
+        user_ignored_until[user_id] = (
+            current_time + 600
+        )  # မိနစ် ၁၀ (600 seconds)
+        user_spam_count[user_id] = 0
+        if update.message:
+            await update.message.reply_text(
+                "⛔ **FLOODING | SPAMMING**\n"
+                "NOW I'M IGNORING YOUR EXISTENCE FOR UPCOMING 10 MINUTES.",
+                parse_mode="Markdown",
+            )
+        return False
+
+    return True
 
 
+# Helper Functions
 def is_owner(user_id: int) -> bool:
     return user_id in OWNER_IDS
 
 
+def select_card_by_rarity(cards):
+    """
+    Rarity Drop Probability:
+    Common (⚪): 50% | Rare (🔵): 25% | Epic (🟣): 15% | Legendary (🟡): 8% | Mythic/UR (👑): 2%
+    """
+    weights = []
+    for c in cards:
+        r = (c.rarity or "").lower()
+        if "common" in r:
+            weights.append(50)
+        elif "rare" in r:
+            weights.append(25)
+        elif "epic" in r:
+            weights.append(15)
+        elif "legendary" in r:
+            weights.append(8)
+        else:
+            weights.append(2)
+
+    return random.choices(cards, weights=weights, k=1)[0]
+
+
 # ==========================================
-# 🔍 1. SEARCH WITH INLINE BUTTON (ဓာတ်ပုံအတိုင်း)
+# 🖼️ INLINE SEARCH & REGULAR SEARCH
 # ==========================================
+
+
+async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.inline_query.query.strip()
+    session = SessionLocal()
+
+    if not query:
+        cards = session.query(CardBase).limit(30).all()
+    else:
+        cards = (
+            session.query(CardBase)
+            .filter(CardBase.name.ilike(f"%{query}%"))
+            .limit(30)
+            .all()
+        )
+
+    results = []
+    for card in cards:
+        caption = (
+            f"👤 **Name:** {card.name}\n"
+            f"⭐ **Rarity:** {card.rarity}\n"
+            f"⚡ **Power:** {card.base_power}\n"
+            f"🏷️ **Total Prints:** {card.total_prints}"
+        )
+        results.append(
+            InlineQueryResultPhoto(
+                id=str(card.id),
+                photo_url=card.image_url,
+                thumbnail_url=card.image_url,
+                title=card.name,
+                caption=caption,
+                parse_mode="Markdown",
+            )
+        )
+
+    session.close()
+    await update.inline_query.answer(results, cache_time=10)
 
 
 async def search_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # စာမပါဘဲ /search သီးသန့် ရိုက်လျှင် Inline Button ပြမည်
+    if not await check_anti_spam(update):
+        return
+
     if not context.args:
-        bot_username = (await context.bot.get_me()).username
         keyboard = [
             [
                 InlineKeyboardButton(
@@ -121,7 +178,6 @@ async def search_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # /search Naruto ဟု စာပါပါက တိုက်ရိုက် ရှာပေးမည်
     query_name = " ".join(context.args).strip()
     session = SessionLocal()
     cards = (
@@ -155,31 +211,212 @@ async def search_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
-# 🎲 2. RARITY BASED AUTO SPAWN ENGINE (ကဒ်အနိမ့်/အမြင့် ရာခိုင်နှုန်း)
+# 👤 USER COMMANDS
 # ==========================================
 
 
-def select_card_by_rarity(cards):
-    """
-    Rarity ပေါ်မူတည်၍ ကျရောက်နိုင်ခြေ (Weight/Probability) သတ်မှတ်ခြင်း:
-    Common (⚪): 50% | Rare (🔵): 25% | Epic (🟣): 15% | Legendary (🟡): 8% | Mythic/UR (🔴): 2%
-    """
-    weights = []
-    for c in cards:
-        r = c.rarity.lower() if c.rarity else ""
-        if "common" in r:
-            weights.append(50)
-        elif "rare" in r:
-            weights.append(25)
-        elif "epic" in r:
-            weights.append(15)
-        elif "legendary" in r:
-            weights.append(8)
-        else:
-            weights.append(2)  # Mythic, UR, or others
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    user_id = str(update.effective_user.id)
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == user_id).first()
+    if not user:
+        user = User(id=user_id, name=update.effective_user.first_name)
+        session.add(user)
+        session.commit()
 
-    selected_card = random.choices(cards, weights=weights, k=1)[0]
-    return selected_card
+    session.close()
+    await update.message.reply_text(
+        "👋 **Welcome to Nexus Card Bot!**\nUse `/help` for available commands.",
+        parse_mode="Markdown",
+    )
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    text = (
+        "👤 **USER COMMANDS:**\n"
+        "• `/profile` - View your status & balance\n"
+        "• `/collection` or `/inv` - View collected cards\n"
+        "• `/catch` or `/nexus` - Catch active spawned card\n"
+        "• `/search` - Search cards (Inline Button & Text)\n"
+        "• `/cardlist` - View all registered database cards\n"
+        "• `/gift <user_id> <card_uuid>` - Gift a card"
+    )
+    if is_owner(update.effective_user.id):
+        text += (
+            "\n\n👑 **OWNER CONTROL COMMANDS:**\n"
+            "• `/addcard ID | Name | Rarity | Power` (Reply image)\n"
+            "• `/forcespawn` - Force spawn a card in chat\n"
+            "• `/give <user_id> <coins/tokens> <amount>`\n"
+            "• `/banuser <user_id> <ban/unban>`"
+        )
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def user_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    user_id = str(update.effective_user.id)
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        user = User(id=user_id, name=update.effective_user.first_name)
+        session.add(user)
+        session.commit()
+
+    if user.is_banned:
+        await update.message.reply_text("🚫 သင့်အား အသုံးပြုခွင့် ပိတ်ထားပါသည်။")
+        session.close()
+        return
+
+    cards_count = (
+        session.query(UserCard).filter(UserCard.user_id == user_id).count()
+    )
+    text = (
+        f"👤 **PROFILE:** {user.name}\n"
+        f"💰 Coins: `{user.coins}` | 🪙 Tokens: `{user.tokens}`\n"
+        f"🎴 Cards Collected: `{cards_count}`"
+    )
+    session.close()
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def view_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    user_id = str(update.effective_user.id)
+    session = SessionLocal()
+    user_cards = (
+        session.query(UserCard).filter(UserCard.user_id == user_id).all()
+    )
+
+    if not user_cards:
+        await update.message.reply_text("🎴 သင့်တွင် မည်သည့် ကဒ်မှ မရှိသေးပါ။")
+        session.close()
+        return
+
+    text = f"🎴 **{update.effective_user.first_name} ရဲ့ COLLECTION ({len(user_cards)})**\n\n"
+    for idx, uc in enumerate(user_cards, 1):
+        card_base = (
+            session.query(CardBase).filter(CardBase.id == uc.card_id).first()
+        )
+        cname = card_base.name if card_base else "Unknown Card"
+        text += f"{idx}. **{cname}** | #{uc.print_number} | Q: `{uc.quality}%` | UUID: `{uc.uuid}`\n"
+
+    session.close()
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def list_all_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    session = SessionLocal()
+    cards = session.query(CardBase).all()
+
+    if not cards:
+        await update.message.reply_text("❌ DB ထဲတွင် ကဒ်များ မရှိသေးပါ။")
+        session.close()
+        return
+
+    text = f"🌐 **BOT DATABASE CARDS ({len(cards)})**\n\n"
+    for c in cards:
+        text += f"• **ID:** `{c.id}` | **Name:** {c.name} | **Rarity:** {c.rarity}\n"
+
+    session.close()
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def gift_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    user_id = str(update.effective_user.id)
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ သုံးနည်း: `/gift <target_user_id> <card_uuid>`"
+        )
+        return
+
+    target_id, card_uuid = str(context.args[0]), str(context.args[1])
+    session = SessionLocal()
+    ucard = (
+        session.query(UserCard)
+        .filter(UserCard.uuid == card_uuid, UserCard.user_id == user_id)
+        .first()
+    )
+
+    if not ucard:
+        await update.message.reply_text(
+            "❌ ဒီ ကဒ် UUID ကို သင့် Collection ထဲမှာ မတွေ့ပါ။"
+        )
+        session.close()
+        return
+
+    ucard.user_id = target_id
+    session.commit()
+    session.close()
+    await update.message.reply_text(
+        f"🎁 ကဒ် UUID `{card_uuid}` ကို User `{target_id}` ထံ လွှဲပေးလိုက်ပါပြီ။"
+    )
+
+
+# ==========================================
+# 🎴 CARD GAMEPLAY & AUTO SPAWN
+# ==========================================
+
+
+async def catch_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_anti_spam(update):
+        return
+    chat_id = update.effective_chat.id
+    user_id = str(update.effective_user.id)
+
+    session = SessionLocal()
+    user = session.query(User).filter(User.id == user_id).first()
+    if not user:
+        user = User(id=user_id, name=update.effective_user.first_name)
+        session.add(user)
+
+    if user.is_banned:
+        await update.message.reply_text("🚫 သင့်အား ဘော့အသုံးပြုခွင့် ပိတ်ပင်ထားပါသည်။")
+        session.close()
+        return
+
+    if chat_id not in active_spawns or not active_spawns[chat_id]:
+        await update.message.reply_text("❌ ဖမ်းယူရန် ကဒ် မရှိသေးပါ!")
+        session.close()
+        return
+
+    card_base_id = active_spawns[chat_id]
+    active_spawns[chat_id] = None
+
+    card_base = (
+        session.query(CardBase).filter(CardBase.id == card_base_id).first()
+    )
+    card_base.total_prints += 1
+
+    quality = round(random.uniform(10.00, 100.00), 2)
+    new_card = UserCard(
+        user_id=user.id,
+        card_id=card_base.id,
+        print_number=card_base.total_prints,
+        quality=quality,
+    )
+    session.add(new_card)
+    session.commit()
+
+    msg = (
+        f"🎉 **{user.name}** သည် **{card_base.name}** ကို ဖမ်းယူရရှိခဲ့သည်!\n"
+        f"🏷️ **Print:** #{card_base.total_prints}\n"
+        f"✨ **Quality:** {quality}%\n"
+        f"⭐ **Rarity:** {card_base.rarity}\n"
+        f"🆔 `{new_card.uuid}`"
+    )
+    session.close()
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -193,13 +430,12 @@ async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     chat_counts[chat_id] = chat_counts.get(chat_id, 0) + 1
 
-    if chat_counts[chat_id] >= 100:
+    if chat_counts[chat_id] >= SPAWN_THRESHOLD:
         session = SessionLocal()
         cards = session.query(CardBase).all()
 
         if cards:
             chat_counts[chat_id] = 0
-            # Rarity အလိုက် ကဒ် ရွေးချယ်ခြင်း
             selected_card = select_card_by_rarity(cards)
             active_spawns[chat_id] = selected_card.id
 
@@ -231,13 +467,12 @@ async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
-# 👑 3. FLEXIBLE ADD CARD (Rarity & Power ပါဝင်ခြင်း)
+# 👑 OWNER CONTROL COMMANDS
 # ==========================================
 
 
 async def admin_add_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
-        await update.message.reply_text("⚠️ Owner မဟုတ်ပါက သုံးပိုင်ခွင့် မရှိပါ။")
         return
 
     try:
@@ -281,241 +516,14 @@ async def admin_add_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception:
         await update.message.reply_text(
-            "❌ **သုံးနည်း ပုံစံ:**\n\n"
-            "1️⃣ **ပုံကို Reply ပြန်၍ ထည့်ရန်:**\n`/addcard ID | Name | Rarity | Power`\n*(ဥပမာ: `/addcard 001 | Naruto | Legendary 🟡 | 5000`)*\n\n"
-            "2️⃣ **Link ဖြင့် ထည့်ရန်:**\n`/addcard ID | Name | Rarity | Power | Image_URL`",
-            parse_mode="Markdown",
+            "❌ **သုံးနည်း:** `/addcard ID | Name | Rarity | Power` (Photo Reply)"
         )
-
-
-# ==========================================
-# 👤 BASIC USER & ADMIN COMMANDS
-# ==========================================
-
-
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if not user:
-        user = User(id=user_id, name=update.effective_user.first_name)
-        session.add(user)
-        session.commit()
-
-    msg = get_msg(user.language, "start")
-    session.close()
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    session = SessionLocal()
-    user = session.query(User).filter(User.id == str(user_id)).first()
-    lang = user.language if user else "en"
-    session.close()
-
-    text = get_msg(lang, "help_user")
-    if is_owner(user_id):
-        text += "\n\n" + get_msg(lang, "help_owner")
-
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-
-async def user_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        user = User(id=user_id, name=update.effective_user.first_name)
-        session.add(user)
-        session.commit()
-
-    if user.is_banned:
-        await update.message.reply_text(get_msg(user.language, "banned"))
-        session.close()
-        return
-
-    cards_count = (
-        session.query(UserCard).filter(UserCard.user_id == user_id).count()
-    )
-    text = (
-        f"👤 **PROFILE:** {user.name}\n"
-        f"💰 Coins: `{user.coins}` | 🪙 Tokens: `{user.tokens}`\n"
-        f"🎴 Cards Collected: `{cards_count}`"
-    )
-    session.close()
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-
-async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [
-            InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
-            InlineKeyboardButton("🇲🇲 မြန်မာစာ", callback_data="lang_my"),
-        ]
-    ]
-    await update.message.reply_text(
-        "🌐 Language Choice / ဘာသာစကား ရွေးချယ်ပါ:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-
-async def language_button_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = str(query.from_user.id)
-    selected_lang = "en" if query.data == "lang_en" else "my"
-
-    session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if not user:
-        user = User(id=user_id, name=query.from_user.first_name)
-        session.add(user)
-
-    user.language = selected_lang
-    session.commit()
-    session.close()
-
-    await query.edit_message_text(
-        f"✅ Language set to **{selected_lang.upper()}**!", parse_mode="Markdown"
-    )
-
-
-async def catch_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_id = str(update.effective_user.id)
-
-    session = SessionLocal()
-    user = session.query(User).filter(User.id == user_id).first()
-    if not user:
-        user = User(id=user_id, name=update.effective_user.first_name)
-        session.add(user)
-
-    if user.is_banned:
-        await update.message.reply_text(get_msg(user.language, "banned"))
-        session.close()
-        return
-
-    if chat_id not in active_spawns or not active_spawns[chat_id]:
-        await update.message.reply_text(get_msg(user.language, "no_spawn"))
-        session.close()
-        return
-
-    card_base_id = active_spawns[chat_id]
-    active_spawns[chat_id] = None
-
-    card_base = (
-        session.query(CardBase).filter(CardBase.id == card_base_id).first()
-    )
-    card_base.total_prints += 1
-
-    quality = round(random.uniform(10.00, 100.00), 2)
-    new_card = UserCard(
-        user_id=user.id,
-        card_id=card_base.id,
-        print_number=card_base.total_prints,
-        quality=quality,
-    )
-    session.add(new_card)
-    session.commit()
-
-    msg = get_msg(
-        user.language,
-        "caught",
-        name=user.name,
-        card=card_base.name,
-        print_num=card_base.total_prints,
-        quality=quality,
-        rarity=card_base.rarity,
-        uuid=new_card.uuid,
-    )
-    session.close()
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-
-async def view_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    session = SessionLocal()
-    user_cards = (
-        session.query(UserCard).filter(UserCard.user_id == user_id).all()
-    )
-
-    if not user_cards:
-        await update.message.reply_text(
-            "🎴 Thave no cards yet! Use `/catch` to catch spawned cards."
-        )
-        session.close()
-        return
-
-    text = f"🎴 **{update.effective_user.first_name} ရဲ့ COLLECTION ({len(user_cards)})**\n\n"
-    for idx, uc in enumerate(user_cards, 1):
-        card_base = (
-            session.query(CardBase).filter(CardBase.id == uc.card_id).first()
-        )
-        cname = card_base.name if card_base else "Unknown Card"
-        text += f"{idx}. **{cname}** | #{uc.print_number} | Q: `{uc.quality}%` | UUID: `{uc.uuid}`\n"
-
-    session.close()
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-
-async def list_all_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    session = SessionLocal()
-    cards = session.query(CardBase).all()
-
-    if not cards:
-        await update.message.reply_text("❌ DB ထဲတွင် ကဒ်များ မရှိသေးပါ။")
-        session.close()
-        return
-
-    text = f"🌐 **BOT DATABASE CARDS ({len(cards)})**\n\n"
-    for c in cards:
-        text += f"• **ID:** `{c.id}` | **Name:** {c.name} | **Rarity:** {c.rarity}\n"
-
-    session.close()
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-
-async def gift_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    if len(context.args) < 2:
-        await update.message.reply_text(
-            "❌ သုံးနည်း: `/gift <target_user_id> <card_uuid>`"
-        )
-        return
-
-    target_id, card_uuid = str(context.args[0]), str(context.args[1])
-    session = SessionLocal()
-    ucard = (
-        session.query(UserCard)
-        .filter(UserCard.uuid == card_uuid, UserCard.user_id == user_id)
-        .first()
-    )
-
-    if not ucard:
-        await update.message.reply_text(
-            "❌ ဒီ ကဒ် UUID ကို သင့် Collection ထဲမှာ မတွေ့ပါ။"
-        )
-        session.close()
-        return
-
-    ucard.user_id = target_id
-    session.commit()
-    session.close()
-    await update.message.reply_text(
-        f"🎁 ကဒ် UUID `{card_uuid}` ကို User `{target_id}` ထံ လွှဲပေးလိုက်ပါပြီ။"
-    )
 
 
 async def admin_force_spawn(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
     if not is_owner(update.effective_user.id):
-        await update.message.reply_text("⚠️ Owner မဟုတ်ပါက သုံးပိုင်ခွင့် မရှိပါ။")
         return
 
     chat_id = update.effective_chat.id
@@ -595,14 +603,10 @@ if __name__ == "__main__":
 
     bot = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # User Handlers
+    # User Command Handlers
     bot.add_handler(CommandHandler("start", start_cmd))
     bot.add_handler(CommandHandler("help", help_cmd))
     bot.add_handler(CommandHandler("profile", user_profile))
-    bot.add_handler(CommandHandler("language", set_language))
-    bot.add_handler(
-        CallbackQueryHandler(language_button_callback, pattern="^lang_")
-    )
 
     # Card & Search Handlers
     bot.add_handler(CommandHandler("search", search_card))
@@ -613,16 +617,19 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("cardlist", list_all_cards))
     bot.add_handler(CommandHandler("gift", gift_card))
 
-    # Control Handlers
+    # Control Handlers (Owner)
     bot.add_handler(CommandHandler("addcard", admin_add_card))
     bot.add_handler(CommandHandler("forcespawn", admin_force_spawn))
     bot.add_handler(CommandHandler("give", admin_give_currency))
     bot.add_handler(CommandHandler("banuser", admin_ban_user))
+
+    # Inline Grid System
+    bot.add_handler(InlineQueryHandler(inline_search))
 
     # Auto Spawn Listener
     bot.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spawns)
     )
 
-    print("Master Bot Engine Fully Operational...")
+    print("Complete Card Engine Fully Operational...")
     bot.run_polling()
