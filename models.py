@@ -34,7 +34,7 @@ class User(Base):
     is_banned = Column(Boolean, default=False)
     ban_reason = Column(String, nullable=True)
     last_daily = Column(DateTime, nullable=True)
-    last_grab = Column(DateTime, nullable=True)
+    last_claim = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     cards = relationship(
@@ -48,17 +48,12 @@ class AdminRole(Base):
     role = Column(String, default="Admin")
 
 
-class BotConfig(Base):
-    __tablename__ = "bot_config"
-    key = Column(String, primary_key=True)
-    value = Column(String)
-
-
 class ChatSettings(Base):
     __tablename__ = "chat_settings"
     chat_id = Column(String, primary_key=True)
-    spawn_threshold = Column(Integer, default=30)
+    spawn_threshold = Column(Integer, default=85)
     current_msg_count = Column(Integer, default=0)
+    is_allowed = Column(Boolean, default=False)
 
 
 class CardBase(Base):
@@ -66,9 +61,10 @@ class CardBase(Base):
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
     anime = Column(String, default="General")
-    rarity = Column(String, default="⚪ Tier 1") # Tier 1 မှ Tier 10 အထိ
-    element = Column(String, default="🔥 Fire")
+    rarity = Column(String, default="⚪ Tier 1")
+    tier_level = Column(Integer, default=1)
     base_power = Column(Integer, default=1000)
+    base_price = Column(Integer, default=1000)
     image_url = Column(String, nullable=False)
     total_prints = Column(Integer, default=0)
 
@@ -80,9 +76,11 @@ class UserCard(Base):
     )
     user_id = Column(String, ForeignKey("users.id"))
     card_id = Column(String, ForeignKey("card_base.id"))
+    chat_id = Column(String, nullable=True)
     print_number = Column(Integer)
     quality = Column(Float, default=100.0)
     level = Column(Integer, default=1)
+    exp = Column(Integer, default=0)
     is_locked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
