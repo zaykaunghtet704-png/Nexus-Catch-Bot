@@ -4,16 +4,15 @@ from admin_system import (
     addcard_cmd,
     admin_callback_handler,
     adminpanel_cmd,
-    backup_cmd,
-    decspawn_cmd,
+    givecards_cmd,
     givecoins_cmd,
-    incspawn_cmd,
     is_admin,
     setspawn_cmd,
+    usercards_cmd,
 )
 from config import BOT_TOKEN, DEFAULT_SPAWN_THRESHOLD, PORT
 from flask import Flask
-from models import BotConfig, CardBase, ChatSettings, SessionLocal, User, UserCard
+from models import CardBase, ChatSettings, SessionLocal, User, UserCard
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -25,11 +24,15 @@ from telegram.ext import (
 )
 from user_system import (
     daily_cmd,
-    inventory_cmd,
-    leaderboard_cmd,
-    lock_cmd,
+    disassemble_cmd,
+    duel_cmd,
+    fav_cmd,
+    fuse_cmd,
+    grab_cmd,
+    harem_cmd,
+    hmode_cmd,
     profile_cmd,
-    roll_cmd,
+    upgrade_cmd,
 )
 
 app = Flask(__name__)
@@ -37,7 +40,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Bot Operational"
+    return "Bot Online"
 
 
 def run_web():
@@ -49,7 +52,7 @@ active_spawns = {}
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "✨ **Bot System Online!**\nUse `/profile`, `/roll`, `/daily`, or `/adminpanel`",
+        "✨ **MEGA 10-TIER BOT ACTIVE!**\nCommands စာရင်းကြည့်ရန် `/hmode` သို့မဟုတ် `/profile` သုံးပါ",
         parse_mode="Markdown",
     )
 
@@ -61,18 +64,9 @@ async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
         or update.message.text.startswith("/")
     ):
         return
-
     chat_id = str(update.effective_chat.id)
     session = SessionLocal()
     try:
-        m = (
-            session.query(BotConfig)
-            .filter(BotConfig.key == "maintenance_mode")
-            .first()
-        )
-        if m and m.value == "true" and not is_admin(update.effective_user.id):
-            return
-
         setting = (
             session.query(ChatSettings)
             .filter(ChatSettings.chat_id == chat_id)
@@ -94,7 +88,7 @@ async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if cards:
                 selected = random.choice(cards)
                 active_spawns[chat_id] = selected.name.lower()
-                caption = f"⚡ **A WILD CHARACTER APPEARED!**\n\n🌟 Rarity: **{selected.rarity}**\n`/catch <name>` ဖြင့် ဖမ်းယူပါ!"
+                caption = f"⚡ **A WILD CARD SPAWNED!**\n\n🌟 Rarity: **{selected.rarity}**\n`/catch <name>` ဖြင့် ဖမ်းယူပါ!"
                 await context.bot.send_photo(
                     chat_id=int(chat_id),
                     photo=selected.image_url,
@@ -103,8 +97,6 @@ async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
         session.commit()
-    except Exception as e:
-        print(f"Spawn Error: {e}")
     finally:
         session.close()
 
@@ -148,44 +140,43 @@ async def catch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
         finally:
             session.close()
-    else:
-        await update.message.reply_text(
-            "❌ နာမည် မှားနေပါသည်။ ပြန်လည် ကြိုးစားပါ။"
-        )
 
 
 if __name__ == "__main__":
     Thread(target=run_web).start()
     bot = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # User Commands
+    # Gameplay & Collection Commands
     bot.add_handler(CommandHandler("start", start_cmd))
+    bot.add_handler(CommandHandler("hmode", hmode_cmd))
     bot.add_handler(CommandHandler("profile", profile_cmd))
+    bot.add_handler(CommandHandler("grab", grab_cmd))
+    bot.add_handler(CommandHandler("claim", grab_cmd))
+    bot.add_handler(CommandHandler("harem", harem_cmd))
+    bot.add_handler(CommandHandler("fav", fav_cmd))
+    bot.add_handler(CommandHandler("fuse", fuse_cmd))
+    bot.add_handler(CommandHandler("upgrade", upgrade_cmd))
+    bot.add_handler(CommandHandler("duel", duel_cmd))
+    bot.add_handler(CommandHandler("disassemble", disassemble_cmd))
     bot.add_handler(CommandHandler("daily", daily_cmd))
-    bot.add_handler(CommandHandler("inventory", inventory_cmd))
-    bot.add_handler(CommandHandler("roll", roll_cmd))
-    bot.add_handler(CommandHandler("lock", lock_cmd))
-    bot.add_handler(CommandHandler("leaderboard", leaderboard_cmd))
     bot.add_handler(CommandHandler("catch", catch_cmd))
 
-    # Admin Commands & Callbacks
+    # Admin Control Commands
     bot.add_handler(CommandHandler("adminpanel", adminpanel_cmd))
     bot.add_handler(
         CallbackQueryHandler(admin_callback_handler, pattern="^adm_")
     )
     bot.add_handler(CommandHandler("addcard", addcard_cmd))
     bot.add_handler(CommandHandler("givecoins", givecoins_cmd))
-    bot.add_handler(CommandHandler("backup", backup_cmd))
-
-    # Spawn Threshold Management Commands
+    bot.add_handler(CommandHandler("usercards", usercards_cmd))  # User card စစ်ရန်
+    bot.add_handler(
+        CommandHandler("givecards", givecards_cmd)
+    )  # Multi-cards ပေးရန်
     bot.add_handler(CommandHandler("setspawn", setspawn_cmd))
-    bot.add_handler(CommandHandler("incspawn", incspawn_cmd))
-    bot.add_handler(CommandHandler("decspawn", decspawn_cmd))
 
-    # Group Spawn Handler
     bot.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spawns)
     )
 
-    print("⚡ Fixed Enterprise Bot Active!")
+    print("⚡ Mega 10-Tier Bot Active!")
     bot.run_polling()
