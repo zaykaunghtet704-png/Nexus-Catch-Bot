@@ -26,6 +26,7 @@ class User(Base):
     id = Column(String, primary_key=True)
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
+    language = Column(String, default="my")  # 'my' (Myanmar) or 'en' (English)
     coins = Column(Integer, default=1000)
     shards = Column(Integer, default=0)
     exp = Column(Integer, default=0)
