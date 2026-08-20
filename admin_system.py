@@ -34,22 +34,14 @@ async def verify_group_eligibility(update: Update, context: ContextTypes.DEFAULT
     except Exception:
         return False, "⚠️ ဘော့အား Group Admin ပေးထားခြင်း ရှိ/မရှိ မစစ်ဆေးနိုင်ပါ။"
 
-    # 2. Member Count Check (At least 50)
-    try:
-        member_count = await context.bot.get_chat_member_count(chat_id=chat.id)
-        if member_count < 50:
-            return False, f"⚠️ **BOT ACCESS ERROR!**\n\nဘော့ကို အသုံးပြုရန်အတွက် Group တွင် အနည်းဆုံး **လူ ၅၀ ယောက်** ရှိရပါမည်။ (လက်ရှိ: `{member_count}` ယောက်)"
-    except Exception:
-        return False, "⚠️ Member အရေအတွက် စစ်ဆေးရာတွင် အမှားအယွင်း ရှိနေပါသည်။"
-
-    # 3. Owner Approval Check
+    # 2. Owner Approval Check (လူ ၅၀ သတ်မှတ်ချက်ကို ဖြုတ်ပေးထားပါသည်)
     session = SessionLocal()
     try:
         cs = session.query(ChatSettings).filter(ChatSettings.chat_id == chat_id).first()
         if not cs or not cs.is_allowed:
             return False, (
                 "⚠️ **GROUP NOT APPROVED!**\n\n"
-                "ဤ Group တွင် ဘော့အသုံးပြုခွင့် မဖွင့်ရသေးပါ။ အသုံးပြုလိုပါက **Bot Owner** ထံ အကြောင်းကြား၍ ခွင့်ပြုချက် (Approval) တောင်းခံပေးပါ။"
+                "ဤ Group တွင် ဘော့အသုံးပြုခွင့် မဖွင့်ရသေးပါ။ အသုံးပြုလိုပါက **Bot Owner** ထံ ခွင့်ပြုချက် (Approval) တောင်းခံပေးပါ။"
             )
     finally:
         session.close()
