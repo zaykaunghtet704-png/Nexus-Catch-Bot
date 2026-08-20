@@ -24,6 +24,102 @@ def is_admin(user_id: int) -> bool:
         session.close()
 
 
+# --- လိုအပ်ချက်များအတွက် ADMIN COMMAND သစ်များ ---
+
+
+async def usercards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User ထဲမှာ Card ဘယ်လောက်ရှိလဲ စစ်ဆေးသည့် Command"""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Format: `/usercards <user_id>`", parse_mode="Markdown"
+        )
+        return
+
+    target_uid = context.args[0]
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.id == target_uid).first()
+        if not user:
+            await update.message.reply_text("❌ User မတွေ့ပါ။")
+            return
+
+        cards = (
+            session.query(UserCard).filter(UserCard.user_id == target_uid).all()
+        )
+        count = len(cards)
+
+        text = f"👤 **USER CARD AUDIT:**\n\n"
+        text += f"• User: **{user.first_name}** (`{user.id}`)\n"
+        text += f"• Total Cards Held: `{count}` 🃏\n\n"
+
+        if cards:
+            text += "**Card List (Top 10):**\n"
+            for c in cards[:10]:
+                text += f"- `{c.uuid}` | {c.card_info.name} ({c.card_info.rarity})\n"
+
+        await update.message.reply_text(text, parse_mode="Markdown")
+    finally:
+        session.close()
+
+
+async def givecards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User တစ်ယောက်ထံ Multi Cards (ကော်မာခြား၍) တစ်ခါတည်း ပေးသည့် Command"""
+    if not is_admin(update.effective_user.id):
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Format: `/givecards <user_id> <card_id1,card_id2,card_id3>`\nဥပမာ: `/givecards 12345678 card1,card2,card3`",
+            parse_mode="Markdown",
+        )
+        return
+
+    target_uid = context.args[0]
+    card_ids = [c.strip() for c in context.args[1].split(",") if c.strip()]
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.id == target_uid).first()
+        if not user:
+            await update.message.reply_text("❌ User မတွေ့ပါ။")
+            return
+
+        added_list = []
+        failed_list = []
+
+        for cid in card_ids:
+            card_base = (
+                session.query(CardBase).filter(CardBase.id == cid).first()
+            )
+            if card_base:
+                card_base.total_prints += 1
+                new_uc = UserCard(
+                    user_id=target_uid,
+                    card_id=card_base.id,
+                    print_number=card_base.total_prints,
+                )
+                session.add(new_uc)
+                added_list.append(card_base.name)
+            else:
+                failed_list.append(cid)
+
+        session.commit()
+
+        res = f"✅ **MULTI-CARDS ADDED!**\n\n"
+        res += f"👤 User: `{target_uid}`\n"
+        res += f"🃏 ထည့်သွင်းပြီးသော Cards ({len(added_list)}): {', '.join(added_list)}\n"
+        if failed_list:
+            res += f"⚠️ မတွေ့ရှိသော Card IDs: {', '.join(failed_list)}"
+
+        await update.message.reply_text(res, parse_mode="Markdown")
+    finally:
+        session.close()
+
+
+# --- ပုံမှန် ADMIN COMMANDS ---
+
+
 async def adminpanel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
@@ -39,16 +135,11 @@ async def adminpanel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Close", callback_data="adm_close")],
     ]
     markup = InlineKeyboardMarkup(keyboard)
-    text = "👑 **ADMIN DASHBOARD**\nလုပ်ဆောင်လိုသည့် Menu ကို ရွေးပါ:"
-
-    if update.callback_query:
-        await update.callback_query.edit_message_text(
-            text, reply_markup=markup, parse_mode="Markdown"
-        )
-    else:
-        await update.message.reply_text(
-            text, reply_markup=markup, parse_mode="Markdown"
-        )
+    await update.message.reply_text(
+        "👑 **ADMIN DASHBOARD**\nလုပ်ဆောင်လိုသည့် Menu ကို ရွေးပါ:",
+        reply_markup=markup,
+        parse_mode="Markdown",
+    )
 
 
 async def admin_callback_handler(
@@ -58,50 +149,16 @@ async def admin_callback_handler(
     if not is_admin(query.from_user.id):
         await query.answer("❌ Admin access required.", show_alert=True)
         return
-
-    data = query.data
     await query.answer()
 
-    if data == "adm_close":
+    if query.data == "adm_close":
         await query.message.delete()
-    elif data == "adm_cards":
-        text = "🃏 **CARD COMMANDS:**\n\n• `/addcard id | name | rarity | img_url`\n• `/listcards [page]`"
+    elif query.data == "adm_cards":
+        text = "🃏 **CARD COMMANDS:**\n\n• `/addcard id | name | rarity | img_url`\n• `/givecards <uid> <id1,id2>`"
         await query.message.edit_text(text, parse_mode="Markdown")
-    elif data == "adm_users":
-        text = "👤 **USER COMMANDS:**\n\n• `/givecoins <uid> <amt>`\n• `/banuser <uid>`\n• `/unbanuser <uid>`"
+    elif query.data == "adm_users":
+        text = "👤 **USER AUDIT COMMANDS:**\n\n• `/usercards <uid>`\n• `/givecoins <uid> <amt>`"
         await query.message.edit_text(text, parse_mode="Markdown")
-    elif data == "adm_maint":
-        session = SessionLocal()
-        try:
-            cfg = (
-                session.query(BotConfig)
-                .filter(BotConfig.key == "maintenance_mode")
-                .first()
-            )
-            if not cfg:
-                cfg = BotConfig(key="maintenance_mode", value="true")
-                session.add(cfg)
-                st = "ENABLED 🚧"
-            else:
-                cfg.value = "false" if cfg.value == "true" else "true"
-                st = "ENABLED 🚧" if cfg.value == "true" else "DISABLED ✅"
-            session.commit()
-            await query.message.edit_text(
-                f"⚙️ Maintenance Status: **{st}**", parse_mode="Markdown"
-            )
-        finally:
-            session.close()
-    elif data == "adm_stats":
-        session = SessionLocal()
-        try:
-            u_cnt = session.query(User).count()
-            c_cnt = session.query(CardBase).count()
-            await query.message.edit_text(
-                f"📊 **STATS:**\n• Users: `{u_cnt}`\n• Cards: `{c_cnt}`",
-                parse_mode="Markdown",
-            )
-        finally:
-            session.close()
 
 
 async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -123,12 +180,6 @@ async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     session = SessionLocal()
     try:
-        if session.query(CardBase).filter(CardBase.id == cid).first():
-            await update.message.reply_text(
-                "❌ Card ID ရှိပြီးသားဖြစ်ပါသည်။"
-            )
-            return
-
         session.add(CardBase(id=cid, name=name, rarity=rarity, image_url=img))
         session.commit()
         await update.message.reply_text(
@@ -147,7 +198,6 @@ async def givecoins_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     uid, amount = context.args[0], int(context.args[1])
-
     session = SessionLocal()
     try:
         user = session.query(User).filter(User.id == uid).first()
@@ -155,8 +205,7 @@ async def givecoins_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user.coins += amount
             session.commit()
             await update.message.reply_text(
-                f"✅ User `{uid}` ထံသို့ Coins `{amount}` ထည့်ပြီးပါပြီ။",
-                parse_mode="Markdown",
+                f"✅ Coins `{amount}` ထည့်ပြီးပါပြီ။", parse_mode="Markdown"
             )
     finally:
         session.close()
@@ -166,11 +215,7 @@ async def setspawn_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text(
-            "❌ Format: `/setspawn <number>`", parse_mode="Markdown"
-        )
         return
-
     new_limit = int(context.args[0])
     chat_id = str(update.effective_chat.id)
 
@@ -188,95 +233,9 @@ async def setspawn_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.add(setting)
         else:
             setting.spawn_threshold = new_limit
-
         session.commit()
         await update.message.reply_text(
-            f"⚙️ **Spawn Limit ပြောင်းလဲပြီးပါပြီ!**\nယခု Group ၏ Threshold: `{new_limit}` စာစောင်",
-            parse_mode="Markdown",
+            f"⚙️ Group Threshold Limit: `{new_limit}`", parse_mode="Markdown"
         )
     finally:
         session.close()
-
-
-async def incspawn_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    amount = (
-        int(context.args[0])
-        if context.args and context.args[0].isdigit()
-        else 5
-    )
-    chat_id = str(update.effective_chat.id)
-
-    session = SessionLocal()
-    try:
-        setting = (
-            session.query(ChatSettings)
-            .filter(ChatSettings.chat_id == chat_id)
-            .first()
-        )
-        if not setting:
-            setting = ChatSettings(
-                chat_id=chat_id,
-                spawn_threshold=30 + amount,
-                current_msg_count=0,
-            )
-            session.add(setting)
-        else:
-            setting.spawn_threshold += amount
-
-        session.commit()
-        await update.message.reply_text(
-            f"📈 Spawn Threshold ကို `{amount}` တိုးလိုက်ပါပြီ။ (လက်ရှိ: `{setting.spawn_threshold}`)",
-            parse_mode="Markdown",
-        )
-    finally:
-        session.close()
-
-
-async def decspawn_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
-    amount = (
-        int(context.args[0])
-        if context.args and context.args[0].isdigit()
-        else 5
-    )
-    chat_id = str(update.effective_chat.id)
-
-    session = SessionLocal()
-    try:
-        setting = (
-            session.query(ChatSettings)
-            .filter(ChatSettings.chat_id == chat_id)
-            .first()
-        )
-        if not setting:
-            setting = ChatSettings(
-                chat_id=chat_id,
-                spawn_threshold=max(5, 30 - amount),
-                current_msg_count=0,
-            )
-            session.add(setting)
-        else:
-            setting.spawn_threshold = max(5, setting.spawn_threshold - amount)
-
-        session.commit()
-        await update.message.reply_text(
-            f"📉 Spawn Threshold ကို `{amount}` လျှော့လိုက်ပါပြီ။ (လက်ရှိ: `{setting.spawn_threshold}`)",
-            parse_mode="Markdown",
-        )
-    finally:
-        session.close()
-
-
-async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-    db_path = "bot_database.db"
-    if os.path.exists(db_path):
-        await context.bot.send_document(
-            chat_id=update.effective_user.id,
-            document=open(db_path, "rb"),
-            caption="📦 Database Backup",
-        )
