@@ -1,4 +1,4 @@
-from config import LOG_CHANNEL_ID, OWNER_IDS
+from config import LOG_CHANNEL_ID, MIN_GROUP_MEMBERS, OWNER_IDS
 from models import AdminRole, CardBase, ChatSettings, SessionLocal, User, UserCard
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -34,52 +34,30 @@ async def verify_group_eligibility(update: Update, context: ContextTypes.DEFAULT
     except Exception:
         return False, "⚠️ ဘော့အား Group Admin ပေးထားခြင်း ရှိ/မရှိ မစစ်ဆေးနိုင်ပါ။"
 
-    # 2. Owner Approval Check (လူ ၅၀ သတ်မှတ်ချက်ကို ဖြုတ်ပေးထားပါသည်)
+    # 2. Member Count Check (လူ ၅၀)
+    try:
+        member_count = await context.bot.get_chat_member_count(chat_id=chat.id)
+        if member_count < MIN_GROUP_MEMBERS:
+            return False, (
+                f"⚠️ **BOT ACCESS ERROR!**\n\n"
+                f"ဘော့ကို အသုံးပြုရန်အတွက် Group တွင် အနည်းဆုံး လူ **{MIN_GROUP_MEMBERS}** ယောက် ရှိရပါမည်။ (လက်ရှိ: {member_count} ယောက်)"
+            )
+    except Exception:
+        pass
+
+    # 3. Owner Approval Check
     session = SessionLocal()
     try:
         cs = session.query(ChatSettings).filter(ChatSettings.chat_id == chat_id).first()
         if not cs or not cs.is_allowed:
             return False, (
                 "⚠️ **GROUP NOT APPROVED!**\n\n"
-                "ဤ Group တွင် ဘော့အသုံးပြုခွင့် မဖွင့်ရသေးပါ။ အသုံးပြုလိုပါက **Bot Owner** ထံ ခွင့်ပြုချက် (Approval) တောင်းခံပေးပါ။"
+                "ဤ Group တွင် ဘော့အသုံးပြုခွင့် မဖွင့်ရသေးပါ။ အသုံးပြုလိုပါက **Bot Owner** ထံ အကြောင်းကြားပေးပါ။"
             )
     finally:
         session.close()
 
     return True, ""
-
-
-async def allow_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-
-    if not context.args:
-        await update.message.reply_text("❌ Usage: `/allow <group_id>`", parse_mode="Markdown")
-        return
-
-    target_chat_id = context.args[0].strip()
-    session = SessionLocal()
-    try:
-        cs = session.query(ChatSettings).filter(ChatSettings.chat_id == target_chat_id).first()
-        if not cs:
-            cs = ChatSettings(chat_id=target_chat_id, is_allowed=True)
-            session.add(cs)
-        else:
-            cs.is_allowed = True
-
-        session.commit()
-        await update.message.reply_text(f"✅ Group ID `{target_chat_id}` ကို ဘော့အသုံးပြုခွင့် ဖွင့်ပေးလိုက်ပါပြီ။", parse_mode="Markdown")
-
-        try:
-            await context.bot.send_message(
-                chat_id=target_chat_id,
-                text="🎉 **CONGRATULATIONS!**\n\nBot Owner မှ ဤ Group တွင် Bot အသုံးပြုခွင့်ကို အောင်မြင်စွာ ဖွင့်ပေးလိုက်ပါပြီ။ စတင်အသုံးပြုနိုင်ပါပြီ!",
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
-    finally:
-        session.close()
 
 
 async def track_group_addition(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -110,6 +88,45 @@ async def track_group_addition(update: Update, context: ContextTypes.DEFAULT_TYP
             await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_text, parse_mode="Markdown")
         except Exception as e:
             print(f"Log Error: {e}")
+
+
+async def allow_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+
+    if not context.args:
+        await update.message.reply_text("❌ Usage: `/allow <group_id>`", parse_mode="Markdown")
+        return
+
+    target_chat_id = context.args[0].strip()
+    session = SessionLocal()
+    try:
+        cs = session.query(ChatSettings).filter(ChatSettings.chat_id == target_chat_id).first()
+        if not cs:
+            cs = ChatSettings(chat_id=target_chat_id, is_allowed=True)
+            session.add(cs)
+        else:
+            cs.is_allowed = True
+
+        session.commit()
+        await update.message.reply_text(f"✅ Group ID `{target_chat_id}` ကို ဘော့အသုံးပြုခွင့် ဖွင့်ပေးလိုက်ပါပြီ။", parse_mode="Markdown")
+    finally:
+        session.close()
+
+
+async def usercards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id) or not context.args:
+        return
+    uid = context.args[0]
+    session = SessionLocal()
+    try:
+        cards = session.query(UserCard).filter(UserCard.user_id == uid).all()
+        text = f"🎴 **USER ({uid}) CARDS ({len(cards)}):**\n\n"
+        for c in cards:
+            text += f"• `{c.card_id}` | **{c.card_info.name}** | UUID: `{c.uuid}`\n"
+        await update.message.reply_text(text, parse_mode="Markdown")
+    finally:
+        session.close()
 
 
 async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -147,7 +164,7 @@ async def givecoins_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if u:
             u.coins += amt
             session.commit()
-            await update.message.reply_text(f"✅ User `{uid}` ထံ Coins `{amt}` ထည့်ပြီးပါပြီ။", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ User `{uid}` ထံ Coins `{amt}` ထည့်ပေးပြီးပါပြီ။", parse_mode="Markdown")
     finally:
         session.close()
 
