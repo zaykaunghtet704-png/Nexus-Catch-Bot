@@ -16,12 +16,10 @@ from config import DATABASE_URL
 
 Base = declarative_base()
 
-# SQLite Thread Safety Optimization
 engine = create_engine(
     DATABASE_URL, echo=False, connect_args={"check_same_thread": False}
 )
 
-# TypeError ဖြစ်စေသော serialize_replace ကို ဖြုတ်ထားပါသည်
 SessionLocal = sessionmaker(bind=engine, combine_all=False)
 
 
@@ -30,21 +28,20 @@ class User(Base):
     id = Column(String, primary_key=True)
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
-    language = Column(String, default="my")  # 'my' (Myanmar) or 'en' (English)
+    language = Column(String, default="my")  # 'my' or 'en'
     coins = Column(Integer, default=1000)
     shards = Column(Integer, default=0)
     exp = Column(Integer, default=0)
     level = Column(Integer, default=1)
     fav_card_uuid = Column(String, nullable=True)
+    selected_hmode_tier = Column(Integer, nullable=True)  # /hmode Filter အတွက်
     is_banned = Column(Boolean, default=False)
     ban_reason = Column(String, nullable=True)
     last_daily = Column(DateTime, nullable=True)
     last_claim = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    cards = relationship(
-        "UserCard", back_populates="owner", cascade="all, delete-orphan"
-    )
+    cards = relationship("UserCard", back_populates="owner", cascade="all, delete-orphan")
 
 
 class AdminRole(Base):
@@ -76,9 +73,7 @@ class CardBase(Base):
 
 class UserCard(Base):
     __tablename__ = "user_cards"
-    uuid = Column(
-        String, primary_key=True, default=lambda: str(uuid.uuid4())[:8]
-    )
+    uuid = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())[:8])
     user_id = Column(String, ForeignKey("users.id"))
     card_id = Column(String, ForeignKey("card_base.id"))
     chat_id = Column(String, nullable=True)
@@ -95,9 +90,7 @@ class UserCard(Base):
 
 class MarketItem(Base):
     __tablename__ = "market_items"
-    id = Column(
-        String, primary_key=True, default=lambda: str(uuid.uuid4())[:8]
-    )
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())[:8])
     seller_id = Column(String, ForeignKey("users.id"))
     card_uuid = Column(String, ForeignKey("user_cards.uuid"))
     price = Column(Integer, nullable=False)
