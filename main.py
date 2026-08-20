@@ -8,6 +8,7 @@ from admin_system import (
     givecards_cmd,
     givecoins_cmd,
     track_group_addition,
+    usercards_cmd,
     verify_group_eligibility,
 )
 from config import BOT_TOKEN, DEFAULT_SPAWN_THRESHOLD, PORT
@@ -33,11 +34,14 @@ from user_system import (
     daily_cmd,
     duel_cmd,
     fav_cmd,
+    harem_callback,
     harem_cmd,
+    help_callback,
     help_cmd,
     profile_cmd,
     search_cmd,
     sellprice_cmd,
+    setlang_cmd,
     start_cmd,
     today_nexus_catch_cmd,
     top_cmd,
@@ -152,9 +156,11 @@ if __name__ == "__main__":
     bot = ApplicationBuilder().token(BOT_TOKEN).build()
 
     bot.add_handler(CallbackQueryHandler(join_check_callback, pattern="^check_join_harem$"))
+    bot.add_handler(CallbackQueryHandler(harem_callback, pattern="^harem_"))
+    bot.add_handler(CallbackQueryHandler(help_callback, pattern="^help_"))
     bot.add_handler(ChatMemberHandler(track_group_addition, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    # Commands Handlers
+    # User Command Handlers
     bot.add_handler(CommandHandler("start", start_cmd))
     bot.add_handler(CommandHandler("help", help_cmd))
     bot.add_handler(CommandHandler("harem", harem_cmd))
@@ -174,6 +180,7 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("duel", duel_cmd))
     bot.add_handler(CommandHandler("upgrade", upgrade_cmd))
     bot.add_handler(CommandHandler("Nexus", nexus_catch_cmd))
+    bot.add_handler(CommandHandler("setlang", setlang_cmd))
 
     # Market Handlers
     bot.add_handler(CommandHandler("market", market_cmd))
@@ -190,6 +197,7 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("changetime", changetime_cmd))
     bot.add_handler(CommandHandler("addadmin", addadmin_cmd))
     bot.add_handler(CommandHandler("allow", allow_group_cmd))
+    bot.add_handler(CommandHandler("usercards", usercards_cmd))
 
     # Message Handler
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spawns))
