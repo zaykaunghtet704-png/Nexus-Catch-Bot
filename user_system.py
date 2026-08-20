@@ -40,6 +40,11 @@ async def check_force_join(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # PM ထဲတွင် start=harem ဖြင့် ပွင့်လာပါက Harem ကို တိုက်ရိုက်ပြပေးခြင်း
+    if context.args and context.args[0] == "harem":
+        await harem_cmd(update, context)
+        return
+
     keyboard = [
         [
             InlineKeyboardButton("✨ My Waifu", url=MY_WAIFU_URL),
