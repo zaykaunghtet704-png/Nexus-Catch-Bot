@@ -15,10 +15,14 @@ from sqlalchemy.orm import relationship, sessionmaker
 from config import DATABASE_URL
 
 Base = declarative_base()
+
+# SQLite Thread Safety Optimization
 engine = create_engine(
     DATABASE_URL, echo=False, connect_args={"check_same_thread": False}
 )
-SessionLocal = sessionmaker(bind=engine, serialize_replace=True)
+
+# TypeError ဖြစ်စေသော serialize_replace ကို ဖြုတ်ထားပါသည်
+SessionLocal = sessionmaker(bind=engine, combine_all=False)
 
 
 class User(Base):
