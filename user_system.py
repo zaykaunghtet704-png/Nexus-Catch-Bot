@@ -19,22 +19,21 @@ TIER_PRICES = {
     6: 9000, 7: 10500, 8: 12000, 9: 13500, 10: 15000,
 }
 
-# Language Dictionary
 MESSAGES = {
     "my": {
         "start_caption": "✨ **Nexus Catch Bot မှ ကြိုဆိုပါတယ်!**\n\nအောက်ပါ Link များကို အသုံးပြု၍ Community သို့ သွားရောက်နိုင်ပါသည်။",
-        "force_join": "⚠️ **ACCESS RESTRICTED!**\n\n `/harem` စာရင်းကို ကြည့်ရှုရန်အတွက် အောက်ပါ Group နှင့် Channel 2 ခုလုံးသို့ မဖြစ်မနေ Join ပေးရန် လိုအပ်ပါသည်။",
+        "force_join": "⚠️ **ACCESS RESTRICTED!**\n\n`/harem` ကို ကြည့်ရှုရန် အောက်ပါ Group နှင့် Channel ကို အရင် Join ပေးပါ။",
         "daily_success": "🎉 **Daily Reward:** +`500` Coins 🪙 ရရှိပါသည်။",
-        "daily_already": "⏳ Daily reward ရယူပြီးပါပြီ။ 24 နာရီပြည့်မှ ပြန်လာပါ။",
+        "daily_already": "⏳ 24 နာရီပြည့်မှ Daily reward ပြန်ယူနိုင်ပါမည်။",
         "claim_success": "🎁 **12-HOUR CLAIM REWARD:**\n\n",
         "claim_wait": "⏳ 12 နာရီတစ်ကြိမ်သာ Claim လုပ်နိုင်ပါသည်။",
         "lang_changed": "🌐 ဘာသာစကားကို မြန်မာဘာသာသို့ ပြောင်းလဲလိုက်ပါပြီ။",
     },
     "en": {
         "start_caption": "✨ **Welcome to Nexus Catch Bot!**\n\nUse the links below to access our community.",
-        "force_join": "⚠️ **ACCESS RESTRICTED!**\n\nYou must join both the Group and Channel below to access `/harem`.",
+        "force_join": "⚠️ **ACCESS RESTRICTED!**\n\nYou must join both channels below to access `/harem`.",
         "daily_success": "🎉 **Daily Reward:** Received +`500` Coins 🪙!",
-        "daily_already": "⏳ Daily reward already claimed. Come back in 24 hours.",
+        "daily_already": "⏳ Daily reward already claimed. Try again in 24 hours.",
         "claim_success": "🎁 **12-HOUR CLAIM REWARD:**\n\n",
         "claim_wait": "⏳ You can only claim once every 12 hours.",
         "lang_changed": "🌐 Language changed to English.",
@@ -110,8 +109,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if page == 1:
         text = (
             "📖 **CARD BOT GUIDE - PAGE 1**\n\n"
-            "1. Group ထဲတွင် စာစောင်များ ပို့ပြီး Card Spawn အောင် ပြုလုပ်ပါ။\n"
-            "2. Spawn လာပါက `/Nexus <Card_Name>` ဖြင့် ဖမ်းယူပါ။\n"
+            "1. Group ထဲတွင် စာပို့ပြီး Card Spawn အောင် လုပ်ပါ။\n"
+            "2. `/Nexus <Card_Name>` ဖြင့် Card ဖမ်းယူပါ။\n"
             "3. `/daily` ဖြင့် Coins ရယူပါ။\n"
             "4. `/claim` ဖြင့် 12 နာရီတစ်ကြိမ် Card အခမဲ့ ရယူပါ။\n\n"
             "Page 2 Commands စာရင်းကြည့်ရန် အောက်ပါ Button ကို နှိပ်ပါ။"
@@ -120,7 +119,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = (
             "📖 **COMMANDS LIST - PAGE 2**\n\n"
-            "🎮 **Gameplay:** `/harem` | `/profile` | `/search` | `/duel` | `/upgrade` | `/setlang`\n"
+            "🎮 **Gameplay:** `/harem` | `/profile` | `/search` | `/duel` | `/upgrade` | `/setlang` | `/hmode` | `/reset`\n"
             "💰 **Economy:** `/market` | `/sell` | `/buy` | `/delist` | `/trade` | `/gift` | `/sellprice`\n"
             "🏆 **Leaderboards:** `/top` | `/ctop` | `/rankings` | `/todayNexusCatch`"
         )
@@ -157,18 +156,30 @@ async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     limit = 5
     session = SessionLocal()
     try:
-        total_cards = session.query(UserCard).filter(UserCard.user_id == uid).count()
+        user = session.query(User).filter(User.id == uid).first()
+        query_filter = session.query(UserCard).filter(UserCard.user_id == uid)
+
+        # /hmode Filter ပါဝင်ပါက စစ်ဆေးခြင်း
+        if user and user.selected_hmode_tier:
+            query_filter = query_filter.join(CardBase).filter(CardBase.tier_level == user.selected_hmode_tier)
+
+        total_cards = query_filter.count()
         total_pages = math.ceil(total_cards / limit) or 1
         page = max(1, min(page, total_pages))
 
-        cards = session.query(UserCard).filter(UserCard.user_id == uid).offset((page - 1) * limit).limit(limit).all()
-        text = f"📚 **YOUR HAREM COLLECTION (Page {page}/{total_pages}):**\n\n"
+        cards = query_filter.offset((page - 1) * limit).limit(limit).all()
+        text = f"📚 **YOUR HAREM COLLECTION (Page {page}/{total_pages}):**\n"
+        if user and user.selected_hmode_tier:
+            text += f"🏷️ **Filtered Tier:** `{user.selected_hmode_tier}`\n\n"
+        else:
+            text += "\n"
+
         for c in cards:
-            fav_tag = "⭐ " if c.uuid == c.owner.fav_card_uuid else ""
+            fav_tag = "⭐ " if user and c.uuid == user.fav_card_uuid else ""
             text += f"{fav_tag}• ID: `{c.card_id}` | UUID: `{c.uuid}` | **{c.card_info.name}** ({c.card_info.rarity}) Lvl `{c.level}`\n"
 
         if not cards:
-            text += "📭 သင့်ထံတွင် ကဒ်များ မရှိသေးပါ။"
+            text += "📭 သင့်ထံတွင် ကဒ်များ မရှိသေးပါ (သို့မဟုတ် Tier Filter ကြောင့် မပေါ်ပါ)။"
 
         keyboard = [
             [
@@ -187,6 +198,46 @@ async def harem_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     page = int(query.data.split("_")[1])
     context.args = [str(page)]
     await harem_cmd(update, context)
+
+
+async def hmode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = []
+    for t in range(1, 11, 2):
+        keyboard.append([
+            InlineKeyboardButton(f"Tier {t}", callback_data=f"set_hmode_{t}"),
+            InlineKeyboardButton(f"Tier {t+1}", callback_data=f"set_hmode_{t+1}"),
+        ])
+    await update.message.reply_text("🎴 **Harem တွင် ကြည့်ရှုလိုသော Card Tier Level ကို ရွေးချယ်ပါ:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+
+async def hmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tier = int(query.data.split("_")[2])
+    uid = str(query.from_user.id)
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.id == uid).first()
+        if user:
+            user.selected_hmode_tier = tier
+            session.commit()
+            await query.message.edit_text(f"✅ Harem Filter ကို **Tier {tier}** သို့ ပြောင်းလဲလိုက်ပါပြီ။ `/harem` တွင် ပြန်လည် ကြည့်ရှုနိုင်ပါသည်။")
+    finally:
+        session.close()
+
+
+async def reset_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.id == uid).first()
+        if user:
+            user.selected_hmode_tier = None
+            session.commit()
+            await update.message.reply_text("🔄 Harem Tier Filter ကို ဖြုတ်လိုက်ပါပြီ။ ကဒ်အားလုံးကို ပြန်လည် ကြည့်ရှုနိုင်ပါသည်။")
+    finally:
+        session.close()
 
 
 async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
