@@ -26,21 +26,21 @@ async def verify_group_eligibility(update: Update, context: ContextTypes.DEFAULT
 
     chat_id = str(chat.id)
 
-    # 1. Admin Status Check
+    # 1. Bot Admin Requirement
     try:
         bot_member = await context.bot.get_chat_member(chat_id=chat.id, user_id=context.bot.id)
         if bot_member.status != "administrator":
-            return False, "⚠️ **BOT ACCESS ERROR!**\n\nဘော့ကို အသုံးပြုရန်အတွက် ဤ Group တွင် ဘော့အား **Admin** အဖြစ် ခန့်အပ်ပေးထားရန် လိုအပ်ပါသည်။"
+            return False, "⚠️ **BOT ACCESS ERROR!**\n\nဘော့ကို အသုံးပြုရန် ဤ Group တွင် ဘော့အား **Admin** ခန့်ထားရန် လိုအပ်ပါသည်။"
     except Exception:
         return False, "⚠️ ဘော့အား Group Admin ပေးထားခြင်း ရှိ/မရှိ မစစ်ဆေးနိုင်ပါ။"
 
-    # 2. Member Count Check (လူ ၅၀)
+    # 2. Member Count Requirement (အနည်းဆုံး လူ ၅၀)
     try:
         member_count = await context.bot.get_chat_member_count(chat_id=chat.id)
         if member_count < MIN_GROUP_MEMBERS:
             return False, (
                 f"⚠️ **BOT ACCESS ERROR!**\n\n"
-                f"ဘော့ကို အသုံးပြုရန်အတွက် Group တွင် အနည်းဆုံး လူ **{MIN_GROUP_MEMBERS}** ယောက် ရှိရပါမည်။ (လက်ရှိ: {member_count} ယောက်)"
+                f"ဘော့ကို အသုံးပြုရန် Group တွင် အနည်းဆုံး လူ **{MIN_GROUP_MEMBERS}** ယောက် ရှိရပါမည်။ (လက်ရှိ: {member_count} ယောက်)"
             )
     except Exception:
         pass
