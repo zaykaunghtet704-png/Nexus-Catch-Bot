@@ -30,9 +30,11 @@ class User(Base):
     shards = Column(Integer, default=0)
     exp = Column(Integer, default=0)
     level = Column(Integer, default=1)
+    fav_card_uuid = Column(String, nullable=True)
     is_banned = Column(Boolean, default=False)
     ban_reason = Column(String, nullable=True)
     last_daily = Column(DateTime, nullable=True)
+    last_grab = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     cards = relationship(
@@ -44,8 +46,6 @@ class AdminRole(Base):
     __tablename__ = "admin_roles"
     user_id = Column(String, primary_key=True)
     role = Column(String, default="Admin")
-    added_by = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class BotConfig(Base):
@@ -66,7 +66,7 @@ class CardBase(Base):
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
     anime = Column(String, default="General")
-    rarity = Column(String, default="⚪ Common")
+    rarity = Column(String, default="⚪ Tier 1") # Tier 1 မှ Tier 10 အထိ
     element = Column(String, default="🔥 Fire")
     base_power = Column(Integer, default=1000)
     image_url = Column(String, nullable=False)
