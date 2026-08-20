@@ -19,5 +19,6 @@ REQUIRED_CHANNEL_ID = "-1000987654321"
 # Bot ကို Group ထဲ Add လျှင် Notification တက်မည့် Log Channel ID
 LOG_CHANNEL_ID = "-1001234567890"
 
-MY_WAIFU_URL = "https://t.me/your_waifu_bot"
+# Bot Username ပြောင်းပါ (PM ထဲတွင် /harem ကို တိုက်ရိုက် ပွင့်စေရန်)
+MY_WAIFU_URL = "https://t.me/NexusCatchBot?start=harem"
 START_IMAGE_URL = "https://picsum.photos/800/400"
