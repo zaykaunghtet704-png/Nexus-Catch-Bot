@@ -38,7 +38,10 @@ from user_system import (
     harem_cmd,
     help_callback,
     help_cmd,
+    hmode_callback,
+    hmode_cmd,
     profile_cmd,
+    reset_cmd,
     search_cmd,
     sellprice_cmd,
     setlang_cmd,
@@ -157,6 +160,7 @@ if __name__ == "__main__":
 
     bot.add_handler(CallbackQueryHandler(join_check_callback, pattern="^check_join_harem$"))
     bot.add_handler(CallbackQueryHandler(harem_callback, pattern="^harem_"))
+    bot.add_handler(CallbackQueryHandler(hmode_callback, pattern="^set_hmode_"))
     bot.add_handler(CallbackQueryHandler(help_callback, pattern="^help_"))
     bot.add_handler(ChatMemberHandler(track_group_addition, ChatMemberHandler.MY_CHAT_MEMBER))
 
@@ -164,6 +168,8 @@ if __name__ == "__main__":
     bot.add_handler(CommandHandler("start", start_cmd))
     bot.add_handler(CommandHandler("help", help_cmd))
     bot.add_handler(CommandHandler("harem", harem_cmd))
+    bot.add_handler(CommandHandler("hmode", hmode_cmd))
+    bot.add_handler(CommandHandler("reset", reset_cmd))
     bot.add_handler(CommandHandler("search", search_cmd))
     bot.add_handler(CommandHandler("profile", profile_cmd))
     bot.add_handler(CommandHandler("top", top_cmd))
