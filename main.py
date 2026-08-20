@@ -1,37 +1,47 @@
 import random
 from threading import Thread
 from admin_system import (
+    addadmin_cmd,
     addcard_cmd,
-    admin_callback_handler,
-    adminpanel_cmd,
+    allow_group_cmd,
+    changetime_cmd,
     givecards_cmd,
     givecoins_cmd,
-    is_admin,
-    setspawn_cmd,
-    usercards_cmd,
+    track_group_addition,
+    verify_group_eligibility,
 )
 from config import BOT_TOKEN, DEFAULT_SPAWN_THRESHOLD, PORT
 from flask import Flask
+from market_system import buy_cmd, delist_cmd, gift_cmd, market_cmd, sell_cmd, trade_cmd
 from models import CardBase, ChatSettings, SessionLocal, User, UserCard
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
+    ChatMemberHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
 from user_system import (
+    balance_cmd,
+    check_cmd,
+    check_force_join,
+    claim_cmd,
+    ctop_cmd,
     daily_cmd,
-    disassemble_cmd,
     duel_cmd,
     fav_cmd,
-    fuse_cmd,
-    grab_cmd,
     harem_cmd,
-    hmode_cmd,
+    help_cmd,
     profile_cmd,
+    search_cmd,
+    sellprice_cmd,
+    start_cmd,
+    today_nexus_catch_cmd,
+    top_cmd,
+    unfav_cmd,
     upgrade_cmd,
 )
 
@@ -50,34 +60,24 @@ def run_web():
 active_spawns = {}
 
 
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "✨ **MEGA 10-TIER BOT ACTIVE!**\nCommands စာရင်းကြည့်ရန် `/hmode` သို့မဟုတ် `/profile` သုံးပါ",
-        parse_mode="Markdown",
-    )
-
-
 async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if (
-        not update.message
-        or not update.message.text
-        or update.message.text.startswith("/")
-    ):
+    if not update.message or not update.message.text or update.message.text.startswith("/"):
         return
-    chat_id = str(update.effective_chat.id)
+
+    chat = update.effective_chat
+    if chat.type == "private":
+        return
+
+    is_eligible, err_msg = await verify_group_eligibility(update, context)
+    if not is_eligible:
+        return
+
+    chat_id = str(chat.id)
     session = SessionLocal()
     try:
-        setting = (
-            session.query(ChatSettings)
-            .filter(ChatSettings.chat_id == chat_id)
-            .first()
-        )
+        setting = session.query(ChatSettings).filter(ChatSettings.chat_id == chat_id).first()
         if not setting:
-            setting = ChatSettings(
-                chat_id=chat_id,
-                spawn_threshold=DEFAULT_SPAWN_THRESHOLD,
-                current_msg_count=1,
-            )
+            setting = ChatSettings(chat_id=chat_id, spawn_threshold=DEFAULT_SPAWN_THRESHOLD, current_msg_count=1)
             session.add(setting)
         else:
             setting.current_msg_count += 1
@@ -88,23 +88,25 @@ async def handle_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if cards:
                 selected = random.choice(cards)
                 active_spawns[chat_id] = selected.name.lower()
-                caption = f"⚡ **A WILD CARD SPAWNED!**\n\n🌟 Rarity: **{selected.rarity}**\n`/catch <name>` ဖြင့် ဖမ်းယူပါ!"
-                await context.bot.send_photo(
-                    chat_id=int(chat_id),
-                    photo=selected.image_url,
-                    caption=caption,
-                    parse_mode="Markdown",
-                )
+                caption = f"⚡ **A WILD CARD SPAWNED!**\n\n🌟 Rarity: **{selected.rarity}**\n`/Nexus <Card_Name>` ဖြင့် ဖမ်းယူပါ!"
+                await context.bot.send_photo(chat_id=int(chat_id), photo=selected.image_url, caption=caption, parse_mode="Markdown")
 
         session.commit()
     finally:
         session.close()
 
 
-async def catch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = str(update.effective_chat.id)
+async def nexus_catch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+
+    if chat.type != "private":
+        is_eligible, err_msg = await verify_group_eligibility(update, context)
+        if not is_eligible:
+            await update.message.reply_text(err_msg, parse_mode="Markdown")
+            return
+
+    chat_id = str(chat.id)
     if chat_id not in active_spawns:
-        await update.message.reply_text("❌ ဖမ်းယူရန် Card မရှိသေးပါ။")
         return
 
     guess = " ".join(context.args).strip().lower()
@@ -120,19 +122,10 @@ async def catch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user = User(id=uid, first_name=update.effective_user.first_name)
                 session.add(user)
 
-            card = (
-                session.query(CardBase)
-                .filter(CardBase.name.ilike(correct_name))
-                .first()
-            )
+            card = session.query(CardBase).filter(CardBase.name.ilike(correct_name)).first()
             if card:
                 card.total_prints += 1
-                new_uc = UserCard(
-                    user_id=uid,
-                    card_id=card.id,
-                    print_number=card.total_prints,
-                )
-                session.add(new_uc)
+                session.add(UserCard(user_id=uid, card_id=card.id, print_number=card.total_prints, chat_id=chat_id))
                 session.commit()
                 await update.message.reply_text(
                     f"🎉 **{update.effective_user.first_name}** မှ `{card.name}` (Print #{card.total_prints}) ကို ဖမ်းယူလိုက်ပါပြီ!",
@@ -142,41 +135,64 @@ async def catch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.close()
 
 
+async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "check_join_harem":
+        is_joined = await check_force_join(query.from_user.id, context)
+        if is_joined:
+            await query.message.edit_text("✅ Join လုပ်ဆောင်မှု အောင်မြင်ပါသည်။ `/harem` command ကို ပြန်လည် ရိုက်နှိပ်ပါ။")
+        else:
+            await query.answer("❌ Link 2 ခုလုံးကို Join ရန် လိုအပ်သေးသည်!", show_alert=True)
+
+
 if __name__ == "__main__":
     Thread(target=run_web).start()
     bot = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Gameplay & Collection Commands
-    bot.add_handler(CommandHandler("start", start_cmd))
-    bot.add_handler(CommandHandler("hmode", hmode_cmd))
-    bot.add_handler(CommandHandler("profile", profile_cmd))
-    bot.add_handler(CommandHandler("grab", grab_cmd))
-    bot.add_handler(CommandHandler("claim", grab_cmd))
-    bot.add_handler(CommandHandler("harem", harem_cmd))
-    bot.add_handler(CommandHandler("fav", fav_cmd))
-    bot.add_handler(CommandHandler("fuse", fuse_cmd))
-    bot.add_handler(CommandHandler("upgrade", upgrade_cmd))
-    bot.add_handler(CommandHandler("duel", duel_cmd))
-    bot.add_handler(CommandHandler("disassemble", disassemble_cmd))
-    bot.add_handler(CommandHandler("daily", daily_cmd))
-    bot.add_handler(CommandHandler("catch", catch_cmd))
+    bot.add_handler(CallbackQueryHandler(join_check_callback, pattern="^check_join_harem$"))
+    bot.add_handler(ChatMemberHandler(track_group_addition, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    # Admin Control Commands
-    bot.add_handler(CommandHandler("adminpanel", adminpanel_cmd))
-    bot.add_handler(
-        CallbackQueryHandler(admin_callback_handler, pattern="^adm_")
-    )
+    # Commands Handlers
+    bot.add_handler(CommandHandler("start", start_cmd))
+    bot.add_handler(CommandHandler("help", help_cmd))
+    bot.add_handler(CommandHandler("harem", harem_cmd))
+    bot.add_handler(CommandHandler("search", search_cmd))
+    bot.add_handler(CommandHandler("profile", profile_cmd))
+    bot.add_handler(CommandHandler("top", top_cmd))
+    bot.add_handler(CommandHandler("rankings", top_cmd))
+    bot.add_handler(CommandHandler("ctop", ctop_cmd))
+    bot.add_handler(CommandHandler("daily", daily_cmd))
+    bot.add_handler(CommandHandler("balance", balance_cmd))
+    bot.add_handler(CommandHandler("sellprice", sellprice_cmd))
+    bot.add_handler(CommandHandler("claim", claim_cmd))
+    bot.add_handler(CommandHandler("check", check_cmd))
+    bot.add_handler(CommandHandler("fav", fav_cmd))
+    bot.add_handler(CommandHandler("unfav", unfav_cmd))
+    bot.add_handler(CommandHandler("todayNexusCatch", today_nexus_catch_cmd))
+    bot.add_handler(CommandHandler("duel", duel_cmd))
+    bot.add_handler(CommandHandler("upgrade", upgrade_cmd))
+    bot.add_handler(CommandHandler("Nexus", nexus_catch_cmd))
+
+    # Market Handlers
+    bot.add_handler(CommandHandler("market", market_cmd))
+    bot.add_handler(CommandHandler("sell", sell_cmd))
+    bot.add_handler(CommandHandler("buy", buy_cmd))
+    bot.add_handler(CommandHandler("delist", delist_cmd))
+    bot.add_handler(CommandHandler("trade", trade_cmd))
+    bot.add_handler(CommandHandler("gift", gift_cmd))
+
+    # Admin & Owner Handlers
     bot.add_handler(CommandHandler("addcard", addcard_cmd))
     bot.add_handler(CommandHandler("givecoins", givecoins_cmd))
-    bot.add_handler(CommandHandler("usercards", usercards_cmd))  # User card စစ်ရန်
-    bot.add_handler(
-        CommandHandler("givecards", givecards_cmd)
-    )  # Multi-cards ပေးရန်
-    bot.add_handler(CommandHandler("setspawn", setspawn_cmd))
+    bot.add_handler(CommandHandler("givecards", givecards_cmd))
+    bot.add_handler(CommandHandler("changetime", changetime_cmd))
+    bot.add_handler(CommandHandler("addadmin", addadmin_cmd))
+    bot.add_handler(CommandHandler("allow", allow_group_cmd))
 
-    bot.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spawns)
-    )
+    # Message Handler
+    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_spawns))
 
-    print("⚡ Mega 10-Tier Bot Active!")
+    print("⚡ Bot Activated Successfully!")
     bot.run_polling()
