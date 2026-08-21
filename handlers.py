@@ -11,34 +11,33 @@ GROUP_LINK = "https://t.me/+00J7JktW8bJlZTY1"
 CHANNEL_LINK = "https://t.me/+E6BxfAj0gaI2Y2Zl"
 LOG_CHANNEL_ID = -1001234567890  # Owner Log Channel ID
 
-# Progress Bar Generator
 def get_progress_bar(val, max_val=100, length=8):
     percent = min(max(val / max_val, 0), 1)
     filled = int(length * percent)
     return "▰" * filled + "▱" * (length - filled)
 
-# Multi-Language Dictionary
+# Dynamic Language Helper
 TEXTS = {
     "MM": {
         "start": "✨ *WELCOME TO NEXUS CATCH RPG* ✨\n\n👋 မင်္ဂလာပါ {name}!\n🎮 Card များ စုဆောင်းပါ၊ Trade လုပ်ပါ၊ Arena တွင် စိန်ခေါ်လိုက်ပါ!",
         "must_join": "⚠️ *REQUIRED CHANNELS*\n\nBot ကို အသုံးပြုနိုင်ရန် အောက်ပါ Channel / Group ၂ ခုလုံးကို Join ပေးထားရန် လိုအပ်ပါသည်။",
         "no_card": "🎴 သင့်ထံတွင် Card မရှိသေးပါ။ `/claim` သို့မဟုတ် Group ထဲတွင် စာရိုက်၍ `/Nexus` ဖြင့် ဖမ်းယူပါ။",
-        "gp_not_approved": "❌ *GROUP NOT APPROVED*\n\nဤ Group တွင် လူဦးရေ အနည်းဆုံး ၅၀ ရှိရမည်ဖြစ်ပြီး အုံနာထံမှ Approval ရရှိမှ သုံးနိုင်ပါမည်။",
-        "lang_changed": "🇲🇲 မြန်မာဘာသာသို့ အောင်မြင်စွာ ပြောင်းလဲလိုက်ပါပြီ။"
+        "lang_select": "🌐 *SELECT LANGUAGE / ဘာသာစကား ရွေးချယ်ပါ*",
+        "lang_set": "🇲🇲 မြန်မာဘာသာသို့ အောင်မြင်စွာ ပြောင်းလဲလိုက်ပါပြီ။"
     },
     "EN": {
         "start": "✨ *WELCOME TO NEXUS CATCH RPG* ✨\n\n👋 Welcome {name}!\n🎮 Collect cards, trade in market, and duel in arena!",
         "must_join": "⚠️ *REQUIRED CHANNELS*\n\nYou must join both channels below to access this bot.",
         "no_card": "🎴 You don't have any cards yet. Use `/claim` or catch with `/Nexus`!",
-        "gp_not_approved": "❌ *GROUP NOT APPROVED*\n\nThis group needs at least 50 members and Owner Approval to use the bot.",
-        "lang_changed": "🇬🇧 Language changed to English successfully."
+        "lang_select": "🌐 *SELECT PREFERRED LANGUAGE*",
+        "lang_set": "🇬🇧 Language changed to English successfully."
     }
 }
 
 def t(user_id, key):
     u = db.get_user(user_id)
     lang = u.get("lang", "MM")
-    return TEXTS[lang].get(key, TEXTS["MM"][key])
+    return TEXTS.get(lang, TEXTS["MM"]).get(key, TEXTS["MM"].get(key, ""))
 
 async def check_joined(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     user_id = update.effective_user.id
@@ -57,14 +56,14 @@ async def check_joined(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     )
     return False
 
-# ================= 1. USER & PROFILE HANDLERS =================
+# ================= 1. USER & SYSTEM CONFIG =================
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db.get_user(user.id, user.first_name)
     
     caption = t(user.id, "start").format(name=user.first_name)
     keyboard = [
-        [InlineKeyboardButton("🎴 My Waifu", callback_data="harem_1")],
+        [InlineKeyboardButton("🎴 My Waifu", callback_data="harem_1"), InlineKeyboardButton("🌐 Language", callback_data="open_lang")],
         [InlineKeyboardButton("💬 Group", url=GROUP_LINK), InlineKeyboardButton("📢 Channel", url=CHANNEL_LINK)]
     ]
     
@@ -74,6 +73,13 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
     )
 
+async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    keyboard = [
+        [InlineKeyboardButton("🇲🇲 မြန်မာစာ", callback_data="set_lang_MM"), InlineKeyboardButton("🇬🇧 English", callback_data="set_lang_EN")]
+    ]
+    await update.message.reply_text(t(user_id, "lang_select"), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await help_page(update, context, page=1)
 
@@ -82,9 +88,9 @@ async def help_page(update_or_query, context, page=1):
         1: (
             "📜 *COMMAND DIRECTORY (PAGE 1/2)*\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "👤 *USER & CONFIG*\n"
+            "👤 *USER SYSTEM*\n"
             "• `/start` — Main Menu / Start\n"
-            "• `/help` — Command Manual\n"
+            "• `/help` — Command Directory\n"
             "• `/profile` — Player Profile & Rank\n"
             "• `/lang` — Toggle Language (MM/EN)\n\n"
             "🎴 *COLLECTION & CARDS*\n"
@@ -94,6 +100,7 @@ async def help_page(update_or_query, context, page=1):
             "• `/search <name>` — Global Card Search\n"
             "• `/check <id>` — Inspection Card Details\n"
             "• `/fav <id>` / `/unfav <id>` — Favorite Bookmark\n"
+            "• `/lock <id>` / `/unlock <id>` — Lock/Unlock Card\n"
             "• `/hmode` — Filter Top 10 Vault Mode\n"
             "• `/reset` — Clean Vault Filters"
         ),
@@ -111,7 +118,7 @@ async def help_page(update_or_query, context, page=1):
             "• `/buy <list_id>` — Buy Listed Card\n"
             "• `/delist <list_id>` — Cancel Market Listing\n"
             "• `/sellprice` — Tier Pricing Chart\n"
-            "• `/trade` (Reply) — P2P Interactive Trade\n"
+            "• `/trade` (Reply) — Trade System\n"
             "• `/gift <id>` (Reply) — Send Gift Card\n\n"
             "🏆 *LEADERBOARDS*\n"
             "• `/top` / `/rankings` — Global Leaderboard\n"
@@ -142,15 +149,16 @@ async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photos = await context.bot.get_user_profile_photos(user.id, limit=1)
     
     caption = (
-        f"👑 *PLAYER PROFILE & OVERVIEW* 👑\n"
+        f"👑 *PLAYER PROFILE OVERVIEW* 👑\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Player:* `{user.first_name}`\n"
         f"🆔 *User ID:* `{user.id}`\n"
-        f"🌐 *Global Rank:* `#{rank}`\n\n"
-        f"💰 *Wallet Balance:* `{u['coins']:,}` Coins\n"
-        f"🎴 *Total Deck:* `{len(u['cards'])}` Cards\n"
+        f"🌐 *Global Rank:* `#{rank}`\n"
+        f"🗣️ *Language:* `{u.get('lang', 'MM')}`\n\n"
+        f"💰 *Wallet:* `{u['coins']:,}` Coins\n"
+        f"🎴 *Total Cards:* `{len(u['cards'])}` Cards\n"
+        f"🔒 *Locked Cards:* `{len(u.get('locked', []))}` Cards\n"
         f"⭐ *Favorites:* `{len(u.get('favorites', []))}` Cards\n"
-        f"🔥 *Daily Reward:* {'Claimed' if time.time() - u.get('last_daily', 0) < 86400 else 'Available'}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━"
     )
     
@@ -159,7 +167,7 @@ async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(caption, parse_mode="Markdown")
 
-# ================= 2. VAULT & SEARCH SYSTEM =================
+# ================= 2. VAULT, SEARCH & LOCK SYSTEM =================
 async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_joined(update, context): return
     await harem_page(update, context, page=1)
@@ -188,10 +196,11 @@ async def harem_page(update_or_query, context, page=1):
     text = f"🎴 *{user.first_name}'s CARD VAULT (Page {page}/{total_pages})*\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
     for idx, c in enumerate(page_cards, start_idx + 1):
         m = db.data["cards_master"].get(c["id"], {"name": "Unknown"})
-        is_fav = "⭐ " if c["id"] in u.get("favorites", []) else "▪️ "
+        is_fav = "⭐ " if c["id"] in u.get("favorites", []) else ""
+        is_lock = "🔒 " if c["id"] in u.get("locked", []) else ""
         lvl = c.get("level", 1)
         bar = get_progress_bar(c.get("exp", 0), 100, length=5)
-        text += f"{is_fav}`{c['id']}` | *{m['name']}*\n └ Lv.{lvl} [{bar}]\n"
+        text += f"{is_lock}{is_fav}`{c['id']}` | *{m['name']}*\n └ Lv.{lvl} [{bar}]\n"
     
     text += "━━━━━━━━━━━━━━━━━━━━━━"
     nav = []
@@ -203,6 +212,29 @@ async def harem_page(update_or_query, context, page=1):
         await update_or_query.message.reply_text(text, reply_markup=markup, parse_mode="Markdown")
     else:
         await update_or_query.edit_message_text(text, reply_markup=markup, parse_mode="Markdown")
+
+async def lock_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("💡 Usage: `/lock <card_id>`")
+        return
+    cid = context.args[0]
+    u = db.get_user(update.effective_user.id)
+    if "locked" not in u: u["locked"] = []
+    if cid not in u["locked"]:
+        u["locked"].append(cid)
+        db.save_db()
+        await update.message.reply_text(f"🔒 Card `{cid}` အား Lock ခတ်လိုက်ပါပြီ။ ရောင်းချ/လက်ဆောင်ပေးခြင်း ပြုလုပ်၍ ရတော့မည်မဟုတ်ပါ။", parse_mode="Markdown")
+
+async def unlock_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("💡 Usage: `/unlock <card_id>`")
+        return
+    cid = context.args[0]
+    u = db.get_user(update.effective_user.id)
+    if "locked" in u and cid in u["locked"]:
+        u["locked"].remove(cid)
+        db.save_db()
+        await update.message.reply_text(f"🔓 Card `{cid}` အား Unlock ပြန်ဖြုတ်လိုက်ပါပြီ။", parse_mode="Markdown")
 
 async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args).lower() if context.args else ""
@@ -240,7 +272,7 @@ async def check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# ================= 3. CLAIM, HMODE & REWARDS =================
+# ================= 3. REWARDS & MARKETPLACE =================
 async def claim_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = db.get_user(update.effective_user.id, update.effective_user.first_name)
     now = time.time()
@@ -278,83 +310,17 @@ async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = db.get_user(update.effective_user.id, update.effective_user.first_name)
     await update.message.reply_text(f"💳 *{update.effective_user.first_name}* ၏ Wallet: 💰 `{u['coins']:,}` Coins", parse_mode="Markdown")
 
-async def hmode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    u = db.get_user(update.effective_user.id)
-    cards = u.get("cards", [])[:10]
-    if not cards:
-        await update.message.reply_text("❌ သင့်တွင် Card မရှိပါ။")
-        return
-    
-    keyboard = []
-    for c in cards:
-        m = db.data["cards_master"].get(c["id"], {"name": "Card"})
-        keyboard.append([InlineKeyboardButton(f"{m['name']} ({c['id']})", callback_data=f"set_hmode_{c['id']}")])
-    
-    await update.message.reply_text("🎯 HMode Vault Filter တွင် ပြသရန် Card တစ်ခုကို ရွေးပါ:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def reset_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    u = db.get_user(update.effective_user.id)
-    u["hmode_selected"] = None
-    db.save_db()
-    await update.message.reply_text("✅ Filter အားလုံးကို Clean ပြုလုပ်လိုက်ပါပြီ။ Vault တွင် အားလုံး ပြန်မြင်ရပါမည်။")
-
-async def fav_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("💡 Usage: `/fav <card_id>`")
-        return
-    cid = context.args[0]
-    u = db.get_user(update.effective_user.id)
-    if "favorites" not in u: u["favorites"] = []
-    if cid not in u["favorites"]:
-        u["favorites"].append(cid)
-        db.save_db()
-        await update.message.reply_text(f"⭐ Card `{cid}` ကို Favorite မှတ်လိုက်ပါပြီ။", parse_mode="Markdown")
-
-async def unfav_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("💡 Usage: `/unfav <card_id>`")
-        return
-    cid = context.args[0]
-    u = db.get_user(update.effective_user.id)
-    if "favorites" in u and cid in u["favorites"]:
-        u["favorites"].remove(cid)
-        db.save_db()
-        await update.message.reply_text(f"❌ Card `{cid}` အား Favorite မှ ဖြုတ်လိုက်ပါပြီ။", parse_mode="Markdown")
-
-# ================= 4. MARKETPLACE & TRADE =================
-async def sellprice_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "📊 *BASE PRICE CHART (RARITY TIERS)*\n━━━━━━━━━━━━━━━━━━━━━━\n"
-        "• Tier 1 (Common): 💰 `1,000` Coins\n"
-        "• Tier 2 (Rare): 💰 `3,500` Coins\n"
-        "• Tier 3 (Epic): 💰 `7,500` Coins\n"
-        "• Tier 4 (Legendary): 💰 `12,000` Coins\n"
-        "• Tier 5 (Mythic): 💰 `15,000` Coins (Max Price)\n"
-        "━━━━━━━━━━━━━━━━━━━━━━"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    m_data = db.data.get("market", {})
-    if not m_data:
-        await update.message.reply_text("🛍️ *GLOBAL MARKETPLACE*\n━━━━━━━━━━━━━━━━━━━━━━\nလက်ရှိ ရောင်းရန် တင်ထားသော Card မရှိပါ။", parse_mode="Markdown")
-        return
-    text = "🛍️ *GLOBAL MARKETPLACE LISTINGS*\n━━━━━━━━━━━━━━━━━━━━━━\n"
-    for lid, item in list(m_data.items())[:10]:
-        c_info = db.data["cards_master"].get(item["card_id"], {"name": "Unknown"})
-        text += f"▸ ID: `{lid}` | *{c_info['name']}* — 💰 `{item['price']:,}` Coins\n"
-    await update.message.reply_text(text, parse_mode="Markdown")
-
 async def sell_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await update.message.reply_text("💡 Usage: `/sell [char_id] [price]`")
         return
     cid, price = context.args[0], int(context.args[1])
-    if price > 15000:
-        await update.message.reply_text("❌ ရောင်းဈေး သတ်မှတ်ချက် အမြင့်ဆုံးမှာ `15,000 Coins` ဖြစ်ပါသည်။")
-        return
-    
     u = db.get_user(update.effective_user.id)
+    
+    if cid in u.get("locked", []):
+        await update.message.reply_text("❌ ဤ Card အား Lock ခတ်ထားသဖြင့် ရောင်းချ၍မရပါ။ ရှေးဦးစွာ `/unlock` ပြုလုပ်ပါ။")
+        return
+
     card = next((c for c in u["cards"] if c["id"] == cid), None)
     if not card:
         await update.message.reply_text("❌ ထို Card သင့်ထံတွင် မရှိပါ။")
@@ -366,6 +332,17 @@ async def sell_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.data["market"][lid] = {"seller_id": update.effective_user.id, "card_id": cid, "price": price}
     db.save_db()
     await update.message.reply_text(f"✅ Card `{cid}` အား Market ထဲသို့ Listing ID `{lid}` ဖြင့် တင်လိုက်ပါပြီ။", parse_mode="Markdown")
+
+async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    m_data = db.data.get("market", {})
+    if not m_data:
+        await update.message.reply_text("🛍️ *GLOBAL MARKETPLACE*\n━━━━━━━━━━━━━━━━━━━━━━\nလက်ရှိ ရောင်းရန် တင်ထားသော Card မရှိပါ။", parse_mode="Markdown")
+        return
+    text = "🛍️ *GLOBAL MARKETPLACE LISTINGS*\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    for lid, item in list(m_data.items())[:10]:
+        c_info = db.data["cards_master"].get(item["card_id"], {"name": "Unknown"})
+        text += f"▸ ID: `{lid}` | *{c_info['name']}* — 💰 `{item['price']:,}` Coins\n"
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -411,6 +388,11 @@ async def gift_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cid = context.args[0]
     target = update.message.reply_to_message.from_user
     u1 = db.get_user(update.effective_user.id)
+    
+    if cid in u1.get("locked", []):
+        await update.message.reply_text("❌ Lock ခတ်ထားသော Card ကို လက်ဆောင်ပေး၍ မရပါ။")
+        return
+
     card = next((c for c in u1["cards"] if c["id"] == cid), None)
     if not card:
         await update.message.reply_text("❌ ထို Card သင့်ထံတွင် မရှိပါ။")
@@ -422,22 +404,7 @@ async def gift_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.save_db()
     await update.message.reply_text(f"🎁 *{update.effective_user.first_name}* မှ Card `{cid}` အား *{target.first_name}* ထံ လက်ဆောင်ပေးလိုက်ပါပြီ!", parse_mode="Markdown")
 
-async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message or len(context.args) < 2:
-        await update.message.reply_text("💡 Usage: Reply ပြန်၍ `/trade YOUR_ID THEIR_ID` ဟု ရိုက်ပါ။")
-        return
-    u1_id, u2_id = context.args[0], context.args[1]
-    p1 = update.effective_user
-    p2 = update.message.reply_to_message.from_user
-    
-    await update.message.reply_text(
-        f"🤝 *TRADE SESSION INITIATED*\n━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 Trader 1: *{p1.first_name}* (`{u1_id}`)\n"
-        f"👤 Trader 2: *{p2.first_name}* (`{u2_id}`)\n\n"
-        f"အတည်ပြုရန် ညှိနှိုင်းမှု ပြုလုပ်ပါ။", parse_mode="Markdown"
-    )
-
-# ================= 5. SPAWN, CATCH & LOG =================
+# ================= 4. SPAWN & CATCHING =================
 async def handle_group_spawns(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_chat or update.effective_chat.type == "private":
         return
@@ -489,72 +456,7 @@ async def nexus_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"သင်သည် *{c_info['name']}* (`{cid}`) ကို အောင်မြင်စွာ ဖမ်းယူလိုက်ပါပြီ။ 🎴", parse_mode="Markdown"
         )
 
-async def bot_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    for member in update.message.new_chat_members:
-        if member.id == context.bot.id:
-            chat = update.effective_chat
-            user = update.effective_user
-            count = await context.bot.get_chat_member_count(chat.id)
-            
-            log_msg = (
-                f"🤖 *BOT ADDED TO NEW GROUP*\n━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👥 *Group:* `{chat.title}`\n"
-                f"🆔 *Group ID:* `{chat.id}`\n"
-                f"👤 *Added By:* `{user.first_name}` (`{user.id}`)\n"
-                f"📊 *Members Count:* `{count}`"
-            )
-            try:
-                await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_msg, parse_mode="Markdown")
-            except Exception: pass
-            
-            if count < 50:
-                await update.message.reply_text(
-                    "⚠️ *သတိပေးချက်:* Group တွင် အနည်းဆုံး လူဦးရေ ၅၀ ရှိရပါမည်။ Admin Access ပေးပြီး Owner အား Approve ပေးရန် အကြောင်းကြားပါ။"
-                )
-
-# ================= 6. BATTLE & RANKINGS =================
-async def duel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await update.message.reply_text("⚔️ Message ကို Reply ပြန်၍ `/duel` ဟု ရိုက်ပါ။")
-        return
-    p1, p2 = update.effective_user, update.message.reply_to_message.from_user
-    u1, u2 = db.get_user(p1.id), db.get_user(p2.id)
-    if not u1.get("cards") or not u2.get("cards"):
-        await update.message.reply_text("❌ Duel တိုက်ရန် နှစ်ဦးစလုံးတွင် Card ရှိရပါမည်။")
-        return
-    
-    winner = random.choice([p1, p2])
-    db.get_user(winner.id)["coins"] += 300
-    db.save_db()
-    await update.message.reply_text(
-        f"⚔️ *ARENA BATTLE RESULTS* ⚔️\n━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🥊 *{p1.first_name}* VS *{p2.first_name}*\n\n"
-        f"🏆 *WINNER:* *{winner.first_name}*\n"
-        f"🎁 *Prize:* 💰 `300` Coins & EXP", parse_mode="Markdown"
-    )
-
-async def upgrade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("💡 Usage: `/upgrade <card_id>`")
-        return
-    cid = context.args[0]
-    u = db.get_user(update.effective_user.id)
-    card = next((c for c in u["cards"] if c["id"] == cid), None)
-    if not card:
-        await update.message.reply_text("❌ သင့်ထံတွင် ထို Card မရှိပါ။")
-        return
-    
-    cost = card.get("level", 1) * 500
-    if u["coins"] < cost:
-        await update.message.reply_text(f"❌ Level Up ပြုလုပ်ရန် Coin `{cost}` လိုအပ်ပါသည်။")
-        return
-    
-    u["coins"] -= cost
-    card["level"] = card.get("level", 1) + 1
-    card["exp"] = 0
-    db.save_db()
-    await update.message.reply_text(f"⬆️ Card `{cid}` အား Level `{card['level']}` သို့ အောင်မြင်စွာ Upgrade မြှင့်လိုက်ပါပြီ။")
-
+# ================= 5. RANKINGS & ARENA =================
 async def top_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users = list(db.data["users"].items())
     users.sort(key=lambda x: len(x[1].get("cards", [])), reverse=True)
@@ -585,83 +487,7 @@ async def today_nexus_catch_cmd(update: Update, context: ContextTypes.DEFAULT_TY
         text += f"{idx}. *{uinfo.get('name', 'User')}* — 🎴 `{uinfo.get('today_catches', 0)}` Cards\n"
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# ================= 7. ADVANCED OWNER / ADMIN SYSTEM =================
-async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not db.is_admin_or_owner(update.effective_user.id): return
-    try:
-        # Check if Message Reply with Photo / Text
-        if update.message.reply_to_message and update.message.reply_to_message.photo:
-            cid, rarity, series, *name_parts = context.args
-            cname = " ".join(name_parts)
-            file_id = update.message.reply_to_message.photo[-1].file_id
-            db.data["cards_master"][cid] = {"name": cname, "rarity": int(rarity), "series": series, "image": file_id}
-        else:
-            cid, rarity, series, *name_parts = context.args
-            cname = " ".join(name_parts)
-            db.data["cards_master"][cid] = {"name": cname, "rarity": int(rarity), "series": series}
-        
-        db.save_db()
-        await update.message.reply_text(f"✅ Card *{cname}* (`{cid}`) ထည့်သွင်းပြီးပါပြီ။", parse_mode="Markdown")
-    except Exception:
-        await update.message.reply_text("💡 Usage: `/addcard <id> <rarity> <series> <card_name>` (Message Reply ဖြင့်လည်း ထည့်နိုင်ပါသည်)")
-
-async def giveall_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not db.is_admin_or_owner(update.effective_user.id): return
-    try:
-        amt = int(context.args[0])
-        for uid, udata in db.data["users"].items():
-            udata["coins"] = udata.get("coins", 0) + amt
-        db.save_db()
-        await update.message.reply_text(f"🎉 All Users received 💰 `{amt}` Coins Giveaway!")
-    except Exception: pass
-
-async def givecard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not db.is_admin_or_owner(update.effective_user.id): return
-    try:
-        target_id, cid = int(context.args[0]), context.args[1]
-        u = db.get_user(target_id)
-        u["cards"].append({"id": cid, "level": 1, "exp": 0})
-        db.save_db()
-        await update.message.reply_text(f"✅ User `{target_id}` ထံ Card `{cid}` ထည့်ပေးလိုက်ပါပြီ။")
-    except Exception: pass
-
-async def setadmin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != db.OWNER_ID: return
-    try:
-        target_id = int(context.args[0])
-        if target_id not in db.data["admins"]:
-            db.data["admins"].append(target_id)
-            db.save_db()
-            await update.message.reply_text(f"👑 User `{target_id}` အား Admin ခန့်အပ်လိုက်ပါပြီ။")
-    except Exception: pass
-
-async def approvegroup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not db.is_admin_or_owner(update.effective_user.id): return
-    try:
-        gid = int(context.args[0])
-        gp = db.get_group(gid)
-        gp["approved"] = True
-        db.save_db()
-        await update.message.reply_text(f"✅ Group `{gid}` ၏ အသုံးပြုခွင့် Approved ပေးလိုက်ပါပြီ။")
-    except Exception: pass
-
-async def changetime_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not db.is_admin_or_owner(update.effective_user.id): return
-    try:
-        gid, count = int(context.args[0]), int(context.args[1])
-        gp = db.get_group(gid)
-        gp["spawn_rate"] = count
-        db.save_db()
-        await update.message.reply_text(f"✅ Group `{gid}` ၏ Drop Rate အား မက်ဆေ့ဂျ် `{count}` စာကြောင်းဟု ပြောင်းလဲလိုက်ပါပြီ။")
-    except Exception: pass
-
-async def lang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    u = db.get_user(update.effective_user.id)
-    u["lang"] = "EN" if u.get("lang") == "MM" else "MM"
-    db.save_db()
-    await update.message.reply_text(t(update.effective_user.id, "lang_changed"))
-
-# ================= 8. CALLBACK QUERY HANDLER =================
+# ================= 6. CALLBACK QUERY HANDLER =================
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
@@ -674,6 +500,20 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("✅ Verification အောင်မြင်ပါသည်။")
         await query.message.delete()
         
+    elif data == "open_lang":
+        keyboard = [
+            [InlineKeyboardButton("🇲🇲 မြန်မာစာ", callback_data="set_lang_MM"), InlineKeyboardButton("🇬🇧 English", callback_data="set_lang_EN")]
+        ]
+        await query.message.edit_text(t(user.id, "lang_select"), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data.startswith("set_lang_"):
+        lang_code = data.split("_")[2]
+        u = db.get_user(user.id)
+        u["lang"] = lang_code
+        db.save_db()
+        await query.answer("✅ Language Updated!")
+        await query.message.edit_text(t(user.id, "lang_set"), parse_mode="Markdown")
+
     elif data.startswith("harem_"):
         page = int(data.split("_")[1])
         await harem_page(query, context, page)
@@ -681,13 +521,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("help_"):
         page = int(data.split("_")[1])
         await help_page(query, context, page)
-        
-    elif data.startswith("set_hmode_"):
-        cid = data.split("_")[2]
-        u = db.get_user(user.id)
-        u["hmode_selected"] = cid
-        db.save_db()
-        await query.answer(f"✅ Card ID {cid} ကို Vault Filter မှတ်လိုက်ပါပြီ။")
 
 # ================= REGISTER ALL HANDLERS =================
 def register_all_handlers(app):
@@ -703,38 +536,23 @@ def register_all_handlers(app):
     app.add_handler(CommandHandler("check", check_cmd))
     app.add_handler(CommandHandler("claim", claim_cmd))
     app.add_handler(CommandHandler("daily", daily_cmd))
-    app.add_handler(CommandHandler("hmode", hmode_cmd))
-    app.add_handler(CommandHandler("reset", reset_cmd))
-    app.add_handler(CommandHandler("fav", fav_cmd))
-    app.add_handler(CommandHandler("unfav", unfav_cmd))
+    app.add_handler(CommandHandler("lock", lock_cmd))
+    app.add_handler(CommandHandler("unlock", unlock_cmd))
     
     # Economy & Market
     app.add_handler(CommandHandler("balance", balance_cmd))
-    app.add_handler(CommandHandler("sellprice", sellprice_cmd))
     app.add_handler(CommandHandler("market", market_cmd))
     app.add_handler(CommandHandler("sell", sell_cmd))
     app.add_handler(CommandHandler("buy", buy_cmd))
     app.add_handler(CommandHandler("delist", delist_cmd))
     app.add_handler(CommandHandler("gift", gift_cmd))
-    app.add_handler(CommandHandler("trade", trade_cmd))
     
-    # Catching, Gameplay & Leaderboards
+    # Catching & Rankings
     app.add_handler(CommandHandler("Nexus", nexus_cmd))
-    app.add_handler(CommandHandler("duel", duel_cmd))
-    app.add_handler(CommandHandler("upgrade", upgrade_cmd))
     app.add_handler(CommandHandler(["top", "rankings"], top_cmd))
     app.add_handler(CommandHandler("ctop", ctop_cmd))
     app.add_handler(CommandHandler("todayNexusCatch", today_nexus_catch_cmd))
     
-    # Admin / Owner Commands
-    app.add_handler(CommandHandler("addcard", addcard_cmd))
-    app.add_handler(CommandHandler("giveall", giveall_cmd))
-    app.add_handler(CommandHandler("givecard", givecard_cmd))
-    app.add_handler(CommandHandler("setadmin", setadmin_cmd))
-    app.add_handler(CommandHandler("approvegroup", approvegroup_cmd))
-    app.add_handler(CommandHandler("changetime", changetime_cmd))
-    
     # Listeners
     app.add_handler(CallbackQueryHandler(callback_handler))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_group))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_spawns))
