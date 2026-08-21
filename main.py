@@ -34,34 +34,19 @@ LINK_CHANNEL = "https://t.me/+E6BxfAj0gaI2Y2Zl"
 DB_FILE = "bot_database.json"
 
 RARITY_STAGES = {
-    1: {"name": "Common", "chance": 35.0, "price": 500, "color": "#808080"},
-    2: {"name": "Uncommon", "chance": 20.0, "price": 1000, "color": "#00FF00"},
-    3: {"name": "Rare", "chance": 12.0, "price": 2000, "color": "#0000FF"},
-    4: {"name": "Super Rare", "chance": 8.0, "price": 3500, "color": "#4B0082"},
-    5: {"name": "Ultra Rare", "chance": 6.0, "price": 5000, "color": "#800080"},
-    6: {"name": "Epic", "chance": 5.0, "price": 7000, "color": "#FF00FF"},
-    7: {"name": "Legendary", "chance": 4.0, "price": 9000, "color": "#FFA500"},
-    8: {"name": "Mythic", "chance": 3.0, "price": 11000, "color": "#FF4500"},
-    9: {"name": "Celestial", "chance": 2.0, "price": 13000, "color": "#00FFFF"},
-    10: {"name": "Supreme", "chance": 1.5, "price": 14000, "color": "#DC143C"},
-    11: {"name": "Exalted", "chance": 1.0, "price": 14500, "color": "#FFD700"},
-    12: {"name": "Divine", "chance": 0.4, "price": 14800, "color": "#E6E6FA"},
-    13: {"name": "Premium Edition", "chance": 0.1, "price": 15000, "color": "#RAINBOW"}
-}
-
-LANGUAGES = {
-    "MM": {
-        "WELCOME": "✨ **{name}** မင်္ဂလာပါ!\nNexus RPG Card Bot မှ ကြိုဆိုပါသည်!",
-        "NOT_APPROVED": "⚠️ ဤ Group သည် အသုံးပြုခွင့် မရသေးပါ။ Owner Approve ပြုလုပ်ပေးရန် စောင့်ဆိုင်းပါ။",
-        "NOT_ENOUGH_MEMBERS": "⚠️ ဤ Group တွင် လူ ၅၀ အနည်းဆုံး မရှိသေးပါ။ (လက်ရှိ: {count} ယောက်)",
-        "NEED_JOIN": "❌ မင်္ဂလာပါ! ဘော့ကို စတင်အသုံးပြုရန် အောက်ပါ Channel နှင့် Group များကို မဖြစ်မနေ Join ပေးပါရန်လိုအပ်ပါသည်။"
-    },
-    "EN": {
-        "WELCOME": "✨ Welcome **{name}** to Nexus RPG Card Bot!",
-        "NOT_APPROVED": "⚠️ This group is not approved yet. Please wait for owner approval.",
-        "NOT_ENOUGH_MEMBERS": "⚠️ This group requires at least 50 members. (Current: {count})",
-        "NEED_JOIN": "❌ Please join our group and channel first to use this bot!"
-    }
+    1: {"name": "Common", "price": 500},
+    2: {"name": "Uncommon", "price": 1000},
+    3: {"name": "Rare", "price": 2000},
+    4: {"name": "Super Rare", "price": 3500},
+    5: {"name": "Ultra Rare", "price": 5000},
+    6: {"name": "Epic", "price": 7000},
+    7: {"name": "Legendary", "price": 9000},
+    8: {"name": "Mythic", "price": 11000},
+    9: {"name": "Celestial", "price": 13000},
+    10: {"name": "Supreme", "price": 14000},
+    11: {"name": "Exalted", "price": 14500},
+    12: {"name": "Divine", "price": 14800},
+    13: {"name": "Premium Edition", "price": 15000}
 }
 
 # ================= DATABASE ENGINE =================
@@ -99,12 +84,11 @@ class DatabaseManager:
                 "lang": "MM",
                 "coins": 5000,
                 "cards": [
-                    {"id": "0021", "print": 1, "mint": 100, "level": 1, "frame": "Gold", "dye": "#FF0055", "font": "Gothic"}
+                    {"id": "0021", "print": 1, "mint": 100, "level": 1, "frame": "Gold", "dye": "#FF0055"}
                 ],
                 "favorites": [],
-                "hmode": "ALL",
                 "last_claim": 0,
-                "today_catches": 0
+                "last_daily": 0
             }
             self.save_db()
         return self.data["users"][uid_str]
@@ -113,9 +97,9 @@ class DatabaseManager:
         cid_str = str(chat_id)
         if cid_str not in self.data["groups"]:
             self.data["groups"][cid_str] = {
-                "spawn_rate": 85,
+                "spawn_rate": 20,
                 "msg_count": 0,
-                "approved": False,
+                "approved": True,
                 "spawned_card": None
             }
             self.save_db()
@@ -126,184 +110,141 @@ class DatabaseManager:
 
 db = DatabaseManager()
 
-# ================= CANVAS ENGINE =================
-def generate_custom_card(card_title, rarity_name, print_no, atk, def_val, hp, dye_hex="#FF0055", frame_style="Gold"):
-    width, height = 400, 600
-    image = Image.new("RGB", (width, height), color=(15, 15, 25))
-    draw = ImageDraw.Draw(image)
-
-    frame_color = (255, 215, 0) if frame_style == "Gold" else (0, 255, 255)
-
-    draw.rectangle([10, 10, width - 10, height - 10], outline=frame_color, width=6)
-    draw.rectangle([18, 18, width - 18, height - 18], outline=(50, 50, 70), width=2)
-
-    draw.text((25, 25), f"[{rarity_name.upper()}]", fill=frame_color)
-    draw.text((width - 120, 25), f"Print #{print_no:04d}", fill=(200, 200, 200))
-
-    draw.rectangle([30, 60, width - 30, 380], outline=(100, 100, 150), fill=(30, 30, 45))
-    draw.text((120, 200), "[ CHARACTER VISUAL ]", fill=(150, 150, 180))
-
-    draw.text((30, 400), f"Character: {card_title}", fill=(255, 255, 255))
-    draw.text((30, 430), f"Frame: {frame_style} | Dye: {dye_hex}", fill=dye_hex)
-    draw.text((30, 460), f"Condition: Mint 100%", fill=(0, 255, 150))
-    
-    stats_text = f"HP: {hp:,} | ATK: {atk:,} | DEF: {def_val:,}"
-    draw.text((30, 500), stats_text, fill=(255, 215, 0))
-
-    bio = io.BytesIO()
-    bio.name = 'card.png'
-    image.save(bio, 'PNG')
-    bio.seek(0)
-    return bio
-
 # ================= TELEGRAM BOT HANDLERS =================
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    u = db.get_user(user.id, user.first_name)
-    lang = u.get("lang", "MM")
-
+    db.get_user(user.id, user.first_name)
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton(" My Waifu", url=LINK_WAIFU)],
-        [InlineKeyboardButton("🌐 Group Link", url=LINK_GROUP), InlineKeyboardButton("📢 Update Channel", url=LINK_CHANNEL)]
+        [InlineKeyboardButton("🌐 Group Link", url=LINK_GROUP), InlineKeyboardButton("📢 Channel", url=LINK_CHANNEL)]
     ])
-    
-    msg = LANGUAGES[lang]["WELCOME"].format(name=user.first_name)
-    await update.message.reply_photo(
-        photo="https://picsum.photos/400/300",
-        caption=msg,
-        reply_markup=buttons,
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(f"✨ **{user.first_name}** မင်္ဂလာပါ!\nNexus RPG Card Bot မှ ကြိုဆိုပါသည်!", reply_markup=buttons, parse_mode="Markdown")
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "📖 **Nexus RPG Bot Help Directory**\n\n"
-        "**User Commands:**\n"
-        "• `/harem` - မိမိ ပိုင်ဆိုင်သော ကဒ်များ ကြည့်ရန်\n"
-        "• `/search` - Database အတွင်းရှိ ကဒ်များ ရှာရန်\n"
-        "• `/profile` - Profile နှင့် Stats များ ကြည့်ရန်\n"
+        "• `/harem` - မိမိ ကဒ်များ ကြည့်ရန်\n"
         "• `/claim` - ၁၂ နာရီ ၁ ကြိမ် အခမဲ့ ကဒ် ရယူရန်\n"
         "• `/daily` - နေ့စဉ် Coin 500 ယူရန်\n"
         "• `/balance` - လက်ကျန် Coin စစ်ရန်\n"
-        "• `/sellprice` - Rarity အလိုက် ဈေးနှုန်းများ ကြည့်ရန်\n"
-        "• `/market` / `/sell` / `/buy` - ဈေးကွက် အရောင်းအဝယ် ပြုလုပ်ရန်\n"
-        "• `/view <card_id>` - ကဒ်အသေးစိတ် ပုံရိပ်ကြည့်ရန်\n"
-        "• `/setlang` - Myanmar/English ဘာသာစကား ပြောင်းရန်"
+        "• `/search <name>` - ကဒ်များ ရှာရန်\n"
+        "• `/sellprice` - Rarity ဈေးနှုန်းများ\n"
+        "• `/market` / `/sell` / `/buy` - ဈေးကွက် အရောင်းအဝယ်\n"
+        "• `/view <card_id>` - ကဒ် ပုံရိပ် ကြည့်ရန်"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
 async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     u = db.get_user(user.id, user.first_name)
-    
     cards = u["cards"]
     text = f"🎴 **{user.first_name}'s Collection ({len(cards)} Cards):**\n\n"
     for idx, c in enumerate(cards, 1):
         m_card = db.data["cards_master"].get(c["id"], {"name": "Unknown"})
-        text += f"{idx}. ID: `{c['id']}` | **{m_card['name']}** | Mint: {c.get('mint', 100)}%\n"
-
+        text += f"{idx}. ID: `{c['id']}` | **{m_card['name']}**\n"
     await update.message.reply_text(text, parse_mode="Markdown")
 
-async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    u = db.get_user(user.id, user.first_name)
-    
-    photos = await user.get_profile_photos(limit=1)
-    caption = (
-        f"👤 **{user.first_name}'s Profile**\n\n"
-        f"💰 Coins: `{u['coins']:,}`\n"
-        f"🎴 Total Cards: `{len(u['cards'])}`\n"
-        f"⭐ Favorites: `{len(u['favorites'])}`\n"
-        f"🏆 Global Rank: `#1`"
-    )
-    if photos.photos:
-        await update.message.reply_photo(photo=photos.photos[0][-1].file_id, caption=caption, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(caption, parse_mode="Markdown")
+async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = db.get_user(update.effective_user.id, update.effective_user.first_name)
+    await update.message.reply_text(f"💰 **{update.effective_user.first_name}** ၏ လက်ကျန်ငွေ: `{u['coins']:,}` Coins", parse_mode="Markdown")
 
-async def view_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Usage: `/view <card_id>`", parse_mode="Markdown")
+async def daily_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = db.get_user(update.effective_user.id, update.effective_user.first_name)
+    now = time.time()
+    if now - u.get("last_daily", 0) < 86400:
+        await update.message.reply_text("⏱️ နေ့စဉ် ဆုကြေးကို ၂၄ နာရီမှ ၁ ကြိမ်သာ ယူနိုင်ပါသည်။")
         return
-    
-    cid = context.args[0]
-    m_card = db.data["cards_master"].get(cid)
-    if not m_card:
-        await update.message.reply_text("❌ Card ID မတွေ့ရှိပါ။")
-        return
-
-    img_io = generate_custom_card(
-        card_title=m_card["name"],
-        rarity_name=RARITY_STAGES[m_card["rarity"]]["name"],
-        print_no=1,
-        atk=m_card["atk"],
-        def_val=m_card["def"],
-        hp=m_card["hp"],
-        dye_hex="#00FFFF",
-        frame_style="Gold"
-    )
-    await update.message.reply_photo(photo=img_io, caption=f"✨ **{m_card['name']}** (ID: `{cid}`)", parse_mode="Markdown")
-
-async def setlang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    u = db.get_user(update.effective_user.id)
-    u["lang"] = "EN" if u["lang"] == "MM" else "MM"
+    u["coins"] += 500
+    u["last_daily"] = now
     db.save_db()
-    await update.message.reply_text(f"✅ Language changed to: **{u['lang']}**")
+    await update.message.reply_text("🎉 Daily Bonus 💰 500 Coins ရရှိပါသည်!")
 
-# Group Management & Event Listeners
-async def on_bot_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    added_by = update.effective_user
-    members_count = await chat.get_member_count()
+async def claim_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = db.get_user(update.effective_user.id, update.effective_user.first_name)
+    now = time.time()
+    if now - u.get("last_claim", 0) < 43200:
+        await update.message.reply_text("⏱️ Claim ကို ၁၂ နာရီလျှင် ၁ ကြိမ်သာ ပြုလုပ်နိုင်ပါသည်။")
+        return
+    card_ids = list(db.data["cards_master"].keys())
+    if not card_ids:
+        await update.message.reply_text("❌ Database တွင် ကဒ်များ မရှိသေးပါ။")
+        return
+    got_id = random.choice(card_ids)
+    u["cards"].append({"id": got_id, "print": 1, "mint": 100})
+    u["last_claim"] = now
+    db.save_db()
+    card_info = db.data["cards_master"][got_id]
+    await update.message.reply_text(f"🎁 **Claim အောင်မြင်ပါသည်။**\n\nသင်ရရှိသော ကဒ်: **{card_info['name']}** (ID: `{got_id}`)", parse_mode="Markdown")
+
+async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: `/search <card_name>`", parse_mode="Markdown")
+        return
+    query = " ".join(context.args).lower()
+    results = []
+    for cid, info in db.data["cards_master"].items():
+        if query in info["name"].lower():
+            results.append(f"• ID: `{cid}` | **{info['name']}**")
+    if results:
+        await update.message.reply_text("🔍 **ရှာဖွေတွေ့ရှိသော ကဒ်များ:**\n\n" + "\n".join(results), parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ မည်သည့် ကဒ်မျှ ရှာမတွေ့ပါ။")
+
+async def sellprice_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = "📊 **Rarity အလိုက် ရောင်းဈေး သတ်မှတ်ချက်များ:**\n\n"
+    for r, info in RARITY_STAGES.items():
+        text += f"• Level {r} ({info['name']}): `{info['price']:,}` Coins\n"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    m = db.data["market"]
+    if not m:
+        await update.message.reply_text("🛒 **Market တွင် ရောင်းရန် တင်ထားသော ကဒ် မရှိသေးပါ။**")
+        return
+    text = "🛒 **Market List:**\n\n"
+    for listing_id, item in m.items():
+        cinfo = db.data["cards_master"].get(item["card_id"], {"name": "Unknown"})
+        text += f"• ID: `{listing_id}` | **{cinfo['name']}** | Price: `{item['price']:,}` Coins\n"
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+async def sell_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: `/sell <card_id> <price>`", parse_mode="Markdown")
+        return
+    cid, price = context.args[0], int(context.args[1])
+    u = db.get_user(update.effective_user.id)
+    user_card = next((c for c in u["cards"] if c["id"] == cid), None)
+    if not user_card:
+        await update.message.reply_text("❌ ထို ကဒ် သင့်ထံတွင် မရှိပါ။")
+        return
+    u["cards"].remove(user_card)
+    listing_id = str(random.randint(1000, 9999))
+    db.data["market"][listing_id] = {"seller_id": update.effective_user.id, "card_id": cid, "price": price}
+    db.save_db()
+    await update.message.reply_text(f"✅ Card `{cid}` အား Market တွင် Listing ID `{listing_id}` ဖြင့် ရောင်းရန် တင်လိုက်ပါပြီ။", parse_mode="Markdown")
+
+async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: `/buy <listing_id>`", parse_mode="Markdown")
+        return
+    lid = context.args[0]
+    item = db.data["market"].get(lid)
+    if not item:
+        await update.message.reply_text("❌ Listing ID မှားယွင်းနေပါသည်။")
+        return
+    u = db.get_user(update.effective_user.id)
+    if u["coins"] < item["price"]:
+        await update.message.reply_text("❌ လက်ကျန် Coin မလုံလောက်ပါ။")
+        return
+    u["coins"] -= item["price"]
+    u["cards"].append({"id": item["card_id"], "print": 1, "mint": 100})
     
-    log_msg = (
-        f"🤖 **Bot Added to New Group!**\n\n"
-        f"🌐 **Group:** `{chat.title}` (ID: `{chat.id}`)\n"
-        f"👥 **Members:** `{members_count}`\n"
-        f"👤 **Added By:** `{added_by.first_name}` (ID: `{added_by.id}`)"
-    )
-    try:
-        await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_msg, parse_mode="Markdown")
-    except Exception:
-        pass
+    seller = db.get_user(item["seller_id"])
+    seller["coins"] += item["price"]
+    del db.data["market"][lid]
+    db.save_db()
+    await update.message.reply_text(f"🎉 Listing `{lid}` မှ ကဒ်ကို အောင်မြင်စွာ ဝယ်ယူလိုက်ပါပြီ!", parse_mode="Markdown")
 
-    db.get_group(chat.id)
-    if members_count < 50:
-        await chat.send_message(LANGUAGES["MM"]["NOT_ENOUGH_MEMBERS"].format(count=members_count))
-        return
-
-    await chat.send_message(
-        "👋 **Nexus Bot ကို ထည့်သွင်းပေးသည့်အတွက် ကျေးဇူးတင်ပါသည်။**\n\n"
-        "⚠️ **အသုံးပြုရန် လိုအပ်ချက်များ:**\n"
-        "1. Bot အား Admin 권한 ပေးထားရပါမည်။\n"
-        "2. Owner ထံမှ Group Approve ရယူပေးပါ။"
-    )
-
-async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    if not chat or chat.type == "private":
-        return
-
-    gp = db.get_group(chat.id)
-    if not gp["approved"]:
-        return
-
-    gp["msg_count"] += 1
-    if gp["msg_count"] >= gp["spawn_rate"]:
-        gp["msg_count"] = 0
-        card_ids = list(db.data["cards_master"].keys())
-        spawned = random.choice(card_ids)
-        gp["spawned_card"] = spawned
-        db.save_db()
-        
-        card_data = db.data["cards_master"][spawned]
-        await chat.send_message(
-            f"🎴 **A New Card Has Spawned!**\n\n"
-            f"Name: **{card_data['name']}**\n"
-            f"ကဒ် ကောက်ယူရန် `/Nexus {card_data['name']}` ဟု ရိုက်ထည့်ပါ!"
-        )
-
-# Admin Commands
 async def approvegroup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not db.is_admin_or_owner(update.effective_user.id):
         return
@@ -312,31 +253,11 @@ async def approvegroup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gp = db.get_group(gid)
         gp["approved"] = True
         db.save_db()
-        await update.message.reply_text(f"✅ Group `{gid}` ကို သုံးစွဲခွင့် Approve ပေးလိုက်ပါပြီ။")
+        await update.message.reply_text(f"✅ Group `{gid}` ကို သုံးစွဲခွင့် Approve ပေးလိုက်ပါပြီ။", parse_mode="Markdown")
     except Exception:
         await update.message.reply_text("Usage: `/approvegroup <group_id>`")
 
-async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not db.is_admin_or_owner(update.effective_user.id):
-        return
-    try:
-        cid = context.args[0]
-        rarity = int(context.args[1])
-        name = " ".join(context.args[2:])
-        
-        db.data["cards_master"][cid] = {
-            "name": name,
-            "rarity": rarity,
-            "atk": rarity * 100,
-            "def": rarity * 80,
-            "hp": rarity * 200
-        }
-        db.save_db()
-        await update.message.reply_text(f"✅ Card `{cid}` - **{name}** အား Database ထဲ ထည့်သွင်းပြီးပါပြီ။")
-    except Exception:
-        await update.message.reply_text("Usage: `/addcard <id> <rarity_1_to_13> <card_name>`")
-
-# ================= FLASK SERVER FOR RENDER HEALTH CHECK =================
+# ================= FLASK SERVER =================
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -351,21 +272,21 @@ def run_flask():
 async def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Command Handlers
+    # User Commands
     app.add_handler(CommandHandler(["start", "sratr"], start_cmd))
     app.add_handler(CommandHandler(["help", "Help"], help_cmd))
     app.add_handler(CommandHandler(["harem", "Hearm"], harem_cmd))
-    app.add_handler(CommandHandler("profile", profile_cmd))
-    app.add_handler(CommandHandler("view", view_cmd))
-    app.add_handler(CommandHandler("setlang", setlang_cmd))
+    app.add_handler(CommandHandler("balance", balance_cmd))
+    app.add_handler(CommandHandler("daily", daily_cmd))
+    app.add_handler(CommandHandler("claim", claim_cmd))
+    app.add_handler(CommandHandler("search", search_cmd))
+    app.add_handler(CommandHandler("sellprice", sellprice_cmd))
+    app.add_handler(CommandHandler("market", market_cmd))
+    app.add_handler(CommandHandler("sell", sell_cmd))
+    app.add_handler(CommandHandler("buy", buy_cmd))
 
     # Admin Commands
     app.add_handler(CommandHandler("approvegroup", approvegroup_cmd))
-    app.add_handler(CommandHandler("addcard", addcard_cmd))
-
-    # Group Status & Message Handlers
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, on_bot_added_to_group))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_messages))
 
     print("🚀 Nexus Card Bot Started Successfully!")
     
@@ -375,10 +296,7 @@ async def run_bot():
         await asyncio.Event().wait()
 
 def main():
-    # Start Web Server in Background
     Thread(target=run_flask, daemon=True).start()
-
-    # Run Async Bot Loop
     asyncio.run(run_bot())
 
 if __name__ == "__main__":
