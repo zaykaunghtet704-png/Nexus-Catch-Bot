@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from config import DEFAULT_START_PHOTO, OWNER_ID
 from database import db
-from keyboards import get_start_keyboard, get_join_keyboard, get_help_keyboard, get_hmode_keyboard
+from keyboards import get_start_keyboard, get_join_keyboard, get_help_keyboard, get_hmode_keyboard, TIER_NAMES
 from services import check_force_join, check_group_guard, is_sudo
 
 # --- USER COMMANDS ---
@@ -53,7 +53,8 @@ async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"🎴 **{user.first_name}'s Harem**\n\n"
     for c in cards:
         fav = "❤️ " if c[4] else ""
-        msg += f"{fav}🆔 `{c[0]}` | **{c[1]}** | Tier {c[2]} | Lvl {c[3]}\n"
+        tier_str = TIER_NAMES[c[2]-1] if 1 <= c[2] <= len(TIER_NAMES) else f"Tier {c[2]}"
+        msg += f"{fav}🆔 `{c[0]}` | **{c[1]}** | {tier_str} | Lvl {c[3]}\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def search_cards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,7 +65,8 @@ async def search_cards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     msg = "🔍 **AVAILABLE CARDS DATABASE**\n\n"
     for c in cards:
-        msg += f"🆔 `{c[0]}` | **{c[1]}** | Tier {c[2]}\n"
+        tier_str = TIER_NAMES[c[2]-1] if 1 <= c[2] <= len(TIER_NAMES) else f"Tier {c[2]}"
+        msg += f"🆔 `{c[0]}` | **{c[1]}** | {tier_str}\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def check_card_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,7 +79,8 @@ async def check_card_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not c:
         await update.message.reply_text("❌ ကဒ်ကို မတွေ့ပါ။")
         return
-    await update.message.reply_text(f"🎴 **Card Details**\n\n🆔 ID: `{c[0]}`\n📌 Name: **{c[1]}**\n⭐ Tier: {c[2]}", parse_mode="Markdown")
+    tier_str = TIER_NAMES[c[2]-1] if 1 <= c[2] <= len(TIER_NAMES) else f"Tier {c[2]}"
+    await update.message.reply_text(f"🎴 **Card Details**\n\n🆔 ID: `{c[0]}`\n📌 Name: **{c[1]}**\n⭐ Level/Rarity: {tier_str}", parse_mode="Markdown")
 
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -346,7 +349,7 @@ async def ctop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def hmode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎴 **Harem Mode Tier Filter**:", reply_markup=get_hmode_keyboard())
+    await update.message.reply_text("🎴 **Select Harem Mode Tier:**", reply_markup=get_hmode_keyboard())
 
 async def reset_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("DELETE FROM hmode WHERE user_id = ?", (update.effective_user.id,))
@@ -363,7 +366,7 @@ async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.conn.commit()
         await update.message.reply_text(f"✅ Card **{name}** (`{cid}`) ထည့်ပြီးပါပြီ။", parse_mode="Markdown")
     except Exception:
-        await update.message.reply_text("Usage: `/addcard <card_id> <name> <rarity>`")
+        await update.message.reply_text("Usage: `/addcard <card_id> <name> <rarity_1_to_13>`")
 
 async def remove_card_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_sudo(update.effective_user.id): return
@@ -468,6 +471,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("🔄 Harem Filter ကို ရှင်းလင်းလိုက်ပါပြီ။", show_alert=True)
         else:
             tier = int(val)
+            tier_name = TIER_NAMES[tier - 1]
             db.cursor.execute("INSERT OR REPLACE INTO hmode (user_id, tier_filter) VALUES (?, ?)", (query.from_user.id, tier))
             db.conn.commit()
-            await query.answer(f"✅ Tier {tier} သို့ ဖစ်တာချိတ်လိုက်ပါပြီ။", show_alert=True)
+            await query.answer(f"✅ Tier {tier} ({tier_name}) သို့ ဖစ်တာချိတ်လိုက်ပါပြီ။", show_alert=True)
