@@ -1,24 +1,12 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ChatMemberHandler, CallbackQueryHandler, ContextTypes
-from config import BOT_TOKEN, LOG_CHANNEL_ID
+from config import BOT_TOKEN
 import handlers as h
-
-async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = update.my_chat_member
-    if result.new_chat_member.status in ["member", "administrator"]:
-        chat = result.chat
-        user = result.from_user
-        count = await chat.get_member_count()
-        log_text = f"📥 **BOT ADDED TO GROUP** 🚀\n\n👥 Group: {chat.title}\n🆔 ID: `{chat.id}`\n👤 By: {user.first_name}\n📊 Members: `{count}`"
-        try:
-            await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_text, parse_mode="Markdown")
-        except Exception:
-            pass
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # ခလုတ်များ အလုပ်လုပ်စေရန် မဖြစ်မသွင်းရမည့် Handler
+    # ခလုတ်များနှင့် Chat Member Handler များ ချိတ်ဆက်ခြင်း
     app.add_handler(CallbackQueryHandler(h.button_callback))
     app.add_handler(ChatMemberHandler(h.my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
 
