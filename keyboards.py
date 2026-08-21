@@ -1,50 +1,37 @@
 from telegram.inlinekeyboardbuilder import InlineKeyboardBuilder
 
-TIER_NAMES = ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
-
-def get_start_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📖 အကူအညီ (Help)", callback_data="help_p1")
-    builder.button(text="🛒 ဈေးကွက် (Market)", callback_data="market_main")
-    builder.adjust(2)
-    return builder.as_markup()
-
-def get_help_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="◀️ ရှေ့သို့", callback_data="help_p1")
-    builder.button(text="နောက်သို့ ▶️", callback_data="help_p2")
-    builder.button(text="🏠 ပင်မသို့", callback_data="help_home")
-    builder.adjust(2, 1)
-    return builder.as_markup()
-
-def get_join_keyboard(channel_url="https://t.me/your_channel"):
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📢 Channel ဂျွိုင်းရန်", url=channel_url)
-    builder.button(text="🔄 စစ်ဆေးမည်", callback_data="check_join")
-    builder.adjust(1)
-    return builder.as_markup()
-
-def get_harem_pagination_keyboard(page, total_pages):
-    builder = InlineKeyboardBuilder()
-    if page > 1:
-        builder.button(text="⬅️ နောက်သို့", callback_data=f"harem_page_{page-1}")
-    if page < total_pages:
-        builder.button(text="ရှေ့သို့ ➡️", callback_data=f"harem_page_{page+1}")
-    builder.button(text="📂 ကဒ်အားလုံးကြည့်ရန်", callback_data="all_cards_list")
-    builder.adjust(2, 1)
-    return builder.as_markup()
-
-def get_market_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🛒 ဈေးကွက်စာရင်းကြည့်ရန်", callback_data="market_list_view")
-    builder.button(text="🔄 Refresh", callback_data="market_refresh")
-    builder.adjust(1)
-    return builder.as_markup()
+# ကဒ်အဆင့် ၁၃ ဆင့် သတ်မှတ်ခြင်း
+TIER_NAMES = [
+    "Common",           # 1
+    "Uncommon",         # 2
+    "Rare",             # 3
+    "Epic",             # 4
+    "Legendary",        # 5
+    "Mythic",           # 6
+    "Celestial",        # 7
+    "Divine",           # 8
+    "Radiant",          # 9
+    "Supreme",          # 10
+    "Immortal",         # 11
+    "Exclusive",        # 12
+    "Premium Edition"   # 13
+]
 
 def get_hmode_keyboard():
     builder = InlineKeyboardBuilder()
+    # ၁၃ ခုလုံးအတွက် ခလုတ်များ တည်ဆောက်ခြင်း
     for i, name in enumerate(TIER_NAMES, 1):
-        builder.button(text=f"✨ Tier {i} ({name})", callback_data=f"hmode_{i}")
+        builder.button(text=f"✨ T{i}: {name}", callback_data=f"hmode_{i}")
+    
     builder.button(text="🔄 Reset Filter", callback_data="hmode_reset")
-    builder.adjust(2, 2, 1)
+    # ခလုတ်များ အဆင်ပြေအောင် ချိန်ညှိခြင်း (၂ ခုစီ တန်းစီ)
+    builder.adjust(2) 
+    return builder.as_markup()
+
+# အခြားသော လိုအပ်တဲ့ Keyboard များ (လိုအပ်ပါက ထည့်ပါ)
+def get_start_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🛒 ဈေးကွက် (Market)", callback_data="market_main")
+    builder.button(text="📖 အကူအညီ (Help)", callback_data="help_p1")
+    builder.adjust(2)
     return builder.as_markup()
