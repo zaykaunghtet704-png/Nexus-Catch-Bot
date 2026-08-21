@@ -508,11 +508,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
         else:
-            tier = int(val)
-            tier_name = TIER_NAMES[tier - 1] if 1 <= tier <= len(TIER_NAMES) else f"Tier {tier}"
-            db.cursor.execute("INSERT OR REPLACE INTO hmode (user_id, tier_filter) VALUES (?, ?)", (query.from_user.id, tier))
-            db.conn.commit()
             try:
+                tier = int(val)
+                tier_name = TIER_NAMES[tier - 1] if 1 <= tier <= len(TIER_NAMES) else f"Tier {tier}"
+                db.cursor.execute("INSERT OR REPLACE INTO hmode (user_id, tier_filter) VALUES (?, ?)", (query.from_user.id, tier))
+                db.conn.commit()
                 await query.answer(f"✅ Tier {tier} ({tier_name}) သို့ ဖစ်တာချိတ်လိုက်ပါပြီ။ 💎", show_alert=True)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Error in hmode callback: {e}")
