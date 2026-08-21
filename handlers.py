@@ -2,7 +2,7 @@ import time
 import random
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import OWNER_ID, RARITY_STAGES
+from config import RARITY_STAGES
 from database import db
 from keyboards import get_start_keyboard, get_force_join_keyboard, get_hmode_keyboard
 from services import check_force_join, is_sudo
@@ -17,8 +17,12 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.conn.commit()
     
     caption = f"✨ **NEXUS CATCH BOT** ✨\n\nမင်္ဂလာပါ {user.first_name}! ကဒ်များစုဆောင်းရန် `/help` ကိုကြည့်ပါ။"
+    
+    # Direct Imgur Anime Image URL (Error ကင်းစင်သော တိုက်ရိုက်ပုံ Link)
+    anime_photo_url = "https://i.imgur.com/8Q9ZQ9R.jpg"
+    
     await update.message.reply_photo(
-        photo="https://t.me/c/4461314187/10360",
+        photo=anime_photo_url,
         caption=caption,
         parse_mode="Markdown",
         reply_markup=get_start_keyboard()
@@ -338,7 +342,7 @@ async def dye_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- ADMIN / SUDO COMMANDS ---
 
 async def add_sudo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID: return
+    if not is_sudo(update.effective_user.id): return
     try:
         t_id = int(context.args[0])
         db.cursor.execute("INSERT OR IGNORE INTO sudo_users VALUES (?)", (t_id,))
@@ -348,7 +352,7 @@ async def add_sudo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: `/sudo <user_id>`")
 
 async def rmsudo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID: return
+    if not is_sudo(update.effective_user.id): return
     try:
         t_id = int(context.args[0])
         db.cursor.execute("DELETE FROM sudo_users WHERE user_id = ?", (t_id,))
