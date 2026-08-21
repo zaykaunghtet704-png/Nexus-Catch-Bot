@@ -28,7 +28,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/daily` - 500 Coins အခမဲ့ယူရန် | `/claim` - ကဒ်ထုတ်ရန်\n"
         "• `/balance` - လက်ကျန်ငွေကြည့်ရန် | `/duel` - တိုက်ပွဲဝင်ရန်\n"
         "• `/fav` / `/unfav` - အကြိုက်ဆုံးသတ်မှတ်ရန် | `/upgrade` - မြှင့်တင်ရန်\n"
-        "• `/top` / `/ctop` / `/rankings` - အဆင့်သတ်မှတ်ချက်များ\n"
+        "• `/top` / `/ctop` / `/rankings` / `/ranking` - အဆင့်သတ်မှတ်ချက်များ\n"
         "• `/trade` / `/gift` - အချင်းချင်းပေးပို့ရန် | `/hmode` - ဖစ်တာစစ်ရန်"
     )
     await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=get_help_keyboard())
@@ -289,6 +289,49 @@ async def top_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for idx, r in enumerate(rows, 1):
         msg += f"{idx}. **{r[0]}** — `{r[1]:,}` Cards\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def ranking_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await top_cmd(update, context)
+
+async def sellprice_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db.cursor.execute("""
+        SELECT cards.name, market.price, users.first_name 
+        FROM market JOIN inventory ON market.inv_id = inventory.id 
+        JOIN cards ON inventory.card_id = cards.card_id 
+        JOIN users ON market.seller_id = users.user_id LIMIT 10
+    """)
+    items = db.cursor.fetchall()
+    if not items:
+        await update.message.reply_text("🛒 ဈေးကွက်အတွင်း သတ်မှတ်ထားသော ဈေးနှုန်းစာရင်း မရှိသေးပါ။")
+        return
+    msg = "📊 **MARKET SELL PRICES**\n\n"
+    for item in items:
+        msg += f"• **{item[0]}** — 💰 `{item[1]:,}` Coins (Seller: {item[2]})\n"
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def todaytop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db.cursor.execute("""
+        SELECT users.first_name, COUNT(inventory.id) as cnt 
+        FROM inventory JOIN users ON inventory.user_id = users.user_id 
+        GROUP BY inventory.user_id ORDER BY cnt DESC LIMIT 10
+    """)
+    rows = db.cursor.fetchall()
+    msg = "⭐ **TODAY'S TOP COLLECTORS**\n\n"
+    for idx, r in enumerate(rows, 1):
+        msg += f"{idx}. **{r[0]}** — `{r[1]:,}` Cards\n"
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def changetime_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_sudo(update.effective_user.id):
+        await update.message.reply_text("⚠️ ဤအမိန့်သည် Admin များအတွက်သာ ဖြစ်ပါသည်။")
+        return
+    try:
+        new_time = int(context.args[0])
+        db.cursor.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('catch_cooldown', ?)", (str(new_time),))
+        db.conn.commit()
+        await update.message.reply_text(f"⏱️ ကဒ်ဖမ်း cooldown အချိန်ကို `{new_time}` စက္ကန့်သို့ ပြောင်းလဲလိုက်ပါပြီ။", parse_mode="Markdown")
+    except Exception:
+        await update.message.reply_text("Usage: `/changetime <seconds>` (Admin Only)", parse_mode="Markdown")
 
 async def ctop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("""
