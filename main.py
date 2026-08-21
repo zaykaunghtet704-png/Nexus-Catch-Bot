@@ -9,7 +9,7 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
         chat = result.chat
         user = result.from_user
         count = await chat.get_member_count()
-        log_text = f"📥 **BOT ADDED TO GROUP**\n\n👥 Group: {chat.title}\n🆔 ID: `{chat.id}`\n👤 By: {user.first_name}\n📊 Members: `{count}`"
+        log_text = f"📥 **BOT ADDED TO GROUP** 🚀\n\n👥 Group: {chat.title}\n🆔 ID: `{chat.id}`\n👤 By: {user.first_name}\n📊 Members: `{count}`"
         try:
             await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_text, parse_mode="Markdown")
         except Exception:
@@ -17,8 +17,10 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(ChatMemberHandler(my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
+    
+    # ခလုတ်များ အလုပ်လုပ်စေရန် မဖြစ်မသွင်းရမည့် Handler
     app.add_handler(CallbackQueryHandler(h.button_callback))
+    app.add_handler(ChatMemberHandler(h.my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
 
     cmds = [
         ("start", h.start_cmd), ("help", h.help_cmd), ("harem", h.harem_cmd),
@@ -40,7 +42,7 @@ def main():
     for c, func in cmds:
         app.add_handler(CommandHandler(c, func))
 
-    print("🚀 NEXUS CATCH BOT RUNNING FULLY...")
+    print("🚀 NEXUS CATCH BOT RUNNING FULLY WITH PREMIUM STYLE...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
