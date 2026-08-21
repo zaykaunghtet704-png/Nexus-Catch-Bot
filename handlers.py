@@ -10,7 +10,7 @@ from database import db
 GROUP_LINK = "https://t.me/+00J7JktW8bJlZTY1"
 CHANNEL_LINK = "https://t.me/+E6BxfAj0gaI2Y2Zl"
 LOG_CHANNEL_ID = -1001234567890
-OWNER_IDS = [123456789]  # သင်၏ Telegram User ID ကို ဒီမှာထည့်ပါ
+OWNER_IDS = [7974865879]  # သင်၏ Telegram User ID ကို ဒီမှာထည့်ပါ
 
 def is_owner(user_id: int) -> bool:
     return user_id in OWNER_IDS
