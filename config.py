@@ -1,14 +1,13 @@
 import os
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8823072889:AAHKIzIzYVm4CjRJzoJWCktJhI5ZYn4mn4Y")
-OWNER_ID = int(os.getenv("OWNER_ID", "7974865879"))
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
 LOG_CHANNEL_ID = int(os.getenv("LOG_CHANNEL_ID", "-1001234567890"))
 
 REQUIRED_GROUP_LINK = "https://t.me/+00J7JktW8bJlZTY1"
 REQUIRED_CHANNEL_LINK = "https://t.me/+E6BxfAj0gaI2Y2Zl"
 REQUIRED_CHANNEL_ID = -1002233445566
 
-# 13 Rarity Stages System
 RARITY_STAGES = {
     1: {"name": "Common", "chance": 35.0, "color": "#808080", "price": 1000},
     2: {"name": "Uncommon", "chance": 20.0, "color": "#00FF00", "price": 1500},
