@@ -55,18 +55,34 @@ async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ **[Force Join]** Harem မကြည့်မီ အောက်ပါ Link များကို အရင် ဂျွိုင်း (Join) ပေးပါရန်။ 🔗", reply_markup=get_join_keyboard())
         return
 
-    db.cursor.execute("""
-        SELECT inventory.id, cards.name, cards.rarity_id, inventory.level, inventory.is_fav 
-        FROM inventory JOIN cards ON inventory.card_id = cards.card_id
-        WHERE inventory.user_id = ? ORDER BY inventory.id DESC LIMIT 15
-    """, (user.id,))
-    cards = db.cursor.fetchall()
+    # User တွင် hmode filter ရှိမရှိစစ်ဆေးခြင်း
+    db.cursor.execute("SELECT tier_filter FROM hmode WHERE user_id = ?", (user.id,))
+    filter_res = db.cursor.fetchone()
+
+    if filter_res:
+        tier = filter_res[0]
+        tier_name = TIER_NAMES[tier-1] if 1 <= tier <= len(TIER_NAMES) else f"Tier {tier}"
+        db.cursor.execute("""
+            SELECT inventory.id, cards.name, cards.rarity_id, inventory.level, inventory.is_fav 
+            FROM inventory JOIN cards ON inventory.card_id = cards.card_id
+            WHERE inventory.user_id = ? AND cards.rarity_id = ? ORDER BY inventory.id DESC LIMIT 15
+        """, (user.id, tier))
+        cards = db.cursor.fetchall()
+        header = f"🎴 **{user.first_name}'s Harem ({tier_name})** 💎\n\n"
+    else:
+        db.cursor.execute("""
+            SELECT inventory.id, cards.name, cards.rarity_id, inventory.level, inventory.is_fav 
+            FROM inventory JOIN cards ON inventory.card_id = cards.card_id
+            WHERE inventory.user_id = ? ORDER BY inventory.id DESC LIMIT 15
+        """, (user.id,))
+        cards = db.cursor.fetchall()
+        header = f"🎴 **{user.first_name}'s Premium Harem** 💎\n\n"
 
     if not cards:
-        await update.message.reply_text("❌ သင့်ထံတွင် ကဒ်များ မရှိသေးပါ။ `/claim` ဖြင့် ကဒ်ထုတ်ယူပါ။ 📭")
+        await update.message.reply_text("❌ သင့်ထံတွင် ဤအမျိုးအစားအလိုက် ကဒ်များ မရှိသေးပါ။ 📭")
         return
 
-    msg = f"🎴 **{user.first_name}'s Premium Harem** 💎\n\n"
+    msg = header
     for c in cards:
         fav = "❤️ " if c[4] else "🔹 "
         tier_str = TIER_NAMES[c[2]-1] if 1 <= c[2] <= len(TIER_NAMES) else f"Tier {c[2]}"
@@ -368,7 +384,17 @@ async def ctop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def hmode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎴 **Select Harem Mode Tier:** 💎", parse_mode="Markdown", reply_markup=get_hmode_keyboard())
+    user = update.effective_user
+    db.cursor.execute("SELECT tier_filter FROM hmode WHERE user_id = ?", (user.id,))
+    res = db.cursor.fetchone()
+    current_tier = res[0] if res else None
+    tier_info = f" (လက်ရှိ Filter: Tier {current_tier})" if current_tier else " (Filter မရှိသေးပါ)"
+
+    await update.message.reply_text(
+        f"🎴 **Select Harem Mode Tier:** 💎{tier_info}\nအောက်ပါတို့မှ လိုချင်သော Tier ကို ရွေးချယ်ပါ။", 
+        parse_mode="Markdown", 
+        reply_markup=get_hmode_keyboard()
+    )
 
 async def reset_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("DELETE FROM hmode WHERE user_id = ?", (update.effective_user.id,))
@@ -449,6 +475,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
     
     data = query.data
+    user_id = query.from_user.id
 
     if data == "help_p1":
         msg = (
@@ -501,18 +528,38 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("hmode_"):
         val = data.split("_")[1]
         if val == "reset":
-            db.cursor.execute("DELETE FROM hmode WHERE user_id = ?", (query.from_user.id,))
+            db.cursor.execute("DELETE FROM hmode WHERE user_id = ?", (user_id,))
             db.conn.commit()
             try:
                 await query.answer("🔄 Harem Filter ကို ရှင်းလင်းလိုက်ပါပြီ။ ✨", show_alert=True)
+                await query.edit_message_text("🔄 Harem Filter ကို ရှင်းလင်းလိုက်ပါပြီ။ `/harem` ဖြင့် ပြန်လည်ကြည့်ရှုပါ။", parse_mode="Markdown")
             except Exception:
                 pass
         else:
             try:
                 tier = int(val)
                 tier_name = TIER_NAMES[tier - 1] if 1 <= tier <= len(TIER_NAMES) else f"Tier {tier}"
-                db.cursor.execute("INSERT OR REPLACE INTO hmode (user_id, tier_filter) VALUES (?, ?)", (query.from_user.id, tier))
+                
+                db.cursor.execute("INSERT OR REPLACE INTO hmode (user_id, tier_filter) VALUES (?, ?)", (user_id, tier))
                 db.conn.commit()
-                await query.answer(f"✅ Tier {tier} ({tier_name}) သို့ ဖစ်တာချိတ်လိုက်ပါပြီ။ 💎", show_alert=True)
+                
+                db.cursor.execute("""
+                    SELECT inventory.id, cards.name, inventory.level, inventory.is_fav 
+                    FROM inventory JOIN cards ON inventory.card_id = cards.card_id
+                    WHERE inventory.user_id = ? AND cards.rarity_id = ? 
+                    ORDER BY inventory.id DESC LIMIT 15
+                """, (user_id, tier))
+                cards = db.cursor.fetchall()
+                
+                msg = f"🎴 **Harem Mode: {tier_name}** 💎\n\n"
+                if not cards:
+                    msg += "❌ ဤ Tier ထဲတွင် သင့်ပိုင်ဆိုင်သော ကဒ်များ မရှိသေးပါ။ 📭"
+                else:
+                    for c in cards:
+                        fav = "❤️ " if c[3] else "🔹 "
+                        msg += f"{fav}🆔 `{c[0]}` | **{c[1]}** | 🛡️ Lvl {c[2]}\n"
+                
+                await query.answer(f"✅ Tier {tier} ({tier_name}) သို့ ပြောင်းလိုက်ပါပြီ။ 💎", show_alert=True)
+                await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_hmode_keyboard())
             except Exception as e:
                 print(f"Error in hmode callback: {e}")
