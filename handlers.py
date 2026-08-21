@@ -1,11 +1,24 @@
 import time
 import random
-from telegram import Update
+from telegram import Update, ChatMember
 from telegram.ext import ContextTypes
-from config import DEFAULT_START_PHOTO, OWNER_ID
+from config import DEFAULT_START_PHOTO, OWNER_ID, LOG_CHANNEL_ID
 from database import db
 from keyboards import get_start_keyboard, get_join_keyboard, get_help_keyboard, get_hmode_keyboard, TIER_NAMES
 from services import check_force_join, check_group_guard, is_sudo
+
+# --- CHAT MEMBER HANDLER (Error ကာကွယ်ရန် ထည့်သွင်းပြီး) ---
+async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    result = update.my_chat_member
+    if result.new_chat_member.status in ["member", "administrator"]:
+        chat = result.chat
+        user = result.from_user
+        count = await chat.get_member_count()
+        log_text = f"📥 **BOT ADDED TO GROUP** 🚀\n\n👥 Group: {chat.title}\n🆔 ID: `{chat.id}`\n👤 By: {user.first_name}\n📊 Members: `{count}`"
+        try:
+            await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_text, parse_mode="Markdown")
+        except Exception:
+            pass
 
 # --- USER COMMANDS ---
 
