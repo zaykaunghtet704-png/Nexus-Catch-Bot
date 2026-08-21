@@ -1,7 +1,6 @@
-import json
 import os
-
-DB_FILE = "bot_database.json"
+import json
+from config import DB_FILE, OWNER_IDS
 
 class DatabaseManager:
     def __init__(self):
@@ -9,10 +8,12 @@ class DatabaseManager:
             "users": {},
             "groups": {},
             "market": {},
+            "auctions": {},
             "sudos": [],
             "cards_master": {
-                "0021": {"name": "Astraea Celestial Guardian", "rarity": 13, "atk": 950, "def": 880, "hp": 2400, "img": "https://picsum.photos/400/600"},
-                "0022": {"name": "Luna Cosmic Librarian", "rarity": 9, "atk": 450, "def": 500, "hp": 1800, "img": "https://picsum.photos/400/600"}
+                "0021": {"name": "Astraea Celestial Guardian", "rarity": 13, "series": "Fate", "atk": 950, "def": 880, "hp": 2400},
+                "0022": {"name": "Luna Cosmic Librarian", "rarity": 9, "series": "Overlord", "atk": 450, "def": 500, "hp": 1800},
+                "0023": {"name": "Naruto Uzumaki", "rarity": 7, "series": "Naruto", "atk": 700, "def": 650, "hp": 2000}
             }
         }
         self.load_db()
@@ -37,12 +38,12 @@ class DatabaseManager:
                 "lang": "MM",
                 "coins": 5000,
                 "cards": [
-                    {"id": "0021", "print": 1, "mint": 100, "level": 1, "frame": "Gold", "dye": "#FF0055", "font": "Gothic"}
+                    {"id": "0021", "print": 1, "mint": 100, "level": 1, "frame": "Gold", "dye": "#FF0055"}
                 ],
                 "favorites": [],
-                "hmode": "ALL",
                 "last_claim": 0,
-                "today_catches": 0
+                "last_daily": 0,
+                "quests": {"daily_messages": 0, "completed": False}
             }
             self.save_db()
         return self.data["users"][uid_str]
@@ -51,15 +52,16 @@ class DatabaseManager:
         cid_str = str(chat_id)
         if cid_str not in self.data["groups"]:
             self.data["groups"][cid_str] = {
-                "spawn_rate": 85,
+                "spawn_rate": 10,
                 "msg_count": 0,
-                "approved": False,
-                "spawned_card": None
+                "approved": True,
+                "spawned_card": None,
+                "last_spawn_time": 0
             }
             self.save_db()
         return self.data["groups"][cid_str]
 
-    def is_admin_or_owner(self, uid: int, owner_ids: list):
-        return (uid in owner_ids) or (str(uid) in self.data["sudos"])
+    def is_admin_or_owner(self, uid: int):
+        return (uid in OWNER_IDS) or (str(uid) in self.data["sudos"])
 
 db = DatabaseManager()
