@@ -4,10 +4,10 @@ import time
 import json
 import random
 import io
+import asyncio
 from threading import Thread
 
 # Render/Linux Environment Auto-Path Resolver
-# Virtualenv ထဲက Library များကို Auto Load ပေးသည့် စနစ်
 base_dir = os.path.dirname(os.path.abspath(__file__))
 venv_paths = [
     os.path.join(base_dir, ".venv", "lib", f"python3.{sys.version_info.minor}", "site-packages"),
@@ -348,11 +348,7 @@ def run_flask():
     web_app.run(host="0.0.0.0", port=port)
 
 # ================= MAIN RUNNER =================
-def main():
-    # Start Web Server in Background
-    Thread(target=run_flask, daemon=True).start()
-
-    # Start Telegram Bot Engine
+async def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
 
     # Command Handlers
@@ -372,7 +368,18 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_messages))
 
     print("🚀 Nexus Card Bot Started Successfully!")
-    app.run_polling()
+    
+    async with app:
+        await app.start()
+        await app.updater.start_polling()
+        await asyncio.Event().wait()
+
+def main():
+    # Start Web Server in Background
+    Thread(target=run_flask, daemon=True).start()
+
+    # Run Async Bot Loop
+    asyncio.run(run_bot())
 
 if __name__ == "__main__":
     main()
