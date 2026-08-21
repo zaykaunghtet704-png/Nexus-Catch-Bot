@@ -1,5 +1,5 @@
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ChatMemberHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ChatMemberHandler, CallbackQueryHandler, ContextTypes
 from config import BOT_TOKEN, LOG_CHANNEL_ID
 import handlers as h
 
@@ -18,12 +18,14 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(ChatMemberHandler(my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
+    app.add_handler(CallbackQueryHandler(h.button_callback))
 
     cmds = [
         ("start", h.start_cmd), ("help", h.help_cmd), ("harem", h.harem_cmd),
         ("profile", h.profile_cmd), ("Nexus", h.nexus_cmd), ("claim", h.claim_cmd),
         ("daily", h.daily_cmd), ("balance", h.balance_cmd), ("market", h.market_cmd),
         ("sell", h.sell_cmd), ("buy", h.buy_cmd), ("delist", h.delist_cmd),
+        ("trade", h.trade_cmd), ("gift", h.gift_cmd),
         ("duel", h.duel_cmd), ("upgrade", h.upgrade_cmd), ("fav", h.fav_cmd),
         ("unfav", h.unfav_cmd), ("top", h.top_cmd), ("rankings", h.top_cmd),
         ("ctop", h.ctop_cmd), ("hmode", h.hmode_cmd), ("reset", h.reset_cmd),
@@ -36,7 +38,7 @@ def main():
     for c, func in cmds:
         app.add_handler(CommandHandler(c, func))
 
-    print("🚀 NEXUS CATCH BOT RUNNING SUCCESSFULLY...")
+    print("🚀 NEXUS CATCH BOT RUNNING FULLY...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
