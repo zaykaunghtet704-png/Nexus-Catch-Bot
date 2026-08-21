@@ -1,16 +1,9 @@
-import time
-
 class DatabaseManager:
     def __init__(self):
         self.users = {}
-        self.group_settings = {}  # {chat_id: {"spawn_rate": 85, "msg_count": 0, "approved": False}}
-        self.market_listings = {} # {listing_id: {seller_id, card_data, price}}
+        self.group_settings = {}
+        self.market_listings = {}
         self.sudo_users = set()
-        self.cards_master = {
-            "0021": {"name": "Astraea Guardian", "rarity": "10", "price": 15000},
-            "0022": {"name": "Shadow Assassin", "rarity": "7", "price": 9000},
-            "0023": {"name": "Cyber Valkyrie", "rarity": "5", "price": 5000}
-        }
 
     def get_user(self, uid: int, name: str = "User"):
         if uid not in self.users:
@@ -18,7 +11,9 @@ class DatabaseManager:
                 "name": name,
                 "lang": "MM",
                 "coins": 5000,
-                "cards": [],       # [{id, card_key, print_num, mint, level, exp}]
+                "cards": [
+                    {"id": "0021", "name": "Astraea Guardian", "rarity": "10", "level": 1, "price": 15000}
+                ],
                 "favorites": [],
                 "hmode": "ALL",
                 "last_claim": 0,
@@ -31,7 +26,8 @@ class DatabaseManager:
             self.group_settings[chat_id] = {
                 "spawn_rate": 85,
                 "msg_count": 0,
-                "approved": False,
+                "approved": True, # Test လုပ်ရလွယ်အောင် True ပေးထားသည်
+                "spawned_card": None,
                 "group_catches": {}
             }
         return self.group_settings[chat_id]
