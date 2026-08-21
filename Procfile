@@ -1,1 +1,1 @@
-web: python main.py
+web: gunicorn services:app_flask & python3 main.py
