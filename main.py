@@ -28,6 +28,8 @@ def main():
         ("trade", h.trade_cmd), ("gift", h.gift_cmd),
         ("duel", h.duel_cmd), ("upgrade", h.upgrade_cmd), ("fav", h.fav_cmd),
         ("unfav", h.unfav_cmd), ("top", h.top_cmd), ("rankings", h.top_cmd),
+        ("ranking", h.ranking_cmd), ("sellprice", h.sellprice_cmd),
+        ("todaytop", h.todaytop_cmd), ("changetime", h.changetime_cmd),
         ("ctop", h.ctop_cmd), ("hmode", h.hmode_cmd), ("reset", h.reset_cmd),
         ("search", h.search_cards_cmd), ("check", h.check_card_cmd),
         ("addcard", h.addcard_cmd), ("removecard", h.remove_card_cmd),
