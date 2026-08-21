@@ -52,6 +52,12 @@ class Database:
             )
         """)
         self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS blacklist (
                 user_id INTEGER PRIMARY KEY
             )
