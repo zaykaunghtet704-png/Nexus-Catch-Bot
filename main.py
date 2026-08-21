@@ -1,57 +1,62 @@
-from telegram.ext import Application, CommandHandler, ChatMemberHandler, CallbackQueryHandler
+import logging
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ChatMemberHandler
 from config import BOT_TOKEN
-import handlers as h
+from handlers import (
+    start_cmd, help_cmd, harem_cmd, search_cards_cmd, profile_cmd,
+    nexus_cmd, claim_cmd, daily_cmd, balance_cmd, market_cmd,
+    sell_cmd, buy_cmd, delist_cmd, trade_cmd, gift_cmd,
+    duel_cmd, upgrade_cmd, fav_cmd, unfav_cmd, top_cmd,
+    ranking_cmd, ctop_cmd, hmode_cmd, addcard_cmd, remove_card_cmd,
+    givecoins_cmd, ban_cmd, button_callback, my_chat_member_handler
+)
+from database import db
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    
-    # 1. Callback နှင့် Chat Member Handler များကို အပေါ်ဆုံးတွင် ထားပါ
-    app.add_handler(CallbackQueryHandler(h.button_callback))
-    app.add_handler(ChatMemberHandler(h.my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
+    db.init_db()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # 2. Command Handlers အားလုံးကို ချိတ်ဆက်ခြင်း
-    cmds = [
-        ("start", h.start_cmd), 
-        ("help", h.help_cmd), 
-        ("harem", h.harem_cmd),
-        ("profile", h.profile_cmd), 
-        ("Nexus", h.nexus_cmd), 
-        ("claim", h.claim_cmd),
-        ("daily", h.daily_cmd), 
-        ("balance", h.balance_cmd), 
-        ("market", h.market_cmd),
-        ("sell", h.sell_cmd), 
-        ("buy", h.buy_cmd), 
-        ("delist", h.delist_cmd),
-        ("trade", h.trade_cmd), 
-        ("gift", h.gift_cmd), 
-        ("duel", h.duel_cmd),
-        ("upgrade", h.upgrade_cmd), 
-        ("fav", h.fav_cmd), 
-        ("unfav", h.unfav_cmd),
-        ("top", h.top_cmd), 
-        ("rankings", h.ranking_cmd), 
-        ("ctop", h.ctop_cmd),
-        ("hmode", h.hmode_cmd), 
-        ("search", h.search_cards_cmd),
-        ("check", h.check_card_cmd),
-        ("sellprice", h.sellprice_cmd),
-        ("todaytop", h.todaytop_cmd),
-        ("changetime", h.changetime_cmd),
-        ("reset", h.reset_cmd),
-        ("addcard", h.addcard_cmd), 
-        ("removecard", h.remove_card_cmd),
-        ("approve", h.approve_cmd), 
-        ("gcoin", h.givecoins_cmd),
-        ("ban", h.ban_cmd), 
-        ("broadcast", h.broadcast_cmd)
-    ]
+    # Chat Member & Callback Handlers
+    app.add_handler(ChatMemberHandler(my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
+    app.add_handler(CallbackQueryHandler(button_callback))
 
-    for c, func in cmds:
-        app.add_handler(CommandHandler(c, func))
+    # User Commands
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("harem", harem_cmd))
+    app.add_handler(CommandHandler("search", search_cards_cmd))
+    app.add_handler(CommandHandler("profile", profile_cmd))
+    app.add_handler(CommandHandler("Nexus", nexus_cmd))
+    app.add_handler(CommandHandler("claim", claim_cmd))
+    app.add_handler(CommandHandler("daily", daily_cmd))
+    app.add_handler(CommandHandler("balance", balance_cmd))
+    app.add_handler(CommandHandler("market", market_cmd))
+    app.add_handler(CommandHandler("sell", sell_cmd))
+    app.add_handler(CommandHandler("buy", buy_cmd))
+    app.add_handler(CommandHandler("delist", delist_cmd))
+    app.add_handler(CommandHandler("trade", trade_cmd))
+    app.add_handler(CommandHandler("gift", gift_cmd))
+    app.add_handler(CommandHandler("duel", duel_cmd))
+    app.add_handler(CommandHandler("upgrade", upgrade_cmd))
+    app.add_handler(CommandHandler("fav", fav_cmd))
+    app.add_handler(CommandHandler("unfav", unfav_cmd))
+    app.add_handler(CommandHandler("top", top_cmd))
+    app.add_handler(CommandHandler("rankings", ranking_cmd))
+    app.add_handler(CommandHandler("ctop", ctop_cmd))
+    app.add_handler(CommandHandler("hmode", hmode_cmd))
 
-    print("🚀 NEXUS CATCH BOT RUNNING FULLY...")
-    app.run_polling(drop_pending_updates=True)
+    # Admin & Owner Commands
+    app.add_handler(CommandHandler("addcard", addcard_cmd))
+    app.add_handler(CommandHandler("removecard", remove_card_cmd))
+    app.add_handler(CommandHandler("gcoin", givecoins_cmd))
+    app.add_handler(CommandHandler("ban", ban_cmd))
+
+    logger.info("🤖 Nexus Catch Bot is running smoothly...")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
