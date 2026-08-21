@@ -7,7 +7,7 @@ from database import db
 from keyboards import get_start_keyboard, get_join_keyboard, get_help_keyboard, get_hmode_keyboard
 from services import check_force_join, check_group_guard, is_sudo
 
-# --- USER COMMANDS (100+ Features) ---
+# --- USER COMMANDS ---
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -201,6 +201,47 @@ async def delist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text("Usage: `/delist [listing_id]`")
 
+async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        target_uid = int(context.args[0])
+        my_inv_id = int(context.args[1])
+        their_inv_id = int(context.args[2])
+        my_id = update.effective_user.id
+
+        db.cursor.execute("SELECT id FROM inventory WHERE id = ? AND user_id = ?", (my_inv_id, my_id))
+        if not db.cursor.fetchone():
+            await update.message.reply_text("❌ ပထမပါသော ကဒ်သည် သင့်ပိုင်ဆိုင်မှု မဟုတ်ပါ။")
+            return
+
+        db.cursor.execute("SELECT id FROM inventory WHERE id = ? AND user_id = ?", (their_inv_id, target_uid))
+        if not db.cursor.fetchone():
+            await update.message.reply_text("❌ ဒုတိယပါသော ကဒ်သည် သက်ဆိုင်ရာ ယူဆာ၏ ပိုင်ဆိုင်မှု မဟုတ်ပါ။")
+            return
+
+        db.cursor.execute("UPDATE inventory SET user_id = ? WHERE id = ?", (target_uid, my_inv_id))
+        db.cursor.execute("UPDATE inventory SET user_id = ? WHERE id = ?", (my_id, their_inv_id))
+        db.conn.commit()
+        await update.message.reply_text("🤝 ကဒ်လဲလှယ်မှု (Trade) အောင်မြင်ပါသည်။")
+    except Exception:
+        await update.message.reply_text("Usage: `/trade <user_id> <my_inv_id> <their_inv_id>`", parse_mode="Markdown")
+
+async def gift_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        target_uid = int(context.args[0])
+        inv_id = int(context.args[1])
+        my_id = update.effective_user.id
+
+        db.cursor.execute("SELECT id FROM inventory WHERE id = ? AND user_id = ?", (inv_id, my_id))
+        if not db.cursor.fetchone():
+            await update.message.reply_text("❌ ဤကဒ်သည် သင့်ထံတွင် မရှိပါ။")
+            return
+
+        db.cursor.execute("UPDATE inventory SET user_id = ? WHERE id = ?", (target_uid, inv_id))
+        db.conn.commit()
+        await update.message.reply_text(f"🎁 User `{target_uid}` ထံသို့ ကဒ် လက်ဆောင်ပေးပို့ပြီးပါပြီ။", parse_mode="Markdown")
+    except Exception:
+        await update.message.reply_text("Usage: `/gift <user_id> <inv_id>`", parse_mode="Markdown")
+
 async def duel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     won = random.choice([True, False])
     if won:
@@ -269,7 +310,7 @@ async def reset_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.conn.commit()
     await update.message.reply_text("🔄 Filter များကို ရှင်းလင်းလိုက်ပါပြီ။")
 
-# --- ADMIN & OWNER COMMANDS (500+ Features Management) ---
+# --- ADMIN & OWNER COMMANDS ---
 
 async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_sudo(update.effective_user.id): return
@@ -332,3 +373,58 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
     await update.message.reply_text("📤 Broadcast ပို့ပြီးပါပြီ။")
+
+# --- INLINE BUTTON CALLBACK HANDLER ---
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "help_p1":
+        msg = (
+            "📖 **NEXUS CATCH BOT - HELP (Page 1)**\n\n"
+            "• `/harem` - စုထားသော ကဒ်များကြည့်ရန်\n"
+            "• `/profile` - ပရိုဖိုင်နှင့် Global Top ကြည့်ရန်\n"
+            "• `/search` - ကဒ်အားလုံး ရှာဖွေကြည့်ရှုရန်\n"
+            "• `/Nexus <Card_Name>` - ကဒ်ဖမ်းရန်"
+        )
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_help_keyboard())
+
+    elif data == "help_p2":
+        msg = (
+            "📖 **NEXUS CATCH BOT - HELP (Page 2)**\n\n"
+            "• `/market` - ဈေးကွက်ကြည့်ရန်\n"
+            "• `/daily` - 500 Coins အခမဲ့ယူရန်\n"
+            "• `/claim` - ကဒ်ထုတ်ရန်\n"
+            "• `/trade` / `/gift` - ကဒ်ပေးပို့ လဲလှယ်ရန်\n"
+            "• `/hmode` - ဖစ်တာစစ်ရန်"
+        )
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_help_keyboard())
+
+    elif data == "help_admin":
+        if not is_sudo(query.from_user.id):
+            await query.answer("⚠️ ဤမီနူးသည် Admin များအတွက်သာ ဖြစ်ပါသည်။", show_alert=True)
+            return
+        msg = (
+            "👑 **ADMIN & OWNER COMMANDS**\n\n"
+            "• `/addcard <id> <name> <tier>` - ကဒ်အသစ်ထည့်ရန်\n"
+            "• `/removecard <id>` - ကဒ်ဖျက်ရန်\n"
+            "• `/gcoin <user_id> <amount>` - ပိုက်ဆံထည့်ပေးရန်\n"
+            "• `/ban <user_id>` - ပိတ်ပင်ရန်\n"
+            "• `/approve <chat_id>` - ဂရုဖွင့်ပေးရန်\n"
+            "• `/broadcast <msg>` - ကြေညာချက်ပို့ရန်"
+        )
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_help_keyboard())
+
+    elif data.startswith("hmode_"):
+        val = data.split("_")[1]
+        if val == "reset":
+            db.cursor.execute("DELETE FROM hmode WHERE user_id = ?", (query.from_user.id,))
+            db.conn.commit()
+            await query.answer("🔄 Harem Filter ကို ရှင်းလင်းလိုက်ပါပြီ။", show_alert=True)
+        else:
+            tier = int(val)
+            db.cursor.execute("INSERT OR REPLACE INTO hmode (user_id, tier_filter) VALUES (?, ?)", (query.from_user.id, tier))
+            db.conn.commit()
+            await query.answer(f"✅ Tier {tier} သို့ ဖစ်တာချိတ်လိုက်ပါပြီ။", show_alert=True)
