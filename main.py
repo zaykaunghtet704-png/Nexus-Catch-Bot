@@ -1,37 +1,42 @@
-import sys
-import asyncio
 from telegram import Update
-from telegram.ext import Application, CommandHandler
-from config import BOT_TOKEN
+from telegram.ext import Application, CommandHandler, ChatMemberHandler, ContextTypes
+from config import BOT_TOKEN, LOG_CHANNEL_ID
 import handlers as h
+
+async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    result = update.my_chat_member
+    if result.new_chat_member.status in ["member", "administrator"]:
+        chat = result.chat
+        user = result.from_user
+        count = await chat.get_member_count()
+        log_text = f"📥 **BOT ADDED TO GROUP**\n\n👥 Group: {chat.title}\n🆔 ID: `{chat.id}`\n👤 By: {user.first_name}\n📊 Members: `{count}`"
+        try:
+            await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_text, parse_mode="Markdown")
+        except Exception:
+            pass
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(ChatMemberHandler(my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    # User Commands Register
-    user_cmds = [
-        ("start", h.start_cmd), ("help", h.help_cmd), ("ping", h.ping_cmd),
-        ("profile", h.profile_cmd), ("harem", h.harem_cmd), ("hmode", h.hmode_cmd),
-        ("view", h.view_card_cmd), ("daily", h.daily_cmd), ("claim", h.claim_cmd),
-        ("nclaim", h.nclaim_cmd), ("fav", h.fav_cmd), ("favlist", h.favlist_cmd),
-        ("sell", h.sell_cmd), ("sellprice", h.sellprice_cmd), ("gift", h.gift_cmd),
-        ("pay", h.pay_cmd), ("top", h.top_cmd), ("rich", h.rich_cmd),
-        ("search", h.search_cmd), ("rarity", h.rarity_cmd), ("dye", h.dye_cmd)
+    cmds = [
+        ("start", h.start_cmd), ("help", h.help_cmd), ("harem", h.harem_cmd),
+        ("profile", h.profile_cmd), ("Nexus", h.nexus_cmd), ("claim", h.claim_cmd),
+        ("daily", h.daily_cmd), ("balance", h.balance_cmd), ("market", h.market_cmd),
+        ("sell", h.sell_cmd), ("buy", h.buy_cmd), ("delist", h.delist_cmd),
+        ("duel", h.duel_cmd), ("upgrade", h.upgrade_cmd), ("fav", h.fav_cmd),
+        ("unfav", h.unfav_cmd), ("top", h.top_cmd), ("rankings", h.top_cmd),
+        ("ctop", h.ctop_cmd), ("hmode", h.hmode_cmd), ("reset", h.reset_cmd),
+        ("search", h.search_cards_cmd), ("check", h.check_card_cmd),
+        ("addcard", h.addcard_cmd), ("removecard", h.remove_card_cmd),
+        ("approve", h.approve_cmd), ("gcoin", h.givecoins_cmd),
+        ("ban", h.ban_cmd), ("broadcast", h.broadcast_cmd)
     ]
 
-    # Sudo/Admin Commands Register
-    sudo_cmds = [
-        ("sudo", h.add_sudo_cmd), ("rmsudo", h.rmsudo_cmd), ("sudolist", h.sudolist_cmd),
-        ("gcoin", h.gcoin_cmd), ("rmcoin", h.rmcoin_cmd), ("gcard", h.gcard_cmd),
-        ("rmcard", h.rmcard_cmd), ("addcard", h.addcard_cmd), ("delcard", h.delcard_cmd),
-        ("broadcast", h.broadcast_cmd), ("ban", h.ban_cmd), ("unban", h.unban_cmd),
-        ("stats", h.stats_cmd)
-    ]
+    for c, func in cmds:
+        app.add_handler(CommandHandler(c, func))
 
-    for cmd, handler in user_cmds + sudo_cmds:
-        app.add_handler(CommandHandler(cmd, handler))
-
-    print("NEXUS CATCH BOT IS RUNNING...")
+    print("🚀 NEXUS CATCH BOT RUNNING SUCCESSFULLY...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
