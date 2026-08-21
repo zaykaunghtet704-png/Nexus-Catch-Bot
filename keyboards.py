@@ -1,48 +1,50 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from config import REQUIRED_GROUP_LINK, REQUIRED_CHANNEL_LINK, WAIFU_LINK
+from telegram.inlinekeyboardbuilder import InlineKeyboardBuilder
 
-TIER_NAMES = [
-    "Common", "Uncommon", "Rare", "Epic", "Legendary", 
-    "Mythic", "Celestial", "Divine", "Immortal", "Supreme", 
-    "Special Edition", "Limited Edition", "Premium Edition"
-]
+TIER_NAMES = ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
 
 def get_start_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👑 I'm Waifu ✨", url=WAIFU_LINK)],
-        [
-            InlineKeyboardButton("💬 Group 🚀", url=REQUIRED_GROUP_LINK),
-            InlineKeyboardButton("📢 Channel 💎", url=REQUIRED_CHANNEL_LINK)
-        ]
-    ])
-
-def get_join_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💬 Group Join မည် 🚀", url=REQUIRED_GROUP_LINK)],
-        [InlineKeyboardButton("📢 Channel Join မည် 💎", url=REQUIRED_CHANNEL_LINK)]
-    ])
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📖 အကူအညီ (Help)", callback_data="help_p1")
+    builder.button(text="🛒 ဈေးကွက် (Market)", callback_data="market_main")
+    builder.adjust(2)
+    return builder.as_markup()
 
 def get_help_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📖 Page 1", callback_data="help_p1"),
-            InlineKeyboardButton("📖 Page 2", callback_data="help_p2")
-        ],
-        [InlineKeyboardButton("🛡️ Admin Cmds", callback_data="help_admin")]
-    ])
+    builder = InlineKeyboardBuilder()
+    builder.button(text="◀️ ရှေ့သို့", callback_data="help_p1")
+    builder.button(text="နောက်သို့ ▶️", callback_data="help_p2")
+    builder.button(text="🏠 ပင်မသို့", callback_data="help_home")
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+def get_join_keyboard(channel_url="https://t.me/your_channel"):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📢 Channel ဂျွိုင်းရန်", url=channel_url)
+    builder.button(text="🔄 စစ်ဆေးမည်", callback_data="check_join")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_harem_pagination_keyboard(page, total_pages):
+    builder = InlineKeyboardBuilder()
+    if page > 1:
+        builder.button(text="⬅️ နောက်သို့", callback_data=f"harem_page_{page-1}")
+    if page < total_pages:
+        builder.button(text="ရှေ့သို့ ➡️", callback_data=f"harem_page_{page+1}")
+    builder.button(text="📂 ကဒ်အားလုံးကြည့်ရန်", callback_data="all_cards_list")
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+def get_market_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🛒 ဈေးကွက်စာရင်းကြည့်ရန်", callback_data="market_list_view")
+    builder.button(text="🔄 Refresh", callback_data="market_refresh")
+    builder.adjust(1)
+    return builder.as_markup()
 
 def get_hmode_keyboard():
-    buttons = []
-    row = []
-    # ခလုတ်များ အလွန်အမင်း မရှည်စေရန် တစ်တန်းလျှင် ၃ ခုစီ စီစဉ်ထားပါသည်
-    for j, tier_label in enumerate(TIER_NAMES):
-        tier_num = j + 1
-        row.append(InlineKeyboardButton(f"{tier_num}. {tier_label}", callback_data=f"hmode_{tier_num}"))
-        if len(row) == 3:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    
-    buttons.append([InlineKeyboardButton("🔄 Reset Filter", callback_data="hmode_reset")])
-    return InlineKeyboardMarkup(buttons)
+    builder = InlineKeyboardBuilder()
+    for i, name in enumerate(TIER_NAMES, 1):
+        builder.button(text=f"✨ Tier {i} ({name})", callback_data=f"hmode_{i}")
+    builder.button(text="🔄 Reset Filter", callback_data="hmode_reset")
+    builder.adjust(2, 2, 1)
+    return builder.as_markup()
