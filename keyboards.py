@@ -1,6 +1,13 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import REQUIRED_GROUP_LINK, REQUIRED_CHANNEL_LINK, WAIFU_LINK
 
+# Common မှ Premium Edition အထိ အဆင့် (၁၃) ဆင့် အမည်များ
+TIER_NAMES = [
+    "Common", "Uncommon", "Rare", "Epic", "Legendary", 
+    "Mythic", "Celestial", "Divine", "Immortal", "Supreme", 
+    "Special Edition", "Limited Edition", "Premium Edition"
+]
+
 def get_start_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👸 I'm Waifu", url=WAIFU_LINK)],
@@ -27,8 +34,12 @@ def get_help_keyboard():
 
 def get_hmode_keyboard():
     buttons = []
-    for i in range(1, 11, 2):
-        row = [InlineKeyboardButton(f"Tier {j}", callback_data=f"hmode_{j}") for j in range(i, min(i+2, 11))]
+    for i in range(0, len(TIER_NAMES), 2):
+        row = []
+        for j in range(i, min(i+2, len(TIER_NAMES))):
+            tier_num = j + 1
+            tier_label = TIER_NAMES[j]
+            row.append(InlineKeyboardButton(f"{tier_num}. {tier_label}", callback_data=f"hmode_{tier_num}"))
         buttons.append(row)
     buttons.append([InlineKeyboardButton("🔄 Reset Filter", callback_data="hmode_reset")])
     return InlineKeyboardMarkup(buttons)
