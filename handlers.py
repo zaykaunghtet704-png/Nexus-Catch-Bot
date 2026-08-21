@@ -1,47 +1,54 @@
-import os
 import time
 import random
-import psutil
-import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from config import OWNER_IDS, RARITY_TIERS, LINK_GROUP, LINK_CHANNEL, LINK_WAIFU, LOG_CHANNEL_ID
+from config import OWNER_IDS, RARITY_STAGES, LINK_GROUP, LINK_CHANNEL, LINK_WAIFU, LOG_CHANNEL_ID, LANGUAGES
 from database import db
+from card_generator import generate_custom_card
 
-# ---------- USER COMMANDS ----------
+# Force Join Check Engine
+async def check_force_join(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    try:
+        # In production, check chat member status via Telegram API
+        return True
+    except Exception:
+        return False
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    db.get_user(user.id, user.first_name)
-    
-    caption = f"✨ **{user.first_name}** မင်္ဂလာပါ!\nNexus RPG Card Bot မှ ကြိုဆိုပါသည်!"
+    u = db.get_user(user.id, user.first_name)
+    lang = u.get("lang", "MM")
+
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton(" My Waifu", url=LINK_WAIFU)],
         [InlineKeyboardButton("🌐 Group Link", url=LINK_GROUP), InlineKeyboardButton("📢 Update Channel", url=LINK_CHANNEL)]
     ])
+    
+    msg = LANGUAGES[lang]["WELCOME"].format(name=user.first_name)
     await update.message.reply_photo(
         photo="https://picsum.photos/400/300",
-        caption=caption,
+        caption=msg,
         reply_markup=buttons,
         parse_mode="Markdown"
     )
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "📖 **Nexus Bot Commands လမ်းညွှန်**\n\n"
-        "• `/harem` - မိမိကဒ်များ ကြည့်ရန်\n"
-        "• `/search` - ကဒ်များ ရှာရန်\n"
-        "• `/check <card_id>` - ကဒ်ကြည့်ရန်\n"
-        "• `/profile` - ပရိုဖိုင်\n"
-        "• `/top` / `/ctop` / `/rankings` - Top စာရင်းများ\n"
-        "• `/daily` - 500 Free Coin\n"
-        "• `/sellprice` - ကဒ်စျေးနှုန်းများ\n"
-        "• `/market` / `/sell` / `/buy` - စျေးကွက်\n"
-        "• `/trade` / `/gift` / `/duel` - တိုက်ခိုက်ခြင်းနှင့် လက်ဆောင်ပေးခြင်း\n"
-        "• `/claim` - ၁၂ နာရီ ၁ ကြိမ် ကဒ်ယူရန်\n"
-        "• `/hmode` / `/reset` - Harem စစ်ထုတ်ရန်\n"
-        "• `/fav <id>` / `/unfav <id>` - Fav သတ်မှတ်ရန်"
+        "📖 **Nexus RPG Bot Help Directory**\n\n"
+        "**User Commands:**\n"
+        "• `/harem` - မိမိ ပိုင်ဆိုင်သော ကဒ်များ ကြည့်ရန်\n"
+        "• `/search` - Database အတွင်းရှိ ကဒ်များ ရှာရန်\n"
+        "• `/profile` - Profile နှင့် Stats များ ကြည့်ရန်\n"
+        "• `/claim` - ၁၂ နာရီ ၁ ကြိမ် အခမဲ့ ကဒ် ရယူရန်\n"
+        "• `/daily` - နေ့စဉ် Coin 500 ယူရန်\n"
+        "• `/balance` - လက်ကျန် Coin စစ်ရန်\n"
+        "• `/sellprice` - Rarity အလိုက် ဈေးနှုန်းများ ကြည့်ရန်\n"
+        "• `/market` / `/sell` / `/buy` - ဈေးကွက် အရောင်းအဝယ် ပြုလုပ်ရန်\n"
+        "• `/trade` / `/gift` / `/duel` - တိုက်ခိုက်မှုနှင့် အရောင်းအဝယ် ပြုလုပ်ရန်\n"
+        "• `/fav` / `/unfav` - နှစ်သက်သော ကဒ် သတ်မှတ်ရန်\n"
+        "• `/hmode` / `/reset` - Harem Filtering ပြုလုပ်ရန်\n"
+        "• `/setlang` - Myanmar/English ဘာသာစကား ပြောင်းရန်"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
@@ -49,111 +56,98 @@ async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     u = db.get_user(user.id, user.first_name)
     
-    # Force Join Check Links
-    buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🌐 Group Link", url=LINK_GROUP)],
-        [InlineKeyboardButton("📢 Channel Link", url=LINK_CHANNEL)]
-    ])
-    
-    cards = u["cards"]
-    if not cards:
-        await update.message.reply_text("❌ သင့်ထံတွင် ကဒ်များ မရှိသေးပါ။", reply_markup=buttons)
+    if not await check_force_join(user.id, context):
+        buttons = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌐 Group Join", url=LINK_GROUP)],
+            [InlineKeyboardButton("📢 Channel Join", url=LINK_CHANNEL)]
+        ])
+        await update.message.reply_text(LANGUAGES[u["lang"]]["NEED_JOIN"], reply_markup=buttons)
         return
-        
-    text = f"🎴 **{user.first_name}'s Harem Collection:**\n\n"
-    for idx, c in enumerate(cards, 1):
-        text += f"{idx}. ID: `{c['id']}` - **{c['name']}** (Lvl: {c.get('level', 1)})\n"
-        
-    await update.message.reply_text(text, reply_markup=buttons, parse_mode="Markdown")
 
-async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "🔍 **Nexus Cards Database:**\n\n• `0021` - Astraea Guardian (15,000 Coins)\n• `0022` - Shadow Assassin (9,000 Coins)"
-    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Channel", url=LINK_CHANNEL)]])
-    await update.message.reply_text(text, reply_markup=buttons, parse_mode="Markdown")
+    cards = u["cards"]
+    text = f"🎴 **{user.first_name}'s Collection ({len(cards)} Cards):**\n\n"
+    for idx, c in enumerate(cards, 1):
+        m_card = db.data["cards_master"].get(c["id"], {"name": "Unknown"})
+        text += f"{idx}. ID: `{c['id']}` | **{m_card['name']}** | Mint: {c.get('mint', 100)}%\n"
+
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     u = db.get_user(user.id, user.first_name)
     
+    # Retrieve Profile Photo
+    photos = await user.get_profile_photos(limit=1)
     caption = (
         f"👤 **{user.first_name}'s Profile**\n\n"
-        f"💰 Coins: `{u['coins']}`\n"
+        f"💰 Coins: `{u['coins']:,}`\n"
         f"🎴 Total Cards: `{len(u['cards'])}`\n"
         f"⭐ Favorites: `{len(u['favorites'])}`\n"
-        f"🌐 Global Rank: `#1`"
+        f"🏆 Global Rank: `#1`"
     )
-    await update.message.reply_text(caption, parse_mode="Markdown")
+    if photos.photos:
+        await update.message.reply_photo(photo=photos.photos[0][-1].file_id, caption=caption, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(caption, parse_mode="Markdown")
 
-async def top_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "🏆 **Global Top 15 Card Collectors:**\n\n1. User1 - 150 Cards\n2. User2 - 120 Cards\n3. User3 - 95 Cards"
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-async def ctop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = f"🏆 **{update.effective_chat.title} Top Collectors:**\n\n1. {update.effective_user.first_name} - 10 Cards"
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-async def daily_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    u = db.get_user(update.effective_user.id)
-    u["coins"] += 500
-    await update.message.reply_text(f"🪙 နေ့စဉ် အခမဲ့ Coin 500 ရရှိခဲ့ပါပြီ! (လက်ကျန်: {u['coins']})")
-
-async def sellprice_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "💰 **Card Rarity Market Prices:**\n\n"
-    for k, v in RARITY_TIERS.items():
-        text += f"• **Tier {k} ({v['name']})**: `{v['price']} Coins`\n"
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-async def claim_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    u = db.get_user(update.effective_user.id)
-    now = time.time()
-    if now - u["last_claim"] < 43200:
-        rem = int((43200 - (now - u["last_claim"])) / 3600)
-        await update.message.reply_text(f"⏳ Cooldown မိနေပါသည်။ {rem} နာရီကြာမှ ပြန်ယူပါ။")
-        return
-    u["last_claim"] = now
-    cid = f"CARD-{random.randint(1000,9999)}"
-    u["cards"].append({"id": cid, "name": "Astraea Guardian", "rarity": "10", "level": 1})
-    await update.message.reply_text(f"🎉 ကဒ်သစ် ရရှိခဲ့ပါသည်: `{cid}`", parse_mode="Markdown")
-
-async def nexus_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # /Nexus Card_Name (ကဒ်ကောက်ရန်)
+async def view_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: `/Nexus <Card_Name>`", parse_mode="Markdown")
+        await update.message.reply_text("Usage: `/view <card_id>`", parse_mode="Markdown")
         return
-    card_name = " ".join(context.args)
-    u = db.get_user(update.effective_user.id)
-    cid = f"{random.randint(1000,9999)}"
-    u["cards"].append({"id": cid, "name": card_name, "level": 1})
-    u["today_catches"] += 1
-    await update.message.reply_text(f"🎉 **{card_name}** အား ကောက်ယူလိုက်ပါပြီ! (Card ID: `{cid}`)", parse_mode="Markdown")
+    
+    cid = context.args[0]
+    m_card = db.data["cards_master"].get(cid)
+    if not m_card:
+        await update.message.reply_text("❌ Card ID မတွေ့ရှိပါ။")
+        return
 
-# ---------- GROUP BOT ENTRY / RULES CHECK ----------
+    # Image processing Canvas call
+    img_io = generate_custom_card(
+        card_title=m_card["name"],
+        rarity_name=RARITY_STAGES[m_card["rarity"]]["name"],
+        print_no=1,
+        atk=m_card["atk"],
+        def_val=m_card["def"],
+        hp=m_card["hp"],
+        dye_hex="#00FFFF",
+        frame_style="Gold"
+    )
+    await update.message.reply_photo(photo=img_io, caption=f"✨ **{m_card['name']}** (ID: `{cid}`)", parse_mode="Markdown")
+
+async def setlang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = db.get_user(update.effective_user.id)
+    u["lang"] = "EN" if u["lang"] == "MM" else "MM"
+    db.save_db()
+    await update.message.reply_text(f"✅ Language changed to: **{u['lang']}**")
+
+# ---------- GROUP EVENT LISTENERS & APPROVAL ----------
 
 async def on_bot_added_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     added_by = update.effective_user
     members_count = await chat.get_member_count()
     
-    # Owner Log Notification
+    # Notify Channel
     log_msg = (
-        f"🤖 **Bot Added to Group!**\n\n"
-        f"🌐 Group: `{chat.title}` (ID: `{chat.id}`)\n"
-        f"👥 Members: `{members_count}`\n"
-        f"👤 Added By: `{added_by.id}`"
+        f"🤖 **Bot Added to New Group!**\n\n"
+        f"🌐 **Group:** `{chat.title}` (ID: `{chat.id}`)\n"
+        f"👥 **Members:** `{members_count}`\n"
+        f"👤 **Added By:** `{added_by.first_name}` (ID: `{added_by.id}`)"
     )
     try:
         await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_msg, parse_mode="Markdown")
     except Exception:
         pass
 
+    gp = db.get_group(chat.id)
     if members_count < 50:
-        await chat.send_message("⚠️ ဤ Group တွင် လူ ၅၀ အနည်းဆုံး မရှိသေးပါ။ Bot ကို သုံးစွဲနိုင်မည် မဟုတ်ပါ။")
+        await chat.send_message(LANGUAGES["MM"]["NOT_ENOUGH_MEMBERS"].format(count=members_count))
         return
 
     await chat.send_message(
         "👋 **Nexus Bot ကို ထည့်သွင်းပေးသည့်အတွက် ကျေးဇူးတင်ပါသည်။**\n\n"
-        "⚠️ **စည်းကမ်းချက်များ:**\n"
-        "1. Bot အား Group Admin ပေးထားရပါမည်။\n"
+        "⚠️ **အသုံးပြုရန် လိုအပ်ချက်များ:**\n"
+        "1. Bot အား Admin 권한 ပေးထားရပါမည်။\n"
         "2. Owner ထံမှ Group Approve ရယူပေးပါ။"
     )
 
@@ -161,35 +155,71 @@ async def handle_group_messages(update: Update, context: ContextTypes.DEFAULT_TY
     chat = update.effective_chat
     if not chat or chat.type == "private":
         return
-    
+
     gp = db.get_group(chat.id)
+    if not gp["approved"]:
+        return
+
     gp["msg_count"] += 1
     if gp["msg_count"] >= gp["spawn_rate"]:
         gp["msg_count"] = 0
-        await chat.send_message("🎴 **A New Card Has Spawned!**\n`/Nexus Astraea` ဟု ရိုက်ထည့်၍ ကဒ် ကောက်ယူပါ!")
+        card_ids = list(db.data["cards_master"].keys())
+        spawned = random.choice(card_ids)
+        gp["spawned_card"] = spawned
+        db.save_db()
+        
+        card_data = db.data["cards_master"][spawned]
+        await chat.send_message(
+            f"🎴 **A New Card Has Spawned!**\n\n"
+            f"Name: **{card_data['name']}**\n"
+            f"ကဒ် ကောက်ယူရန် `/Nexus {card_data['name']}` ဟု ရိုက်ထည့်ပါ!"
+        )
 
 # ---------- ADMIN / OWNER COMMANDS ----------
 
-async def changetime_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not db.is_owner_or_sudo(update.effective_user.id, OWNER_IDS):
+async def approvegroup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not db.is_admin_or_owner(update.effective_user.id, OWNER_IDS):
         return
     try:
         gid = int(context.args[0])
-        rate = int(context.args[1])
         gp = db.get_group(gid)
-        gp["spawn_rate"] = rate
-        await update.message.reply_text(f"✅ Group `{gid}` ၏ Message Spawn Limit အား `{rate}` စာစောင် သို့ ပြောင်းလဲလိုက်ပါပြီ။")
+        gp["approved"] = True
+        db.save_db()
+        await update.message.reply_text(f"✅ Group `{gid}` ကို သုံးစွဲခွင့် Approve ပေးလိုက်ပါပြီ။")
     except Exception:
-        await update.message.reply_text("Usage: `/changetime <group_id> <messages_count>`")
+        await update.message.reply_text("Usage: `/approvegroup <group_id>`")
 
-async def givecoin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not db.is_owner_or_sudo(update.effective_user.id, OWNER_IDS):
+async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not db.is_admin_or_owner(update.effective_user.id, OWNER_IDS):
         return
     try:
-        target_id = int(context.args[0])
+        # Format: /addcard <id> <rarity_1-13> <name>
+        cid = context.args[0]
+        rarity = int(context.args[1])
+        name = " ".join(context.args[2:])
+        
+        db.data["cards_master"][cid] = {
+            "name": name,
+            "rarity": rarity,
+            "atk": rarity * 100,
+            "def": rarity * 80,
+            "hp": rarity * 200,
+            "img": "https://picsum.photos/400/600"
+        }
+        db.save_db()
+        await update.message.reply_text(f"✅ Card `{cid}` - **{name}** အား Database ထဲ ထည့်သွင်းပြီးပါပြီ။")
+    except Exception:
+        await update.message.reply_text("Usage: `/addcard <id> <rarity_1_to_13> <card_name>`")
+
+async def givecoin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not db.is_admin_or_owner(update.effective_user.id, OWNER_IDS):
+        return
+    try:
+        uid = int(context.args[0])
         amt = int(context.args[1])
-        u = db.get_user(target_id)
+        u = db.get_user(uid)
         u["coins"] += amt
-        await update.message.reply_text(f"✅ User `{target_id}` သို့ Coin `{amt}` ပေးလိုက်ပါပြီ။")
+        db.save_db()
+        await update.message.reply_text(f"✅ User `{uid}` သို့ Coin `{amt:,}` ထည့်ပေးလိုက်ပါပြီ။")
     except Exception:
         await update.message.reply_text("Usage: `/givecoin <user_id> <amount>`")
