@@ -1,4 +1,3 @@
-import random
 from telegram import ChatMember
 from config import REQUIRED_CHANNEL_ID, OWNER_ID
 from database import db
@@ -15,9 +14,3 @@ def is_sudo(user_id: int) -> bool:
         return True
     db.cursor.execute("SELECT user_id FROM sudo_users WHERE user_id = ?", (user_id,))
     return db.cursor.fetchone() is not None
-
-def generate_math_captcha() -> tuple:
-    a, b, c = random.randint(1, 9), random.randint(1, 9), random.randint(1, 5)
-    ans = a + b + c
-    question = f"{a} + {b} + {c} = ?"
-    return question, str(ans)
