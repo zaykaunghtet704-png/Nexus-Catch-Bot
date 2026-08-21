@@ -25,11 +25,7 @@ class DatabaseManager:
         CREATE TABLE IF NOT EXISTS cards (
             card_id TEXT PRIMARY KEY,
             name TEXT,
-            rarity_id INTEGER,
-            img_url TEXT,
-            hp INTEGER DEFAULT 100,
-            atk INTEGER DEFAULT 20,
-            def_stat INTEGER DEFAULT 10
+            rarity_id INTEGER
         );
         CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,20 +33,9 @@ class DatabaseManager:
             card_id TEXT,
             mint_rate REAL,
             serial_no INTEGER,
-            level INTEGER DEFAULT 1,
-            exp INTEGER DEFAULT 0,
             is_fav INTEGER DEFAULT 0,
-            frame TEXT DEFAULT 'Default',
             dye TEXT DEFAULT '#FFFFFF',
-            font TEXT DEFAULT 'Default',
             obtained_time INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS approved_groups (
-            chat_id INTEGER PRIMARY KEY,
-            msg_limit INTEGER DEFAULT 85,
-            msg_counter INTEGER DEFAULT 0,
-            current_spawn TEXT DEFAULT NULL,
-            captcha_ans TEXT DEFAULT NULL
         );
         CREATE TABLE IF NOT EXISTS hmode (
             user_id INTEGER PRIMARY KEY,
