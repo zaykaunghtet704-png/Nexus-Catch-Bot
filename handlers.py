@@ -31,7 +31,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("INSERT OR IGNORE INTO users (user_id, username, first_name) VALUES (?, ?, ?)",
                       (user.id, user.username, user.first_name))
     db.conn.commit()
-    # ပုံမပါဘဲ စာသားသီးသန့် ပေါ်စေရန် reply_text သုံးထားသည်
     caption = f"✨ **NEXUS CATCH BOT** ✨\n\n💎 မင်္ဂလာပါ {user.first_name}! ပရီမီယံကဒ်များ စုဆောင်းရန် `/help` ကို နှိပ်ကြည့်ပါ။ 🚀"
     await update.message.reply_text(caption, parse_mode="Markdown", reply_markup=get_start_keyboard())
 
@@ -53,13 +52,11 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    # Owner ဖြစ်ပါက Force Join စစ်ဆေးမှုကို ကျော်လွန်ခွင့်ရှိသည်
     if user.id != OWNER_ID and not await check_force_join(user.id, context):
         await update.message.reply_text("⚠️ **[Force Join]** Harem မကြည့်မီ အောက်ပါ Link များကို အရင် ဂျွိုင်း (Join) ပေးပါရန်။ 🔗", reply_markup=get_join_keyboard())
         return
 
     target_user_id = user.id
-    # Owner သီးသန့် အခြား User များ၏ ကဒ်များကို ဝင်ကြည့်နိုင်ခြင်း (/harem <user_id>)
     if context.args and user.id == OWNER_ID:
         try:
             target_user_id = int(context.args[0])
@@ -148,7 +145,6 @@ async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def nexus_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    # Owner ဖြစ်ပါက Group Guard ကို ကျော်လွန်ခွင့်ရှိသည်
     if user_id != OWNER_ID and not await check_group_guard(update, context): 
         return
     if not context.args:
@@ -185,7 +181,6 @@ async def claim_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    # Owner ဖြစ်ပါက တစ်ရက်တစ်ကြိမ် ကန့်သတ်ချက်ကို ကျော်လွန်၍ အချိန်မရွေး ထုတ်ယူနိုင်သည်
     if user_id != OWNER_ID:
         db.cursor.execute("SELECT last_claim FROM users WHERE user_id = ?", (user_id,))
         res = db.cursor.fetchone()
@@ -222,7 +217,6 @@ async def daily_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     res = db.cursor.fetchone()
     last_daily = res[0] if res else None
     
-    # Owner ဖြစ်ပါက Cooldown မလိုဘဲ အချိန်မရွေး ယူနိုင်သည်
     if user_id != OWNER_ID and last_daily == today_date:
         await update.message.reply_text("⏳ **Daily Reward:** ယနေ့အတွက် ဆုလာဘ်ကို ယူပြီးဖြစ်ပါသည်။ မနက်ဖြန်မှ ထပ်မံထုတ်ယူပါ။ 🪙", parse_mode="Markdown")
         return
