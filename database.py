@@ -52,6 +52,12 @@ class Database:
                 target_spawn_count INTEGER DEFAULT 70
             )
         """)
+        # Group ခွင့်ပြုချက် (Bypass) အတွက် Table အသစ်
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS allowed_groups (
+                chat_id INTEGER PRIMARY KEY
+            )
+        """)
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
