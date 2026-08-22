@@ -7,49 +7,34 @@ TIER_NAMES = [
     "🌟 Immortal", "👑 Exclusive", "✨ Premium Edition"
 ]
 
-def get_start_keyboard():
-    keyboard = [
-        [
-            InlineKeyboardButton("🔮 အကူအညီ (Help)", callback_data="help_p1"),
-            InlineKeyboardButton("🛒 ဈေးကွက် (Market)", callback_data="market_main")
-        ],
-        [
-            InlineKeyboardButton("🎴 ကိုယ်ပိုင်ကဒ်များ (Harem)", callback_data="harem_home"),
-            InlineKeyboardButton("🔍 ကဒ်ရှာရန် (Search)", callback_data="search_all")
-        ],
-        [
-            InlineKeyboardButton("📢 Channel Join", url=CHANNEL_LINK),
-            InlineKeyboardButton("👥 Group Join", url=GROUP_LINK)
-        ],
-        [
-            InlineKeyboardButton("👑 Owner ဆက်သွယ်ရန်", url=f"https://t.me/{OWNER_USERNAME}")
+def get_start_keyboard(lang="my"):
+    if lang == "en":
+        kb = [
+            [InlineKeyboardButton("🔮 Help", callback_data="help_p1"), InlineKeyboardButton("🛒 Market", callback_data="market_main")],
+            [InlineKeyboardButton("🎴 Harem", callback_data="harem_home"), InlineKeyboardButton("🔍 Search", callback_data="search_all")],
+            [InlineKeyboardButton("📢 Channel", url=CHANNEL_LINK), InlineKeyboardButton("👥 Group", url=GROUP_LINK)],
+            [InlineKeyboardButton("🌐 Change Language (မြန်မာ)", callback_data="lang_my")]
         ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_help_keyboard():
-    keyboard = [
-        [
-            InlineKeyboardButton("◀️ ရှေ့သို့", callback_data="help_p1"),
-            InlineKeyboardButton("နောက်သို့ ▶️", callback_data="help_p2")
-        ],
-        [
-            InlineKeyboardButton("🏠 ပင်မသို့", callback_data="help_home")
+    else:
+        kb = [
+            [InlineKeyboardButton("🔮 အကူအညီ (Help)", callback_data="help_p1"), InlineKeyboardButton("🛒 ဈေးကွက် (Market)", callback_data="market_main")],
+            [InlineKeyboardButton("🎴 ကိုယ်ပိုင်ကဒ်များ (Harem)", callback_data="harem_home"), InlineKeyboardButton("🔍 ကဒ်ရှာရန် (Search)", callback_data="search_all")],
+            [InlineKeyboardButton("📢 Channel Join", url=CHANNEL_LINK), InlineKeyboardButton("👥 Group Join", url=GROUP_LINK)],
+            [InlineKeyboardButton("🌐 Change Language (English)", callback_data="lang_en")]
         ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(kb)
 
 def get_harem_pagination_keyboard(page, total_pages):
     row = []
     if page > 1:
-        row.append(InlineKeyboardButton("◀️ နောက်သို့", callback_data=f"harem_page_{page-1}"))
+        row.append(InlineKeyboardButton("◀️ Prev", callback_data=f"harem_page_{page-1}"))
     if page < total_pages:
-        row.append(InlineKeyboardButton("ရှေ့သို့ ▶️", callback_data=f"harem_page_{page+1}"))
+        row.append(InlineKeyboardButton("Next ▶️", callback_data=f"harem_page_{page+1}"))
     
     keyboard = [
         row, 
-        [InlineKeyboardButton("📂 ပုံအားလုံးနှင့် ကဒ်စာရင်းကြည့်ရန်", callback_data="all_cards_list")],
-        [InlineKeyboardButton("🏠 ပင်မသို့", callback_data="help_home")]
+        [InlineKeyboardButton("📂 ပုံအားလုံးနှင့် ကဒ်စာရင်းကြည့်ရန် (All Cards)", callback_data="all_cards_list")],
+        [InlineKeyboardButton("🏠 ပင်မသို့ (Home)", callback_data="help_home")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
