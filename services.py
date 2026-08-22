@@ -1,6 +1,6 @@
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from config import OWNER_ID, OWNER_USERNAME, CHANNEL_LINK, GROUP_LINK
+from config import OWNER_ID, OWNER_USERNAME
 from database import db
 
 def is_sudo(user_id: int) -> bool:
@@ -16,7 +16,11 @@ async def check_group_guard(update: Update, context) -> bool:
     if chat.type == "private":
         return True
     
-    # ဤ Group အား Owner မှ ခွင့်ပြုထားပြီးသား (Bypass) ဟုတ်မဟုတ် စစ်ဆေးရန်
+    # Owner ဖြစ်ပါက အမြဲတမ်း ခွင့်ပြုမည်
+    if update.effective_user and update.effective_user.id == OWNER_ID:
+        return True
+
+    # ဤ Group အား Owner မှ allowed_groups ထဲတွင် ခွင့်ပြုထားပြီးသား ဟုတ်မဟုတ် စစ်ဆေးမည်
     db.cursor.execute("SELECT chat_id FROM allowed_groups WHERE chat_id = ?", (chat.id,))
     if db.cursor.fetchone():
         return True
