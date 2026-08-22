@@ -2,19 +2,25 @@ import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ChatMemberHandler
 from config import BOT_TOKEN
 from handlers import (
-    my_chat_member_handler, start_cmd, help_cmd, harem_cmd, search_cards_cmd,
-    profile_cmd, nexus_cmd, daily_cmd, claim_cmd, balance_cmd, market_cmd,
-    sell_cmd, buy_cmd, delist_cmd, trade_cmd, gift_cmd, duel_cmd, upgrade_cmd,
-    fav_cmd, unfav_cmd, hmode_cmd, check_card_cmd, top_cmd, ctop_cmd,
-    addcard_cmd, remove_card_cmd, givecoins_cmd, user_cards_cmd, broadcast_cmd,
-    changetime_cmd, ban_cmd, unban_cmd, button_callback
+    start_cmd, help_cmd, harem_cmd, search_cards_cmd, profile_cmd,
+    nexus_cmd, daily_cmd, claim_cmd, balance_cmd, market_cmd,
+    sell_cmd, buy_cmd, delist_cmd, trade_cmd, gift_cmd, duel_cmd,
+    upgrade_cmd, fav_cmd, unfav_cmd, hmode_cmd, check_card_cmd,
+    top_cmd, ctop_cmd, addcard_cmd, remove_card_cmd, givecoins_cmd,
+    user_cards_cmd, broadcast_cmd, changetime_cmd, ban_cmd, unban_cmd,
+    button_callback, my_chat_member_handler
 )
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 def main():
+    if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        print("Error: BOT_TOKEN is missing or not set!")
+        return
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Chat Member & Callbacks
     app.add_handler(ChatMemberHandler(my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(CallbackQueryHandler(button_callback))
 
@@ -44,7 +50,7 @@ def main():
     app.add_handler(CommandHandler("rankings", top_cmd))
     app.add_handler(CommandHandler("ctop", ctop_cmd))
 
-    # Admin & Owner Commands
+    # Admin Commands
     app.add_handler(CommandHandler("addcard", addcard_cmd))
     app.add_handler(CommandHandler("removecard", remove_card_cmd))
     app.add_handler(CommandHandler("gcoin", givecoins_cmd))
