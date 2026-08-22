@@ -48,6 +48,11 @@ def init_db():
             active_spawn_id TEXT DEFAULT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS whitelist_groups (
+            chat_id INTEGER PRIMARY KEY
+        )
+    """)
     conn.commit()
     conn.close()
 
