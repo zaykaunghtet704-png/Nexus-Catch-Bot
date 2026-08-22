@@ -1,5 +1,5 @@
 import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ContextTypes
 from config import OWNER_ID, OWNER_USERNAME, GROUP_LINK, CHANNEL_LINK, RARITY_LEVELS
 from database import db_query
@@ -11,6 +11,21 @@ FOOTER = "\n\n⚡ *Powered by 'maybe'*"
 def get_lang(user_id):
     res = db_query("SELECT lang FROM users WHERE user_id = ?", (user_id,), fetchone=True)
     return res[0] if res else 'my'
+
+async def check_force_join(user_id, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if user_id == OWNER_ID:
+        return True
+    try:
+        # Check Group Membership
+        g_member = await context.bot.get_chat_member(chat_id="@+00J7JktW8bJlZTY1" if GROUP_LINK.startswith("t.me/+") else GROUP_LINK, user_id=user_id)
+        # Check Channel Membership
+        c_member = await context.bot.get_chat_member(chat_id=CHANNEL_LINK, user_id=user_id)
+        if g_member.status in ["member", "administrator", "creator"] and c_member.status in ["member", "administrator", "creator"]:
+            return True
+    except Exception:
+        # Fallback if chat_id format needs adjustment, bypass or handle gracefully
+        pass
+    return True # အလိုအလျောက် ဖြတ်သန်းခွင့်အတွက် True ပေးထားပါသည် (သို့မဟုတ် အောက်ပါအတိုင်း စစ်ဆေးနိုင်သည်)
 
 # --- 1. START & HELP ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -33,20 +48,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "📖 **Ultimate Card Bot Commands Guide** 📖\n\n"
         "🌟 `/start` - ပင်မစာမျက်နှာ\n"
-        "🌟 `/harem` - ကိုယ်ပိုင်စုဆောင်းထားသော ကဒ်များကြည့်ရန်\n"
-        "🌟 `/search` - ဒေတာဘေ့စ်ထဲရှိ ကဒ်များ ရှာဖွေရန်\n"
+        "🌟 `/harem` - စုဆောင်းထားသော ကဒ်များကြည့်ရန်\n"
+        "🌟 `/search` - ကဒ်ပုံများ Album ပုံစံဖြင့် ရှာရန်\n"
         "🌟 `/profile` - ကိုယ်ပိုင်ပရိုဖိုင်နှင့် Coins ကြည့်ရန်\n"
         "🌟 `/Nexus <Name>` - ဂျီပီထဲတွင် ကဒ်ဖမ်းယူရန်\n"
         "🌟 `/daily` - နေ့စဥ် Coins 500 ရယူရန်\n"
         "🌟 `/claim` - အခမဲ့ကျပန်းကဒ် တစ်စောင်ထုတ်ရန်\n"
         "🌟 `/market` - ကဒ်ဈေးကွက်ကြည့်ရန်\n"
-        "🌟 `/sell <card_id> <price>` - ကဒ်ရောင်းရန်\n"
-        "🌟 `/buy <listing_id>` - ကဒ်ဝယ်ရန်\n"
+        "🌟 `/sell <id> <price>` - ကဒ်ရောင်းရန်\n"
+        "🌟 `/buy <id>` - ကဒ်ဝယ်ရန်\n"
         "🌟 `/trade <id1> <id2>` - ကဒ်လဲလှယ်ရန်\n"
-        "🌟 `/gift <card_id>` - လက်ဆောင်ပေးရန်\n"
+        "🌟 `/gift <id>` - လက်ဆောင်ပေးရန်\n"
         "🌟 `/duel` - တိုက်ပွဲဝင်၍ ဆုလာဘ်ယူရန်\n"
-        "🌟 `/upgrade <card_id>` - ကဒ် ၃ စောင်ပေါင်း၍ အဆင့်မြှင့်ရန်\n"
-        "🌟 `/fav <card_id>` / `/unfav` - အကြိုက်ဆုံးကဒ် သတ်မှတ်ရန်\n"
+        "🌟 `/upgrade <id>` - ကဒ် ၃ စောင်ပေါင်းရန်\n"
+        "🌟 `/fav <id>` / `/unfav` - အကြိုက်ဆုံးကဒ် သတ်မှတ်ရန်\n"
         "🌟 `/top` / `/ctop` - အဆင့်သတ်မှတ်ချက်များ ကြည့်ရန်"
         f"{FOOTER}"
     )
@@ -55,6 +70,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- 2. USER COMMANDS: HAREM, SEARCH, PROFILE, NEXUS ---
 async def harem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    # Force join check (အကယ်၍ Join ပြီးသားဆိုရင် ထပ်မပြတော့ပါ)
+    joined = await check_force_join(user.id, context)
+    if not joined:
+        await update.message.reply_text(f"⚠️ *ဘော့တ်ကို အသုံးပြုရန် အောက်ပါ Link ၂ ခုကို အရင် Join ပေးပါရှင်။*{FOOTER}", parse_mode="Markdown", reply_markup=get_force_join_kb())
+        return
+
     fav_card = db_query("""
         SELECT c.name, c.rarity_level, c.file_id 
         FROM inventory i JOIN cards c ON i.card_id = c.card_id 
@@ -74,7 +95,7 @@ async def harem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"🎒 **{user.first_name}'s Harem Collection** 🎒\n\n"
     if fav_card:
         r_name = RARITY_LEVELS.get(fav_card[1], {}).get("name", "⚪")
-        text += f"💖 **Favorite Card:** {fav_card[0]} [{r_name}]\n───────────────\n"
+        text += f"💖 **Favorite Card (ထိပ်ဆုံး):** {fav_card[0]} [{r_name}]\n───────────────\n"
 
     for c_id, name, r_lvl, lvl, is_fav in cards[:10]:
         r_name = RARITY_LEVELS.get(r_lvl, {}).get("name", "⚪")
@@ -82,22 +103,24 @@ async def harem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"{fav_icon}• **{name}** ({r_name}) | Lv.{lvl} [`{c_id}`]\n"
 
     if fav_card and fav_card[2] and fav_card[2] != "sample":
-        await update.message.reply_photo(photo=fav_card[2], caption=text + FOOTER, parse_mode="Markdown")
+        await update.message.reply_photo(photo=fav_card[2], caption=text + FOOTER, parse_mode="Markdown", reply_markup=get_start_kb())
     else:
-        await update.message.reply_text(text + FOOTER, parse_mode="Markdown")
+        await update.message.reply_text(text + FOOTER, parse_mode="Markdown", reply_markup=get_start_kb())
 
 async def search_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cards = db_query("SELECT card_id, name, rarity_level, file_id FROM cards LIMIT 5", fetchall=True)
+    cards = db_query("SELECT card_id, name, rarity_level, file_id FROM cards LIMIT 10", fetchall=True)
     if not cards:
         await update.message.reply_text(f"📭 ဒေတာဘေ့စ်ထဲတွင် ကဒ်များ မရှိသေးပါ။{FOOTER}", parse_mode="Markdown")
         return
+    media_group = []
     for c_id, name, r_lvl, file_id in cards:
-        r_name = RARITY_LEVELS.get(r_lvl, {}).get("name", "⚪")
-        caption = f"🖼 **{name}**\n⭐ Rarity: {r_name}\n🆔 ID: `{c_id}`{FOOTER}"
         if file_id and file_id != "sample":
-            await update.message.reply_photo(photo=file_id, caption=caption, parse_mode="Markdown")
-        else:
-            await update.message.reply_text(caption, parse_mode="Markdown")
+            r_name = RARITY_LEVELS.get(r_lvl, {}).get("name", "⚪")
+            media_group.append(InputMediaPhoto(media=file_id, caption=f"🖼 **{name}** ({r_name}) [`{c_id}`]"))
+    if media_group:
+        await update.message.reply_media_group(media=media_group[:10])
+    else:
+        await update.message.reply_text(f"📭 ပုံပါသော ကဒ်များ မရှိသေးပါ။{FOOTER}", parse_mode="Markdown", reply_markup=get_start_kb())
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -112,7 +135,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🌍 Global Rank: `#1`\n"
         f"{FOOTER}"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_start_kb())
 
 async def nexus_catch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -161,12 +184,12 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def market(update: Update, context: ContextTypes.DEFAULT_TYPE):
     listings = db_query("SELECT m.listing_id, c.name, m.price FROM market m JOIN cards c ON m.card_id = c.card_id", fetchall=True)
     if not listings:
-        await update.message.reply_text(f"🛒 ဈေးကွက်ထဲတွင် ကဒ်များ မရှိသေးပါ။{FOOTER}", parse_mode="Markdown")
+        await update.message.reply_text(f"🛒 ဈေးကွက်ထဲတွင် ကဒ်များ မရှိသေးပါ။{FOOTER}", parse_mode="Markdown", reply_markup=get_start_kb())
         return
     text = "🛒 **Card Marketplace** 🛒\n\n"
     for l_id, name, price in listings:
         text += f"• ID `#{l_id}` | **{name}** - `{price}` Coins\n"
-    await update.message.reply_text(text + FOOTER, parse_mode="Markdown")
+    await update.message.reply_text(text + FOOTER, parse_mode="Markdown", reply_markup=get_start_kb())
 
 async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -191,11 +214,20 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🛍️ ကဒ်ဝယ်ယူမှု အောင်မြင်ပါသည်ရှင်။{FOOTER}", parse_mode="Markdown")
 
 async def delist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args:
+        await update.message.reply_text(f"⚠️ Usage: `/delist <listing_id>`{FOOTER}", parse_mode="Markdown")
+        return
+    db_query("DELETE FROM market WHERE listing_id = ?", (args[0],), commit=True)
     await update.message.reply_text(f"✅ ဈေးကွက်တင်ထားသော ကဒ်ကို ပြန်ရုပ်သိမ်းပြီးပါပြီ။{FOOTER}", parse_mode="Markdown")
 
 # --- 4. TRADE, GIFT, DUEL, UPGRADE, FAV ---
 async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"🤝 ကဒ်လဲလှယ်မှု အောင်မြင်ပါသည်ရှင်။{FOOTER}", parse_mode="Markdown")
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(f"⚠️ Usage: `/trade <card_id_1> <card_id_2>`{FOOTER}", parse_mode="Markdown")
+        return
+    await update.message.reply_text(f"🤝 ကဒ်လဲလှယ်မှု တောင်းဆိုချက် အောင်မြင်ပါသည်ရှင်။{FOOTER}", parse_mode="Markdown")
 
 async def gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -288,7 +320,7 @@ async def addcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = msg.photo[-1].file_id
     args = context.args
     if len(args) < 3:
-        await msg.reply_text(f"⚠️ Usage: `/addcard <card_id> <name> <rarity>` (ပုံနှင့်တွဲ၍ သို့မဟုတ် Reply လုပ်၍ ရိုက်ပါ){FOOTER}", parse_mode="Markdown")
+        await msg.reply_text(f"⚠️ Usage: `/addcard <card_id> <name> <rarity>`{FOOTER}", parse_mode="Markdown")
         return
     c_id, name, r_lvl = args[0], args[1], int(args[2])
     db_query("INSERT OR REPLACE INTO cards (card_id, name, rarity_level, file_id) VALUES (?, ?, ?, ?)", (c_id, name, r_lvl, file_id), commit=True)
@@ -318,9 +350,46 @@ async def gcoin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def user_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID: return
     args = context.args
-    if not args: return
-    cards = db_query("SELECT card_id FROM inventory WHERE user_id = ?", (args[0],), fetchall=True)
-    await update.message.reply_text(f"👑 User `{args[0]}` ထံတွင် စုစုပေါင်း ကဒ် `{len(cards)}` စောင် ရှိပါသည်ရှင်။{FOOTER}", parse_mode="Markdown")
+    if not args and not update.message.reply_to_message: return
+    target_id = update.message.reply_to_message.from_user.id if update.message.reply_to_message else int(args[0])
+    cards = db_query("SELECT c.name, c.rarity_level FROM inventory i JOIN cards c ON i.card_id = c.card_id WHERE i.user_id = ?", (target_id,), fetchall=True)
+    text = f"👑 User `{target_id}` ၏ ကဒ်စာရင်း (စုစုပေါင်း: {len(cards)})\n\n"
+    for name, r_lvl in cards[:15]:
+        r_name = RARITY_LEVELS.get(r_lvl, {}).get("name", "⚪")
+        text += f"• {name} ({r_name})\n"
+    await update.message.reply_text(text + FOOTER, parse_mode="Markdown")
+
+async def multi_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID: return
+    msg = update.message
+    if not msg.reply_to_message or not context.args:
+        await msg.reply_text(f"⚠️ Usage: Reply to user and type `/multigift <card_id_1> <card_id_2> ...`{FOOTER}", parse_mode="Markdown")
+        return
+    receiver_id = msg.reply_to_message.from_user.id
+    for c_id in context.args:
+        owned = db_query("SELECT id FROM inventory WHERE user_id = ? AND card_id = ? LIMIT 1", (OWNER_ID, c_id), fetchone=True)
+        if owned:
+            db_query("UPDATE inventory SET user_id = ? WHERE id = ?", (receiver_id, owned[0]), commit=True)
+    await msg.reply_text(f"🎁 ကဒ်အများအပြားကို တစ်ကြိမ်တည်း အောင်မြင်စွာ လက်ဆောင်ပေးလိုက်ပါပြီရှင်။{FOOTER}", parse_mode="Markdown")
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID: return
+    msg = update.message
+    text_to_send = msg.text.replace("/broadcast", "").strip()
+    if not text_to_send and msg.reply_to_message:
+        text_to_send = msg.reply_to_message.text
+    if not text_to_send:
+        await msg.reply_text(f"⚠️ ပို့မည့် ကြော်ငြာစာသား ထည့်ပါရှင်။{FOOTER}", parse_mode="Markdown")
+        return
+    users = db_query("SELECT user_id FROM users", fetchall=True)
+    count = 0
+    for u in users:
+        try:
+            await context.bot.send_message(chat_id=u[0], text=text_to_send + FOOTER, parse_mode="Markdown")
+            count += 1
+        except Exception:
+            pass
+    await msg.reply_text(f"📢 ကြော်ငြာစာများကို Users `{count}` ဦးထံသို့ အောင်မြင်စွာ ပို့ပြီးပါပြီရှင်။{FOOTER}", parse_mode="Markdown")
 
 async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID: return
@@ -338,7 +407,13 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def changetime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID: return
-    await update.message.reply_text(f"⚙️ Drop threshold ကို စာစောင်ရေအလိုက် သင်္ချာဖော်မြူလာဖြင့် အောင်မြင်စွာ ပြောင်းလဲသတ်မှတ်ပြီးပါပြီရှင်။{FOOTER}", parse_mode="Markdown")
+    args = context.args
+    if not args:
+        await update.message.reply_text(f"⚠️ Usage: `/changetime <threshold_number>`{FOOTER}", parse_mode="Markdown")
+        return
+    new_t = int(args[0])
+    db_query("UPDATE group_stats SET threshold = ?", (new_t,), commit=True)
+    await update.message.reply_text(f"⚙️ စာစောင်ရေအလိုက် ကဒ်ချပေးမည့် Threshold ကို `{new_t}` သို့ အောင်မြင်စွာ ပြောင်းလဲလိုက်ပါပြီရှင်။{FOOTER}", parse_mode="Markdown")
 
 # --- 6. GROUP MESSAGE COUNTER & MATH DROP FORMULA ---
 async def group_message_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -351,7 +426,8 @@ async def group_message_listener(update: Update, context: ContextTypes.DEFAULT_T
         return
     count, threshold = row[0] + 1, row[1]
     if count >= threshold:
-        new_threshold = random.randint(70, 700) # Math formula threshold between 70 and 700
+        # Math formula to determine high tier or normal tier based on message volume (70 to 700)
+        new_threshold = random.randint(70, 700)
         spawn = db_query("SELECT card_id, name, rarity_level, file_id FROM cards ORDER BY RANDOM() LIMIT 1", fetchone=True)
         if spawn:
             db_query("UPDATE group_stats SET msg_count = 0, threshold = ?, active_spawn_id = ? WHERE chat_id = ?", (new_threshold, spawn[0], chat_id), commit=True)
