@@ -6,7 +6,7 @@ from handlers import (
     start, help_command, harem, search_cards, profile, nexus_catch,
     daily, claim, balance, market, sell, buy, delist,
     trade, gift, duel, upgrade, fav, unfav, hmode, check_card, top_rankings, ctop,
-    addcard, removecard, gcoin, user_cards, ban_user, unban_user, changetime,
+    addcard, removecard, gcoin, user_cards, multi_gift, broadcast, ban_user, unban_user, changetime,
     group_message_listener
 )
 
@@ -47,6 +47,8 @@ def main():
     app.add_handler(CommandHandler("removecard", removecard))
     app.add_handler(CommandHandler("gcoin", gcoin))
     app.add_handler(CommandHandler("usercards", user_cards))
+    app.add_handler(CommandHandler("multigift", multi_gift))
+    app.add_handler(CommandHandler("broadcast", broadcast))
     app.add_handler(CommandHandler("ban", ban_user))
     app.add_handler(CommandHandler("unban", unban_user))
     app.add_handler(CommandHandler("changetime", changetime))
