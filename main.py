@@ -1,5 +1,12 @@
 import logging
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import (
+    ApplicationBuilder, 
+    CommandHandler, 
+    CallbackQueryHandler, 
+    MessageHandler, 
+    ChatMemberHandler, 
+    filters
+)
 from config import BOT_TOKEN
 from handlers import (
     start_cmd, help_cmd, harem_cmd, search_cards_cmd, profile_cmd,
