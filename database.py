@@ -14,7 +14,8 @@ class Database:
                 first_name TEXT,
                 coins INTEGER DEFAULT 0,
                 last_daily TEXT,
-                last_claim TEXT
+                last_claim TEXT,
+                lang TEXT DEFAULT 'my'
             )
         """)
         self.cursor.execute("""
@@ -45,9 +46,10 @@ class Database:
             )
         """)
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS hmode (
-                user_id INTEGER PRIMARY KEY,
-                tier_filter INTEGER
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                chat_id INTEGER PRIMARY KEY,
+                message_count INTEGER DEFAULT 0,
+                target_spawn_count INTEGER DEFAULT 70
             )
         """)
         self.cursor.execute("""
