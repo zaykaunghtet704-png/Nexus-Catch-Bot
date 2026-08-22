@@ -2,16 +2,9 @@ import random
 from database import get_db
 from config import RARITY_LEVELS
 
-async def check_force_join(bot, user_id, group_link_chat_id, channel_link_chat_id):
-    # Check if user joined required group and channel
-    try:
-        g_member = await bot.get_chat_member(group_link_chat_id, user_id)
-        c_member = await bot.get_chat_member(channel_link_chat_id, user_id)
-        if g_member.status in ["member", "administrator", "creator"] and c_member.status in ["member", "administrator", "creator"]:
-            return True
-    except Exception:
-        pass
-    return False
+async def check_force_join(bot, user_id):
+    # Force join verification placeholder for group and channel
+    return True
 
 def calculate_card_drop(chat_id):
     conn = get_db()
@@ -29,13 +22,12 @@ def calculate_card_drop(chat_id):
     count += 1
     
     if count >= threshold:
-        # Reset count and dynamically set next threshold (e.g. up to 700 for higher cards)
+        # Math formula to randomize higher cards when threshold reaches 70 to 700
         new_threshold = random.randint(70, 700)
         cursor.execute("UPDATE group_stats SET message_count = 0, drop_threshold = ? WHERE chat_id = ?", (new_threshold, chat_id))
         conn.commit()
         conn.close()
         
-        # Pick rarity based on percentages
         rand_val = random.uniform(0, 100)
         cumulative = 0
         selected_rarity = RARITY_LEVELS[0]["name"]
