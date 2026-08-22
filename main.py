@@ -3,7 +3,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from config import BOT_TOKEN
 from database import init_db
 from handlers import (
-    start, help_command, harem, search_cards, profile, nexus_catch,
+    start, unlock_group, help_command, harem, search_cards, profile, nexus_catch,
     daily, claim, balance, market, sell, buy, delist,
     trade, gift, duel, upgrade, fav, unfav, hmode, check_card, top_rankings, ctop,
     addcard, removecard, gcoin, user_cards, multi_gift, broadcast, ban_user, unban_user, changetime,
@@ -18,6 +18,7 @@ def main():
     
     # User Command Handlers
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("unlockgroup", unlock_group))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("harem", harem))
     app.add_handler(CommandHandler("search", search_cards))
