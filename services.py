@@ -1,44 +1,31 @@
-import random
-from database import get_db
-from config import RARITY_LEVELS
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from config import OWNER_ID, OWNER_USERNAME, FORCE_JOIN_CHANNELS
 
-async def check_force_join(bot, user_id):
-    # Force join verification placeholder for group and channel
+async def check_group_member_count(update, context):
+    chat = update.effective_chat
+    if chat.type in ["group", "supergroup"]:
+        try:
+            member_count = await context.bot.get_chat_member_count(chat.id)
+            if member_count < 50:
+                keyboard = [[InlineKeyboardButton("👑 Owner သို့ ခွင့်တောင်းရန်", url=f"https://t.me/{OWNER_USERNAME}")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(
+                    f"❌ ဤဂရုတွင် လူဦးရေ {member_count} ယောက်သာ ရှိသေးပါသည် ဆော့ရန် လူဦးရေ 50 ပြည့်ရန် လိုအပ်ပါသည်။ (Owner ID: {OWNER_ID})\n\n"
+                    f"ကျေးဇူးပြု၍ အုံနာထံသို့ ခွင့်တောင်းပါ။",
+                    reply_markup=reply_markup
+                )
+                return False
+        except Exception:
+            pass
     return True
 
-def calculate_card_drop(chat_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT message_count, drop_threshold FROM group_stats WHERE chat_id = ?", (chat_id,))
-    row = cursor.fetchone()
-    
-    if not row:
-        cursor.execute("INSERT INTO group_stats (chat_id, message_count, drop_threshold) VALUES (?, 1, 70)", (chat_id,))
-        conn.commit()
-        conn.close()
-        return False, None
-    
-    count, threshold = row
-    count += 1
-    
-    if count >= threshold:
-        # Math formula to randomize higher cards when threshold reaches 70 to 700
-        new_threshold = random.randint(70, 700)
-        cursor.execute("UPDATE group_stats SET message_count = 0, drop_threshold = ? WHERE chat_id = ?", (new_threshold, chat_id))
-        conn.commit()
-        conn.close()
+async def check_force_join(update, context):
+    user_id = update.effective_user.id
+    # Owner အတွက် Force Join ဖြတ်ကျော်ခွင့်ပေးနိုင်
+    if user_id == OWNER_ID:
+        return True
         
-        rand_val = random.uniform(0, 100)
-        cumulative = 0
-        selected_rarity = RARITY_LEVELS[0]["name"]
-        for r in RARITY_LEVELS:
-            cumulative += r["rate"]
-            if rand_val <= cumulative:
-                selected_rarity = r["name"]
-                break
-        return True, selected_rarity
-    else:
-        cursor.execute("UPDATE group_stats SET message_count = ? WHERE chat_id = ?", (count, chat_id))
-        conn.commit()
-        conn.close()
-        return False, None
+    for channel in FORCE_JOIN_CHANNELS:
+        # ဤနေရာတွင် User က channel/group ကို joinထားခြင်းရှိမရှိ စစ်ဆေးသည့် logic ထည့်နိုင်ပါသည်။
+        pass
+    return True
