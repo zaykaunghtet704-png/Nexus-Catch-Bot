@@ -1,4 +1,5 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from config import CHANNEL_LINK, GROUP_LINK, OWNER_USERNAME
 
 TIER_NAMES = [
     "⚪ Common", "🟢 Uncommon", "🔵 Rare", "🟣 Epic", "🟡 Legendary", 
@@ -15,6 +16,13 @@ def get_start_keyboard():
         [
             InlineKeyboardButton("🎴 ကိုယ်ပိုင်ကဒ်များ (Harem)", callback_data="harem_home"),
             InlineKeyboardButton("🔍 ကဒ်ရှာရန် (Search)", callback_data="search_all")
+        ],
+        [
+            InlineKeyboardButton("📢 Channel Join", url=CHANNEL_LINK),
+            InlineKeyboardButton("👥 Group Join", url=GROUP_LINK)
+        ],
+        [
+            InlineKeyboardButton("👑 Owner ဆက်သွယ်ရန်", url=f"https://t.me/{OWNER_USERNAME}")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
