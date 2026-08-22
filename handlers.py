@@ -38,6 +38,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"🔮 <b>NEXUS CATCH BOT — ပင်မစာမျက်နှာ</b> ✨💎\n\nမင်္ဂလာပါ <b>{user.first_name}</b>!\nပရီမီယံကဒ်များ စုဆောင်းရန် အောက်ပါခလုတ်များကို အသုံးပြုပါ။ 🚀🔥"
 
     caption = add_power_footer(text)
+    target_msg = update.message if update.message else update.callback_query.message
     if update.message:
         await update.message.reply_text(caption, parse_mode="HTML", reply_markup=get_start_keyboard(lang))
     elif update.callback_query:
@@ -119,18 +120,30 @@ async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await target_msg.reply_text(msg, parse_mode="HTML", reply_markup=get_harem_pagination_keyboard(page, total_pages))
 
 async def search_cards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    db.cursor.execute("SELECT card_id, name, rarity_id, image_url FROM cards LIMIT 15")
+    db.cursor.execute("SELECT card_id, name, rarity_id, image_url FROM cards LIMIT 10")
     cards = db.cursor.fetchall()
     target_msg = update.message if update.message else update.callback_query.message
+    
     if not cards:
         await target_msg.reply_text(add_power_footer("❌ ဒေတာဘေ့စ်တွင် ကဒ်များ မရှိသေးပါ။ 📭"), parse_mode="HTML")
         return
-    msg = "🔍 <b>DATABASE CARDS LIST & SEARCH</b> 💎✨\n\n"
+        
+    msg = "🔍 <b>DATABASE CARDS SHOWCASE</b> 💎✨\n\n"
     for c in cards:
         tier_str = TIER_NAMES[c[2]-1] if 1 <= c[2] <= len(TIER_NAMES) else f"Tier {c[2]}"
-        msg += f"🆔 <code>{c[0]}</code> | <b>{c[1]}</b> | ✨ {tier_str}\n"
+        msg += f"• <b>{c[1]}</b> | 🌟 {tier_str} (ID: <code>{c[0]}</code>)\n"
     
-    await target_msg.reply_text(add_power_footer(msg), parse_mode="HTML")
+    msg = add_power_footer(msg)
+    first_image = cards[0][3] if cards[0][3] else None
+    
+    if first_image:
+        try:
+            await target_msg.reply_photo(photo=first_image, caption=msg, parse_mode="HTML")
+            return
+        except Exception:
+            pass
+            
+    await target_msg.reply_text(msg, parse_mode="HTML")
 
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
