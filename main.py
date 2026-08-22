@@ -63,7 +63,7 @@ def main():
     app.add_handler(CommandHandler("changetime", changetime_cmd))
     app.add_handler(CommandHandler("ban", ban_cmd))
     app.add_handler(CommandHandler("unban", unban_cmd))
-    app.add_handler(CommandHandler("allowgroup", allow_group_cmd)) # လူ ၅၀ မပြည့်သော Group များအတွက် အထူးခွင့်ပြုချက်
+    app.add_handler(CommandHandler("allowgroup", allow_group_cmd))
 
     # Handlers & Listeners
     app.add_handler(CallbackQueryHandler(button_callback))
