@@ -6,11 +6,9 @@ OWNER_USERNAME = "May_Be_786"
 
 GROUP_LINK = "https://t.me/+00J7JktW8bJlZTY1"
 CHANNEL_LINK = "https://t.me/+E6BxfAj0gaI2Y2Zl"
-GROUP_CHAT_ID = -1001234567890  # Target Group Chat ID for verification if needed
-CHANNEL_CHAT_ID = -1009876543210 # Target Channel Chat ID for verification
 
-# 13 Rarity Levels & Drop Probabilities
-RARITIES = {
+# 13 Rarity Levels with Percentage Rates & Max Price (15,000)
+RARITY_LEVELS = {
     1: {"name": "Common ⚪", "rate": 35.0, "max_price": 500},
     2: {"name": "Uncommon 🟢", "rate": 20.0, "max_price": 1200},
     3: {"name": "Rare 🔵", "rate": 15.0, "max_price": 2500},
@@ -25,3 +23,6 @@ RARITIES = {
     12: {"name": "Supreme 👑", "rate": 0.15, "max_price": 14700},
     13: {"name": "Premium Edition 💎", "rate": 0.05, "max_price": 15000},
 }
+
+# Backward compatibility alias if needed anywhere else
+RARITIES = RARITY_LEVELS
