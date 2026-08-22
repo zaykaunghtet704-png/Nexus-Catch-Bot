@@ -533,6 +533,17 @@ async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text(add_power_footer("Usage: /unban &lt;user_id&gt;"), parse_mode="HTML")
 
+async def allow_group_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_sudo(update.effective_user.id): return
+    chat_id = update.effective_chat.id
+    if update.effective_chat.type == "private":
+        await update.message.reply_text(add_power_footer("❌ ဤ Command ကို Group ထဲတွင်သာ အသုံးပြုနိုင်ပါသည်။"))
+        return
+    
+    db.cursor.execute("INSERT OR IGNORE INTO allowed_groups (chat_id) VALUES (?)", (chat_id,))
+    db.conn.commit()
+    await update.message.reply_text(add_power_footer("✅ ဤ Group အား လူ ၅၀ မပြည့်သော်လည်း Bot အသုံးပြုခွင့်ကို Owner မှ အောင်မြင်စွာ ခွင့်ပြုပေးလိုက်ပါပြီ။ 🚀✨"), parse_mode="HTML")
+
 async def message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_chat or update.effective_chat.type == "private":
         return
@@ -547,7 +558,6 @@ async def message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     cnt, target = row[0] + 1, row[1]
     if cnt >= target:
-        # Reset count & spawn a random card automatically into chat
         db.cursor.execute("UPDATE chat_messages SET message_count = 0 WHERE chat_id = ?", (chat_id,))
         db.conn.commit()
         
