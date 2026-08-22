@@ -1,12 +1,11 @@
 import sqlite3
 
-DB_NAME = "card_bot.db"
+DB_NAME = "ultimate_bot.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Users Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -16,8 +15,6 @@ def init_db():
             is_banned INTEGER DEFAULT 0
         )
     """)
-    
-    # Cards Database
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cards (
             card_id TEXT PRIMARY KEY,
@@ -26,8 +23,6 @@ def init_db():
             file_id TEXT
         )
     """)
-    
-    # User Inventory
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,8 +32,6 @@ def init_db():
             level INTEGER DEFAULT 1
         )
     """)
-    
-    # Marketplace
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS market (
             listing_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,8 +40,6 @@ def init_db():
             price INTEGER
         )
     """)
-    
-    # Group Message Counter & Drop Tracking
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS group_stats (
             chat_id INTEGER PRIMARY KEY,
@@ -57,7 +48,6 @@ def init_db():
             active_spawn_id TEXT DEFAULT NULL
         )
     """)
-    
     conn.commit()
     conn.close()
 
@@ -65,13 +55,11 @@ def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute(query, params)
-    
     data = None
     if fetchone:
         data = cursor.fetchone()
     elif fetchall:
         data = cursor.fetchall()
-        
     if commit:
         conn.commit()
     conn.close()
