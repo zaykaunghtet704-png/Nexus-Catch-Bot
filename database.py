@@ -1,12 +1,12 @@
 import sqlite3
 
 class Database:
-    def __init__(self, db_name="bot_database.db"):
+    def __init__(self, db_name="nexus_bot.db"):
         self.conn = sqlite3.connect(db_name, check_same_thread=False)
         self.cursor = self.conn.cursor()
-        self.create_tables()
+        self.setup_tables()
 
-    def create_tables(self):
+    def setup_tables(self):
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -41,8 +41,7 @@ class Database:
                 listing_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 seller_id INTEGER,
                 inv_id INTEGER,
-                price INTEGER,
-                FOREIGN KEY(inv_id) REFERENCES inventory(id)
+                price INTEGER
             )
         """)
         self.cursor.execute("""
