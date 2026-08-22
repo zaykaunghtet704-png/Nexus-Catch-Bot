@@ -50,7 +50,7 @@ def main():
     app.add_handler(CommandHandler("rankings", top_cmd))
     app.add_handler(CommandHandler("ctop", ctop_cmd))
 
-    # Admin Commands
+    # Admin/Owner Commands
     app.add_handler(CommandHandler("addcard", addcard_cmd))
     app.add_handler(CommandHandler("removecard", remove_card_cmd))
     app.add_handler(CommandHandler("gcoin", givecoins_cmd))
