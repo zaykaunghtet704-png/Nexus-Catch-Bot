@@ -6,13 +6,13 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Tables for Users, Cards, Inventory, Group Message Counts
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             coins INTEGER DEFAULT 500,
-            last_daily TEXT
+            last_daily TEXT,
+            is_banned INTEGER DEFAULT 0
         )
     """)
     cursor.execute("""
@@ -29,6 +29,14 @@ def init_db():
             card_id TEXT,
             is_fav INTEGER DEFAULT 0,
             level INTEGER DEFAULT 1
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS market (
+            listing_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            card_id TEXT,
+            price INTEGER
         )
     """)
     cursor.execute("""
