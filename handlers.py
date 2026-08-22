@@ -1,6 +1,6 @@
 import random
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ContextTypes
 from config import OWNER_ID, LOG_CHANNEL_ID, CHANNEL_LINK, GROUP_LINK, OWNER_USERNAME
 from database import db
@@ -120,30 +120,30 @@ async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await target_msg.reply_text(msg, parse_mode="HTML", reply_markup=get_harem_pagination_keyboard(page, total_pages))
 
 async def search_cards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    db.cursor.execute("SELECT card_id, name, rarity_id, image_url FROM cards LIMIT 10")
+    db.cursor.execute("SELECT card_id, name, rarity_id, image_url FROM cards WHERE image_url IS NOT NULL AND image_url != '' LIMIT 10")
     cards = db.cursor.fetchall()
     target_msg = update.message if update.message else update.callback_query.message
     
     if not cards:
-        await target_msg.reply_text(add_power_footer("❌ ဒေတာဘေ့စ်တွင် ကဒ်များ မရှိသေးပါ။ 📭"), parse_mode="HTML")
+        await target_msg.reply_text(add_power_footer("❌ ဒေတာဘေ့စ်တွင် ပုံပါရှိသော ကဒ်များ မရှိသေးပါ။ 📭"), parse_mode="HTML")
         return
         
-    msg = "🔍 <b>DATABASE CARDS SHOWCASE</b> 💎✨\n\n"
-    for c in cards:
+    media_group = []
+    caption_text = "🔍 <b>DATABASE CARDS SHOWCASE</b> 💎✨\n\n"
+    
+    for idx, c in enumerate(cards):
         tier_str = TIER_NAMES[c[2]-1] if 1 <= c[2] <= len(TIER_NAMES) else f"Tier {c[2]}"
-        msg += f"• <b>{c[1]}</b> | 🌟 {tier_str} (ID: <code>{c[0]}</code>)\n"
-    
-    msg = add_power_footer(msg)
-    first_image = cards[0][3] if cards[0][3] else None
-    
-    if first_image:
-        try:
-            await target_msg.reply_photo(photo=first_image, caption=msg, parse_mode="HTML")
-            return
-        except Exception:
-            pass
+        caption_text += f"• <b>{c[1]}</b> | 🌟 {tier_str} (ID: <code>{c[0]}</code>)\n"
+        
+        if idx == 0:
+            media_group.append(InputMediaPhoto(media=c[3], caption=add_power_footer(caption_text), parse_mode="HTML"))
+        else:
+            media_group.append(InputMediaPhoto(media=c[3]))
             
-    await target_msg.reply_text(msg, parse_mode="HTML")
+    try:
+        await target_msg.reply_media_group(media=media_group)
+    except Exception:
+        await target_msg.reply_text(add_power_footer(caption_text), parse_mode="HTML")
 
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
