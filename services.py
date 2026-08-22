@@ -1,43 +1,26 @@
 import random
+from telegram import Update
+from telegram.ext import ContextTypes
 from config import OWNER_ID
-from database import db
-
-async def check_force_join(user_id: int, context) -> bool:
-    return True
-
-async def check_group_guard(update, context) -> bool:
-    chat = update.effective_chat
-    if chat.type in ["group", "supergroup"]:
-        db.cursor.execute("SELECT user_id FROM blacklist WHERE user_id = ?", (update.effective_user.id,))
-        if db.cursor.fetchone():
-            return False
-    return True
 
 def is_sudo(user_id: int) -> bool:
     return user_id == OWNER_ID
 
-def get_weighted_rarity() -> int:
+async def check_group_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if update.effective_chat.type == "private":
+        await update.message.reply_text("❌ ဤ Command ကို Group ချတ်များတွင်သာ အသုံးပြုနိုင်ပါသည်။ 🛡️", parse_mode="HTML")
+        return False
+    return True
+
+def get_weighted_rarity(total_pool_size: int = 100) -> int:
     """
-    သင်္ချာပုစ္စာအချိုးကျ (Probability Distribution Function) ဖြင့် ကဒ်အဆင့် ၁၃ ဆင့်ကို 
-    စာစောင်ပမာဏအလိုက် အနိမ့်အမြင့် ရာခိုင်နှုန်းခွဲပေးသော ညီမျှခြင်းစနစ်။
+    သင်္ချာစနစ်ဖြင့် ရာခိုင်နှုန်း/စောင်ရေအလိုက် 13 ဆင့် Rarity ခွဲထုတ်ပေးခြင်း
+    Tier 1 (Common) မှ Tier 13 (Premium Edition) ထိ အဆင့်သတ်မှတ်ချက်
     """
-    roll = random.uniform(0, 1000)  # 0 to 1000 scale for precision
-    
-    # 70 စောင်နှုန်းထားကဲ့သို့ အနိမ့်ပိုင်းများတွင် ရာခိုင်နှုန်းများပြီး၊ 700 စောင်နှုန်းထားကဲ့သို့ မြင့်မားရာတွင် အလွန်ခက်ခဲစေရန်
-    if roll < 300:      return 1   # Common (~30%)
-    elif roll < 500:    return 2   # Uncommon (~20%)
-    elif roll < 650:    return 3   # Rare (~15%)
-    elif roll < 770:    return 4   # Epic (~12%)
-    elif roll < 860:    return 5   # Legendary (~9%)
-    elif roll < 920:    return 6   # Mythic (~6%)
-    elif roll < 960:    return 7   # Celestial (~4%)
-    elif roll < 980:    return 8   # Divine (~2%)
-    elif roll < 990:    return 9   # Radiant (~1%)
-    elif roll < 995:    return 10  # Supreme (~0.5%)
-    elif roll < 998:    return 11  # Immortal (~0.3%)
-    elif roll < 999.5:  return 12  # Exclusive (~0.15%)
-    else:               return 13  # Premium Edition (~0.05%)
+    # Weights for 13 Tiers (Index 0 to 12)
+    weights = [35.0, 22.0, 14.0, 10.0, 7.0, 5.0, 3.0, 2.0, 1.2, 0.5, 0.15, 0.1, 0.05]
+    tier = random.choices(range(1, 14), weights=weights)[0]
+    return tier
 
 def add_power_footer(text: str) -> str:
-    """အမိန့်ပေးတိုင်း power by 'maybe' ကို ထည့်သွင်းပေးသော Function"""
-    return f"{text}\n\n<i>⚡ power by \"maybe\"</i>"
+    return f"{text}\n\npower by \"maybe\""
