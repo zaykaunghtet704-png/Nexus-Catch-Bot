@@ -1,5 +1,5 @@
 import logging
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ChatMemberHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ChatMemberHandler, MessageHandler, filters
 from config import BOT_TOKEN
 from handlers import (
     start_cmd, help_cmd, harem_cmd, search_cards_cmd, profile_cmd,
@@ -8,7 +8,7 @@ from handlers import (
     upgrade_cmd, fav_cmd, unfav_cmd, hmode_cmd, check_card_cmd,
     top_cmd, ctop_cmd, addcard_cmd, remove_card_cmd, givecoins_cmd,
     user_cards_cmd, broadcast_cmd, changetime_cmd, ban_cmd, unban_cmd,
-    button_callback, my_chat_member_handler
+    button_callback, my_chat_member_handler, message_tracker
 )
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -20,9 +20,10 @@ def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Chat Member & Callbacks
+    # Chat Member & Callbacks & Message Tracker for Spawns
     app.add_handler(ChatMemberHandler(my_chat_member_handler, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_tracker))
 
     # User Commands
     app.add_handler(CommandHandler("start", start_cmd))
@@ -50,7 +51,7 @@ def main():
     app.add_handler(CommandHandler("rankings", top_cmd))
     app.add_handler(CommandHandler("ctop", ctop_cmd))
 
-    # Admin/Owner Commands
+    # Owner Commands (Strictly Owner Only)
     app.add_handler(CommandHandler("addcard", addcard_cmd))
     app.add_handler(CommandHandler("removecard", remove_card_cmd))
     app.add_handler(CommandHandler("gcoin", givecoins_cmd))
@@ -60,7 +61,7 @@ def main():
     app.add_handler(CommandHandler("ban", ban_cmd))
     app.add_handler(CommandHandler("unban", unban_cmd))
 
-    print("🤖 Bot is starting successfully with all advanced features...")
+    print("🤖 Bot is running with multi-language support, automated spawn counts, and full features...")
     app.run_polling()
 
 if __name__ == "__main__":
