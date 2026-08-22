@@ -1,15 +1,13 @@
 import os
 
-# Telegram Bot Token & Owner Info
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 OWNER_ID = 7974865879
 OWNER_USERNAME = "May_Be_786"
 
-# Force Join Links
 GROUP_LINK = "https://t.me/+00J7JktW8bJlZTY1"
 CHANNEL_LINK = "https://t.me/+E6BxfAj0gaI2Y2Zl"
 
-# 13 Rarity Levels & Max Sell Prices (Common to Premium Edition)
+# 13 Rarity Levels & Max Prices (Common to Premium Edition)
 RARITY_LEVELS = [
     {"level": 1, "name": "Common ⚪", "rate": 35.0, "max_price": 500},
     {"level": 2, "name": "Uncommon 🟢", "rate": 20.0, "max_price": 1200},
