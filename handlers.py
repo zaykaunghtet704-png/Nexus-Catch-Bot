@@ -5,10 +5,10 @@ from telegram.ext import ContextTypes
 from config import OWNER_ID, LOG_CHANNEL_ID, CHANNEL_LINK, GROUP_LINK, OWNER_USERNAME
 from database import db
 from keyboards import (
-    get_start_keyboard, get_help_keyboard, get_hmode_keyboard, 
-    get_market_keyboard, get_harem_pagination_keyboard, TIER_NAMES
+    get_start_keyboard, get_hmode_keyboard, get_market_keyboard, 
+    get_harem_pagination_keyboard, TIER_NAMES
 )
-from services import check_group_guard, is_sudo, get_weighted_rarity, add_power_footer
+from services import check_group_guard, is_sudo, get_user_lang, get_weighted_rarity, add_power_footer
 
 async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = update.my_chat_member
@@ -30,53 +30,51 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("INSERT OR IGNORE INTO users (user_id, username, first_name) VALUES (?, ?, ?)",
                       (user.id, user.username, user.first_name))
     db.conn.commit()
-    caption = add_power_footer(
-        f"🔮 <b>NEXUS CATCH BOT — MAIN MENU</b> ✨\n\n"
-        f"💎 မင်္ဂလာပါ <b>{user.first_name}</b>!\n"
-        f"ပရီမီယံကဒ်များ စုဆောင်းရန်အတွက် အောက်ပါခလုတ်များကို အသုံးပြုပါ။ 🚀"
-    )
+    lang = get_user_lang(user.id)
+    
+    if lang == "en":
+        text = f"🔮 <b>NEXUS CATCH BOT — MAIN MENU</b> ✨💎\n\nWelcome <b>{user.first_name}</b>!\nUse the buttons below to manage your card collection. 🚀🔥"
+    else:
+        text = f"🔮 <b>NEXUS CATCH BOT — ပင်မစာမျက်နှာ</b> ✨💎\n\nမင်္ဂလာပါ <b>{user.first_name}</b>!\nပရီမီယံကဒ်များ စုဆောင်းရန် အောက်ပါခလုတ်များကို အသုံးပြုပါ။ 🚀🔥"
+
+    caption = add_power_footer(text)
     if update.message:
-        await update.message.reply_text(caption, parse_mode="HTML", reply_markup=get_start_keyboard())
+        await update.message.reply_text(caption, parse_mode="HTML", reply_markup=get_start_keyboard(lang))
     elif update.callback_query:
         try:
-            await update.callback_query.message.edit_text(caption, parse_mode="HTML", reply_markup=get_start_keyboard())
+            await update.callback_query.message.edit_text(caption, parse_mode="HTML", reply_markup=get_start_keyboard(lang))
         except Exception:
-            await update.callback_query.message.reply_text(caption, parse_mode="HTML", reply_markup=get_start_keyboard())
+            await update.callback_query.message.reply_text(caption, parse_mode="HTML", reply_markup=get_start_keyboard(lang))
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = add_power_footer(
-        "🌟 <b>NEXUS CATCH BOT — COMMANDS GUIDE</b> 🔮\n\n"
-        "• /start - ဘော့တ်ကို စတင်အလုပ်လုပ်စေရန် 🚀\n"
-        "• /help - အချက်အလက်နှင့် ခလုတ်များ 📖\n"
-        "• /harem - ကိုယ်ပိုင်ကဒ်စာရင်းများကို ကြည့်ရန် 🎴\n"
-        "• /search - ဒေတာဘေ့စ်ရှိ ကဒ်များရှာရန် 🔍\n"
+        "🌟 <b>NEXUS CATCH BOT — COMMANDS GUIDE</b> 🔮✨\n\n"
+        "• /start - ပင်မစာမျက်နှာနှင့် ကြိုဆိုမှု 🚀\n"
+        "• /help - အချက်အလက်နှင့် လမ်းညွှန် 📖\n"
+        "• /harem - ကိုယ်ပိုင်ကဒ်စာရင်းကြည့်ရန် 🎴\n"
+        "• /search - ကဒ်များရှာဖွေရန် 🔍\n"
         "• /profile - ပရိုဖိုင်နှင့် Global အဆင့် 👤\n"
         "• /Nexus &lt;Card_Name&gt; - ကဒ်ဖမ်းရန် ⚡\n"
         "• /daily - နေ့စဉ် Coins 500 ရယူရန် 🪙\n"
-        "• /claim - နေ့စဉ် အခမဲ့ကဒ် ထုတ်ယူရန် 🎁\n"
-        "• /balance - လက်ကျန် Coins စစ်ဆေးရန် 💳\n"
+        "• /claim - အခမဲ့ကဒ် တစ်စောင်ထုတ်ရန် 🎁\n"
+        "• /balance - လက်ကျန်ငွေ စစ်ဆေးရန် 💳\n"
         "• /market - ဈေးကွက်ကြည့်ရှုရန် 🛒 | /sell / /buy / /delist\n"
         "• /trade & /gift - ကဒ်လဲလှယ်/လက်ဆောင်ပေးရန် 🤝\n"
-        "• /duel - တိုက်ပွဲဝင်၍ ဆုလာဘ်ရယူရန် ⚔️\n"
+        "• /duel - တိုက်ပွဲဝင်၍ ဆုလာဘ်ယူရန် ⚔️\n"
         "• /upgrade - ကဒ်အဆင့်မြှင့်တင်ရန် ⬆️\n"
         "• /fav / /unfav - အကြိုက်ဆုံးသတ်မှတ်ရန် ❤️\n"
         "• /hmode - Tier အလိုက် Filter လုပ်ရန် 🎛️\n"
         "• /top / /ctop - Rankings ကြည့်ရန် 🏆"
     )
     target_msg = update.message if update.message else update.callback_query.message
-    await target_msg.reply_text(msg, parse_mode="HTML", reply_markup=get_help_keyboard())
+    await target_msg.reply_text(msg, parse_mode="HTML")
 
 async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    
-    # Force Subscription check before allowing Harem
-    keyboard = [
-        [InlineKeyboardButton("📢 Channel Join", url=CHANNEL_LINK), InlineKeyboardButton("👥 Group Join", url=GROUP_LINK)],
-        [InlineKeyboardButton("✅ စစ်ဆေးမည်", callback_data="harem_home")]
-    ]
-    
+    if not await check_group_guard(update, context): return
+
     target_user_id = user.id
-    if context.args and user.id == OWNER_ID:
+    if context.args and is_sudo(user.id):
         try:
             target_user_id = int(context.args[0])
         except ValueError:
@@ -90,7 +88,6 @@ async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_cards = db.cursor.fetchone()[0]
     total_pages = max(1, (total_cards + limit - 1) // limit)
 
-    # Favorite ကဒ်များကို အပေါ်ဆုံးတွင် ပုံပါပြသရန် is_fav DESC
     db.cursor.execute("""
         SELECT inventory.id, cards.name, cards.rarity_id, inventory.level, inventory.is_fav, cards.image_url 
         FROM inventory JOIN cards ON inventory.card_id = cards.card_id
@@ -101,11 +98,10 @@ async def harem_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_msg = update.message if update.message else update.callback_query.message
 
     if not cards:
-        msg = add_power_footer("❌ စုဆောင်းထားသော ကဒ်များ မရှိသေးပါ။ 📭\n\nကျေးဇူးပြု၍ Channel နှင့် Group များသို့ Join ထားပါ။")
-        await target_msg.reply_text(msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        await target_msg.reply_text(add_power_footer("❌ စုဆောင်းထားသော ကဒ်များ မရှိသေးပါ။ 📭✨"), parse_mode="HTML")
         return
 
-    msg = f"🎴 <b>Harem Collection (Page {page}/{total_pages}) [User ID: {target_user_id}]</b> 💎\n\n"
+    msg = f"🎴 <b>Harem Collection (Page {page}/{total_pages}) [User ID: {target_user_id}]</b> 💎✨\n\n"
     for c in cards:
         fav = "❤️ [FAV] " if c[4] else "🔹 "
         tier_str = TIER_NAMES[c[2]-1] if 1 <= c[2] <= len(TIER_NAMES) else f"Tier {c[2]}"
@@ -129,12 +125,12 @@ async def search_cards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not cards:
         await target_msg.reply_text(add_power_footer("❌ ဒေတာဘေ့စ်တွင် ကဒ်များ မရှိသေးပါ။ 📭"), parse_mode="HTML")
         return
-    msg = "🔍 <b>DATABASE CARDS LIST & SEARCH</b> 💎\n\n"
+    msg = "🔍 <b>DATABASE CARDS LIST & SEARCH</b> 💎✨\n\n"
     for c in cards:
         tier_str = TIER_NAMES[c[2]-1] if 1 <= c[2] <= len(TIER_NAMES) else f"Tier {c[2]}"
         msg += f"🆔 <code>{c[0]}</code> | <b>{c[1]}</b> | ✨ {tier_str}\n"
     
-    await target_msg.reply_text(add_power_footer(msg), parse_mode="HTML", reply_markup=get_start_keyboard())
+    await target_msg.reply_text(add_power_footer(msg), parse_mode="HTML")
 
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -154,7 +150,7 @@ async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
 
     msg = add_power_footer(
-        f"👤 <b>USER PROFILE & GLOBAL RANK</b> 🔮\n\n"
+        f"👤 <b>USER PROFILE & GLOBAL RANK</b> 🔮💎\n\n"
         f"📛 <b>Name</b>: {user.first_name}\n"
         f"🆔 <b>ID</b>: <code>{user.id}</code>\n"
         f"💰 <b>Coins</b>: <code>{coins:,}</code> Coins 🪙\n"
@@ -164,11 +160,9 @@ async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="HTML")
 
 async def nexus_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_group_guard(update, context): return
     user_id = update.effective_user.id
-    if user_id != OWNER_ID and not await check_group_guard(update, context): 
-        return
 
-    # Check spawn settings or threshold calculation based on messages
     target_rarity = get_weighted_rarity()
     db.cursor.execute("SELECT card_id, name, image_url FROM cards WHERE rarity_id = ? ORDER BY RANDOM() LIMIT 1", (target_rarity,))
     card = db.cursor.fetchone()
@@ -200,7 +194,7 @@ async def daily_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("SELECT last_daily FROM users WHERE user_id = ?", (user_id,))
     res = db.cursor.fetchone()
     if res and res[0] == today_date:
-        await update.message.reply_text(add_power_footer("⏳ ယနေ့အတွက် Daily Coins ယူပြီးပါပြီ။ မနက်ဖြန်မှ ပြန်လာပါ။ 🪙"), parse_mode="HTML")
+        await update.message.reply_text(add_power_footer("⏳ ယနေ့အတွက် Daily Coins ယူပြီးပါပြီ။ မနက်ဖြန်မှ ပြန်လာပါ။ 🪙✨"), parse_mode="HTML")
         return
     db.cursor.execute("UPDATE users SET coins = coins + 500, last_daily = ? WHERE user_id = ?", (today_date, user_id))
     db.conn.commit()
@@ -226,7 +220,7 @@ async def claim_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("UPDATE users SET last_claim = ? WHERE user_id = ?", (today_date, user_id))
     db.conn.commit()
     
-    msg = add_power_footer(f"🎁 <b>Claim Card:</b> <b>{card[1]}</b> ကို အောင်မြင်စွာ ရရှိပါသည်။ ✨")
+    msg = add_power_footer(f"🎁 <b>Claim Card:</b> <b>{card[1]}</b> ကို အောင်မြင်စွာ ရရှိပါသည်။ ✨💎")
     if card[2]:
         try:
             await update.message.reply_photo(photo=card[2], caption=msg, parse_mode="HTML")
@@ -239,7 +233,7 @@ async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("SELECT coins FROM users WHERE user_id = ?", (update.effective_user.id,))
     res = db.cursor.fetchone()
     coins = res[0] if res else 0
-    await update.message.reply_text(add_power_footer(f"💳 သင့်လက်ကျန်ငွေ: <code>{coins:,}</code> Coins 🪙"), parse_mode="HTML")
+    await update.message.reply_text(add_power_footer(f"💳 သင့်လက်ကျန်ငွေ: <code>{coins:,}</code> Coins 🪙💎"), parse_mode="HTML")
 
 async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.cursor.execute("""
@@ -249,7 +243,7 @@ async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         JOIN users ON market.seller_id = users.user_id LIMIT 10
     """)
     listings = db.cursor.fetchall()
-    msg = "🛒 <b>NEXUS MARKETPLACE</b> 💎\n\n"
+    msg = "🛒 <b>NEXUS MARKETPLACE</b> 💎✨\n\n"
     if not listings:
         msg += "ဈေးကွက်ထဲတွင် ကဒ်များ မရှိသေးပါ။ 📭"
     else:
@@ -315,7 +309,7 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.cursor.execute("UPDATE inventory SET user_id = ? WHERE id = ?", (target_uid, my_inv_id))
         db.cursor.execute("UPDATE inventory SET user_id = ? WHERE id = ?", (my_id, their_inv_id))
         db.conn.commit()
-        await update.message.reply_text(add_power_footer("🤝 ကဒ်လဲလှယ်မှု (Trade) အောင်မြင်ပါသည်။ ✨"), parse_mode="HTML")
+        await update.message.reply_text(add_power_footer("🤝 ကဒ်လဲလှယ်မှု (Trade) အောင်မြင်ပါသည်။ ✨💎"), parse_mode="HTML")
     except Exception:
         await update.message.reply_text(add_power_footer("Usage: /trade &lt;user_id&gt; &lt;my_inv_id&gt; &lt;their_inv_id&gt;"), parse_mode="HTML")
 
@@ -328,7 +322,7 @@ async def gift_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for inv_id in inv_ids:
             db.cursor.execute("UPDATE inventory SET user_id = ? WHERE id = ? AND user_id = ?", (target_uid, inv_id, my_id))
         db.conn.commit()
-        await update.message.reply_text(add_power_footer(f"🎁 User <code>{target_uid}</code> ထံသို့ ကဒ်အများအပြား လက်ဆောင် ပို့ပြီးပါပြီ။ ✨"), parse_mode="HTML")
+        await update.message.reply_text(add_power_footer(f"🎁 User <code>{target_uid}</code> ထံသို့ ကဒ်အများအပြား လက်ဆောင် ပို့ပြီးပါပြီ။ ✨📦"), parse_mode="HTML")
     except Exception:
         await update.message.reply_text(add_power_footer("Usage: /gift &lt;user_id&gt; &lt;card_id_1&gt; &lt;card_id_2&gt; ..."), parse_mode="HTML")
 
@@ -338,9 +332,9 @@ async def duel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if won:
         db.cursor.execute("UPDATE users SET coins = coins + 300 WHERE user_id = ?", (update.effective_user.id,))
         db.conn.commit()
-        msg = f"⚔️ <b>DUEL BATTLE ARENA</b> ⚔️\n\n👤 {user_name} 🆚 🤖 Nexus Bot\n\n🏆 <b>တိုက်ခိုက်မှု ရလဒ် - အနိုင်ရရှိပါသည်!</b> (+300 Coins ရရှိသည်) 🎉"
+        msg = f"⚔️ <b>DUEL BATTLE ARENA</b> ⚔️✨\n\n👤 {user_name} 🆚 🤖 Nexus Bot\n\n🏆 <b>တိုက်ခိုက်မှု ရလဒ် - အနိုင်ရရှိပါသည်!</b> (+300 Coins ရရှိသည်) 🎉"
     else:
-        msg = f"⚔️ <b>DUEL BATTLE ARENA</b> ⚔️\n\n👤 {user_name} 🆚 🤖 Nexus Bot\n\n💀 <b>တိုက်ခိုက်မှု ရလဒ် - ရှုံးနိမ့်သွားပါပြီ!</b> ထပ်မံကြိုးစားပါ။ 🛡️"
+        msg = f"⚔️ <b>DUEL BATTLE ARENA</b> ⚔️✨\n\n👤 {user_name} 🆚 🤖 Nexus Bot\n\n💀 <b>တိုက်ခိုက်မှု ရလဒ် - ရှုံးနိမ့်သွားပါပြီ!</b> ထပ်မံကြိုးစားပါ။ 🛡️"
     await update.message.reply_text(add_power_footer(msg), parse_mode="HTML")
 
 async def upgrade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -381,7 +375,7 @@ async def unfav_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(add_power_footer("Usage: /unfav [card_id] သို့မဟုတ် /unfav all"), parse_mode="HTML")
 
 async def hmode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = add_power_footer("🎴 <b>Harem Mode Tier Filter:</b> 💎\nအောက်ပါတို့မှ လိုချင်သော Tier ကို ရွေးချယ်ပါ။")
+    msg = add_power_footer("🎴 <b>Harem Mode Tier Filter:</b> 💎✨\nအောက်ပါတို့မှ လိုချင်သော Tier ကို ရွေးချယ်ပါ။")
     await update.message.reply_text(msg, parse_mode="HTML", reply_markup=get_hmode_keyboard())
 
 async def check_card_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -395,7 +389,7 @@ async def check_card_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(add_power_footer(f"❌ <code>{card_id}</code> ကဒ်ကို မတွေ့ပါ။"), parse_mode="HTML")
         return
     tier_str = TIER_NAMES[card[2]-1] if 1 <= card[2] <= len(TIER_NAMES) else f"Tier {card[2]}"
-    msg = f"🔍 <b>CARD DETAILS</b> 💎\n\n🆔 ID: <code>{card[0]}</code>\n📛 Name: <b>{card[1]}</b>\n✨ Rarity: {tier_str}"
+    msg = f"🔍 <b>CARD DETAILS</b> 💎✨\n\n🆔 ID: <code>{card[0]}</code>\n📛 Name: <b>{card[1]}</b>\n✨ Rarity: {tier_str}"
     msg = add_power_footer(msg)
     if card[3]:
         try:
@@ -412,7 +406,7 @@ async def top_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         GROUP BY inventory.user_id ORDER BY cnt DESC LIMIT 15
     """)
     rows = db.cursor.fetchall()
-    msg = "🏆 <b>GLOBAL TOP 15 COLLECTORS</b> 💎\n\n"
+    msg = "🏆 <b>GLOBAL TOP 15 COLLECTORS</b> 💎✨\n\n"
     for idx, r in enumerate(rows, 1):
         msg += f"{idx}. <b>{r[0]}</b> — <code>{r[1]:,}</code> Cards 🎴\n"
     await update.message.reply_text(add_power_footer(msg), parse_mode="HTML")
@@ -424,12 +418,12 @@ async def ctop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         WHERE inventory.chat_id = ? GROUP BY inventory.user_id ORDER BY cnt DESC LIMIT 10
     """, (update.effective_chat.id,))
     rows = db.cursor.fetchall()
-    msg = "🏰 <b>GROUP TOP COLLECTORS</b> 💎\n\n"
+    msg = "🏰 <b>GROUP TOP COLLECTORS</b> 💎✨\n\n"
     for idx, r in enumerate(rows, 1):
         msg += f"{idx}. <b>{r[0]}</b> — <code>{r[1]:,}</code> Cards 🎴\n"
     await update.message.reply_text(add_power_footer(msg), parse_mode="HTML")
 
-# Admin Commands
+# Owner Commands (Strictly Owner Only)
 async def addcard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_sudo(update.effective_user.id): return
     try:
@@ -481,7 +475,7 @@ async def user_cards_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             JOIN cards ON inventory.card_id = cards.card_id WHERE inventory.user_id = ?
         """, (uid,))
         cards = db.cursor.fetchall()
-        msg = f"📦 <b>User <code>{uid}</code> ၏ ကဒ်များစာရင်းအပြည့်အစုံ:</b> 💎\n\n"
+        msg = f"📦 <b>User <code>{uid}</code> ၏ ကဒ်များစာရင်းအပြည့်အစုံ:</b> 💎✨\n\n"
         for c in cards:
             msg += f"🆔 <code>InvID:{c[0]}</code> | <b>{c[1]}</b> | Lvl {c[2]}\n"
         await update.message.reply_text(add_power_footer(msg), parse_mode="HTML")
@@ -504,17 +498,20 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             success += 1
         except Exception:
             pass
-    await update.message.reply_text(add_power_footer(f"✅ Broadcast ပေးပို့ပြီးပါပြီ။ (ရောက်ရှိသူ: {success} ဦး)"))
+    await update.message.reply_text(add_power_footer(f"✅ Broadcast ပေးပို့ပြီးပါပြီ။ (ရောက်ရှိသူ: {success} ဦး) ✨"))
 
 async def changetime_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_sudo(update.effective_user.id): return
     try:
-        new_time = context.args[0]
-        db.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('spawn_time', ?)", (new_time,))
+        new_count = int(context.args[0])
+        db.cursor.execute("UPDATE chat_messages SET target_spawn_count = ?", (new_count,))
         db.conn.commit()
-        await update.message.reply_text(add_power_footer(f"⏱️ စာစောင်/Spawn အချိန်ကို <code>{new_time}</code> သို့ ပြောင်းလဲလိုက်ပါပြီ။ စာစောင်ပြည့်လျှင် ကဒ်ချပေးမည့်စနစ်ကို တွက်ချက်ပြီးသားဖြစ်ပါသည်။ ⚙️"), parse_mode="HTML")
+        await update.message.reply_text(add_power_footer(f"⏱️ စာစောင်ပြည့်လျှင် ကဒ်ချပေးမည့် စံနှုန်းအသစ်ကို <code>{new_count}</code> စာစောင်သို့ ပြောင်းလဲလိုက်ပါပြီ။ ⚙️✨"), parse_mode="HTML")
     except Exception:
-        await update.message.reply_text(add_power_footer("Usage: /changetime &lt;time_value&gt;"), parse_mode="HTML")
+        db.cursor.execute("SELECT target_spawn_count FROM chat_messages LIMIT 1")
+        res = db.cursor.fetchone()
+        cur = res[0] if res else 70
+        await update.message.reply_text(add_power_footer(f"Usage: /changetime &lt;message_count&gt;\nလက်ရှိ သတ်မှတ်ချက်: <code>{cur}</code> စာစောင်လျှင် တစ်ကဒ်။"), parse_mode="HTML")
 
 async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_sudo(update.effective_user.id): return
@@ -536,6 +533,41 @@ async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text(add_power_footer("Usage: /unban &lt;user_id&gt;"), parse_mode="HTML")
 
+async def message_tracker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_chat or update.effective_chat.type == "private":
+        return
+    chat_id = update.effective_chat.id
+    
+    db.cursor.execute("SELECT message_count, target_spawn_count FROM chat_messages WHERE chat_id = ?", (chat_id,))
+    row = db.cursor.fetchone()
+    if not row:
+        db.cursor.execute("INSERT INTO chat_messages (chat_id, message_count, target_spawn_count) VALUES (?, 1, 70)", (chat_id,))
+        db.conn.commit()
+        return
+    
+    cnt, target = row[0] + 1, row[1]
+    if cnt >= target:
+        # Reset count & spawn a random card automatically into chat
+        db.cursor.execute("UPDATE chat_messages SET message_count = 0 WHERE chat_id = ?", (chat_id,))
+        db.conn.commit()
+        
+        target_rarity = get_weighted_rarity()
+        db.cursor.execute("SELECT card_id, name, image_url FROM cards WHERE rarity_id = ? ORDER BY RANDOM() LIMIT 1", (target_rarity,))
+        card = db.cursor.fetchone()
+        if card:
+            tier_title = TIER_NAMES[target_rarity - 1]
+            spawn_msg = add_power_footer(f"✨ <b>AUTOMATIC CARD SPAWN! ({target} Messages Reached)</b> 🎁\n\n[{tier_title}] <b>{card[1]}</b> ပေါ်လာပါပြီ! ဖမ်းယူရန် `/Nexus` ကို အသုံးပြုပါ။ ⚡")
+            if card[2]:
+                try:
+                    await update.message.reply_photo(photo=card[2], caption=spawn_msg, parse_mode="HTML")
+                    return
+                except Exception:
+                    pass
+            await update.message.reply_text(spawn_msg, parse_mode="HTML")
+    else:
+        db.cursor.execute("UPDATE chat_messages SET message_count = ? WHERE chat_id = ?", (cnt, chat_id))
+        db.conn.commit()
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
@@ -546,30 +578,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user_id = query.from_user.id
 
-    if data == "help_p1":
-        msg = "📖 <b>HELP (Page 1)</b>\n• /harem - ကဒ်ကြည့်ရန်\n• /profile - ပရိုဖိုင်\n• /search - ရှာဖွေရန်"
-        try: await query.edit_message_text(msg, parse_mode="HTML", reply_markup=get_help_keyboard())
-        except Exception: pass
-    elif data == "help_p2":
-        msg = "📖 <b>HELP (Page 2)</b>\n• /market - ဈေးကွက်\n• /daily / /claim - ဆုလာဘ်\n• /trade / /gift - လဲလှယ်ရန်"
-        try: await query.edit_message_text(msg, parse_mode="HTML", reply_markup=get_help_keyboard())
-        except Exception: pass
-    elif data == "help_home":
+    if data.startswith("lang_"):
+        lang = data.split("_")[1]
+        db.cursor.execute("UPDATE users SET lang = ? WHERE user_id = ?", (lang, user_id))
+        db.conn.commit()
         await start_cmd(update, context)
-    elif data == "harem_home" or data == "all_cards_list":
-        await harem_cmd(update, context)
+    elif data == "help_p1":
+        msg = "📖 <b>HELP (Page 1)</b>\n• /harem - ကဒ်ကြည့်ရန်\n• /profile - ပရိုဖိုင်\n• /search - ရှာဖွေရန်"
+        try: await query.edit_message_text(add_power_footer(msg), parse_mode="HTML")
+        except Exception: pass
+    elif data == "help_home" or data == "harem_home" or data == "all_cards_list":
+        await start_cmd(update, context)
     elif data == "search_all":
         await search_cards_cmd(update, context)
     elif data == "market_main" or data == "market_list_view" or data == "market_refresh":
         await market_cmd(update, context)
-    elif data.startswith("hmode_"):
-        val = data.split("_")[1]
-        if val == "reset":
-            db.cursor.execute("DELETE FROM hmode WHERE user_id = ?", (user_id,))
-            db.conn.commit()
-            await query.answer("🔄 Filter ရှင်းလင်းပြီးပါပြီ။", show_alert=True)
-        else:
-            tier = int(val)
-            db.cursor.execute("INSERT OR REPLACE INTO hmode (user_id, tier_filter) VALUES (?, ?)", (user_id, tier))
-            db.conn.commit()
-            await query.answer(f"✅ Tier {tier} သို့ ပြောင်းလိုက်ပါပြီ။", show_alert=True)
