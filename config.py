@@ -23,6 +23,4 @@ RARITY_LEVELS = {
     12: {"name": "Supreme 👑", "rate": 0.15, "max_price": 14700},
     13: {"name": "Premium Edition 💎", "rate": 0.05, "max_price": 15000},
 }
-
-# Backward compatibility alias if needed anywhere else
 RARITIES = RARITY_LEVELS
