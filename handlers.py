@@ -13,19 +13,7 @@ def get_lang(user_id):
     return res[0] if res else 'my'
 
 async def check_force_join(user_id, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    if user_id == OWNER_ID:
-        return True
-    try:
-        # Check Group Membership
-        g_member = await context.bot.get_chat_member(chat_id="@+00J7JktW8bJlZTY1" if GROUP_LINK.startswith("t.me/+") else GROUP_LINK, user_id=user_id)
-        # Check Channel Membership
-        c_member = await context.bot.get_chat_member(chat_id=CHANNEL_LINK, user_id=user_id)
-        if g_member.status in ["member", "administrator", "creator"] and c_member.status in ["member", "administrator", "creator"]:
-            return True
-    except Exception:
-        # Fallback if chat_id format needs adjustment, bypass or handle gracefully
-        pass
-    return True # အလိုအလျောက် ဖြတ်သန်းခွင့်အတွက် True ပေးထားပါသည် (သို့မဟုတ် အောက်ပါအတိုင်း စစ်ဆေးနိုင်သည်)
+    return True
 
 # --- 1. START & HELP ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -34,20 +22,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(user.id)
     
     if chat.type in ["group", "supergroup"]:
-        count = await chat.get_member_count()
-        if count < 50:
-            msg = get_text(lang, 'low_group', count=count)
-            await update.message.reply_text(msg + FOOTER, parse_mode="Markdown", reply_markup=get_owner_link_kb())
-            return
+        is_whitelisted = db_query("SELECT chat_id FROM whitelist_groups WHERE chat_id = ?", (chat.id,), fetchone=True)
+        if not is_whitelisted:
+            count = await chat.get_member_count()
+            if count < 50:
+                msg = get_text(lang, 'low_group', count=count)
+                await update.message.reply_text(msg + FOOTER, parse_mode="Markdown", reply_markup=get_owner_link_kb())
+                return
 
     db_query("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (user.id, user.username), commit=True)
     msg = get_text(lang, 'welcome', name=user.first_name)
     await update.message.reply_text(msg + FOOTER, parse_mode="Markdown", reply_markup=get_start_kb())
 
+async def unlock_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID: 
+        return
+    chat_id = update.effective_chat.id
+    db_query("INSERT OR IGNORE INTO whitelist_groups (chat_id) VALUES (?)", (chat_id,), commit=True)
+    await update.message.reply_text(f"✅ ဤ Group ကို အုံနာမှ အောင်မြင်စွာ ဖွင့်ပေးလိုက်ပါပြီရှင်။ ယခုစတင်အသုံးပြုနိုင်ပါပြီ။{FOOTER}", parse_mode="Markdown")
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "📖 **Ultimate Card Bot Commands Guide** 📖\n\n"
         "🌟 `/start` - ပင်မစာမျက်နှာ\n"
+        "🌟 `/unlockgroup` - (အုံနာ) လူ ၅၀ မပြည့်သေးသော Group များကို ဖွင့်ပေးရန်\n"
         "🌟 `/harem` - စုဆောင်းထားသော ကဒ်များကြည့်ရန်\n"
         "🌟 `/search` - ကဒ်ပုံများ Album ပုံစံဖြင့် ရှာရန်\n"
         "🌟 `/profile` - ကိုယ်ပိုင်ပရိုဖိုင်နှင့် Coins ကြည့်ရန်\n"
@@ -70,12 +68,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- 2. USER COMMANDS: HAREM, SEARCH, PROFILE, NEXUS ---
 async def harem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    # Force join check (အကယ်၍ Join ပြီးသားဆိုရင် ထပ်မပြတော့ပါ)
-    joined = await check_force_join(user.id, context)
-    if not joined:
-        await update.message.reply_text(f"⚠️ *ဘော့တ်ကို အသုံးပြုရန် အောက်ပါ Link ၂ ခုကို အရင် Join ပေးပါရှင်။*{FOOTER}", parse_mode="Markdown", reply_markup=get_force_join_kb())
-        return
-
     fav_card = db_query("""
         SELECT c.name, c.rarity_level, c.file_id 
         FROM inventory i JOIN cards c ON i.card_id = c.card_id 
@@ -309,7 +301,7 @@ async def top_rankings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ctop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📊 **Group Top Collectors**\n\n1. {update.effective_user.first_name} - 50 Cards{FOOTER}", parse_mode="Markdown")
 
-# --- 5. OWNER & ADMIN COMMANDS (Strictly for Owner ID: 7974865879) ---
+# --- 5. OWNER & ADMIN COMMANDS ---
 async def addcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID: return
     msg = update.message
@@ -426,7 +418,6 @@ async def group_message_listener(update: Update, context: ContextTypes.DEFAULT_T
         return
     count, threshold = row[0] + 1, row[1]
     if count >= threshold:
-        # Math formula to determine high tier or normal tier based on message volume (70 to 700)
         new_threshold = random.randint(70, 700)
         spawn = db_query("SELECT card_id, name, rarity_level, file_id FROM cards ORDER BY RANDOM() LIMIT 1", fetchone=True)
         if spawn:
