@@ -1,5 +1,9 @@
-# config.py
+# config.py - Complete Configuration File
 
+# Telegram Bot Token ပေးထားသည့်အတိုင်း ထည့်သွင်းထားသည်
+BOT_TOKEN = "8823072889:AAHIYPMd3Qon8oRrsoi9EPdNhWlIlBFeeGU"
+
+# ရှားပါးမှုအဆင့်များနှင့် ဈေးနှုန်း/တန်ဖိုးများ
 RARITIES = {
     "Common": {"emoji": "⚪", "value": 25},
     "Uncommon": {"emoji": "🔹", "value": 50},
@@ -14,9 +18,11 @@ RARITIES = {
     "Premium Edition": {"emoji": "✨👑", "value": 15000}
 }
 
+# Force Join လုပ်ရမည့် ချန်နယ်နှင့် ဂရုလင့်ခ်များ
 FORCE_JOIN_CHANNELS = [
-    {"name": "Main Channel", "link": "https://t.me/+E6BxfAj0gaI2Y2Zl"},
-    {"name": "Community Group", "link": "https://t.me/+00J7JktW8bJlZTY1"}
+    {"name": "Channel", "link": "https://t.me/+E6BxfAj0gaI2Y2Zl"},
+    {"name": "Group", "link": "https://t.me/+00J7JktW8bJlZTY1"}
 ]
 
-OWNER_IDS = [7974865879]  # Replace with actual owner Telegram IDs
+# ဘော့ပိုင်ရှင် (Owner) ၏ Telegram User IDs များ
+OWNER_IDS = [7974865879]  # လိုအပ်ပါက မိမိ၏ Telegram ID ထည့်သွင်းရန်
