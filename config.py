@@ -1,19 +1,22 @@
-import os
+# config.py
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-OWNER_ID = 7974865879
-OWNER_USERNAME = "May_Be_786"
+RARITIES = {
+    "Common": {"emoji": "⚪", "value": 25},
+    "Uncommon": {"emoji": "🔹", "value": 50},
+    "Rare": {"emoji": "💎", "value": 100},
+    "Legendary": {"emoji": "👑", "value": 250},
+    "Mystical": {"emoji": "🔮", "value": 500},
+    "Divine": {"emoji": "✨", "value": 1000},
+    "CrossVerse": {"emoji": "🌌", "value": 2000},
+    "Cataphract": {"emoji": "🛡️", "value": 5500},
+    "Supreme": {"emoji": "🔥", "value": 8500},
+    "Limited Edition": {"emoji": "🌟", "value": 10000},
+    "Premium Edition": {"emoji": "✨👑", "value": 15000}
+}
 
 FORCE_JOIN_CHANNELS = [
-    {"title": "Join Group", "url": "https://t.me/+00J7JktW8bJlZTY1"},
-    {"title": "Join Channel", "url": "https://t.me/+E6BxfAj0gaI2Y2Zl"}
+    {"name": "Main Channel", "link": "https://t.me/+E6BxfAj0gaI2Y2Zl"},
+    {"name": "Community Group", "link": "https://t.me/+00J7JktW8bJlZTY1"}
 ]
 
-# 13 Rarity Tiers (Common မှ Premium Edition အထိ)
-RARITY_TIERS = [
-    "Common", "Uncommon", "Rare", "Epic", "Legendary", 
-    "Mythic", "Divine", "Secret", "Celestial", "Ethereal", 
-    "Supreme", "Ultimate", "Premium Edition"
-]
-
-MAX_SELL_PRICE = 15000
+OWNER_IDS = [7974865879]  # Replace with actual owner Telegram IDs
