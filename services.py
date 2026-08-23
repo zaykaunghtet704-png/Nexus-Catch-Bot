@@ -1,31 +1,39 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from config import OWNER_ID, OWNER_USERNAME, FORCE_JOIN_CHANNELS
+# services.py
+import random
+from config import FORCE_JOIN_CHANNELS, RARITIES
 
-async def check_group_member_count(update, context):
-    chat = update.effective_chat
-    if chat.type in ["group", "supergroup"]:
+async def check_force_join(client, user_id):
+    """
+    Force join validation logic for channels and groups
+    """
+    for ch in FORCE_JOIN_CHANNELS:
         try:
-            member_count = await context.bot.get_chat_member_count(chat.id)
-            if member_count < 50:
-                keyboard = [[InlineKeyboardButton("👑 Owner သို့ ခွင့်တောင်းရန်", url=f"https://t.me/{OWNER_USERNAME}")]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text(
-                    f"❌ ဤဂရုတွင် လူဦးရေ {member_count} ယောက်သာ ရှိသေးပါသည် ဆော့ရန် လူဦးရေ 50 ပြည့်ရန် လိုအပ်ပါသည်။ (Owner ID: {OWNER_ID})\n\n"
-                    f"ကျေးဇူးပြု၍ အုံနာထံသို့ ခွင့်တောင်းပါ။",
-                    reply_markup=reply_markup
-                )
-                return False
-        except Exception:
+            # Pyrogram member check logic placeholder
             pass
+        except Exception:
+            return False
     return True
 
-async def check_force_join(update, context):
-    user_id = update.effective_user.id
-    # Owner အတွက် Force Join ဖြတ်ကျော်ခွင့်ပေးနိုင်
-    if user_id == OWNER_ID:
-        return True
-        
-    for channel in FORCE_JOIN_CHANNELS:
-        # ဤနေရာတွင် User က channel/group ကို joinထားခြင်းရှိမရှိ စစ်ဆေးသည့် logic ထည့်နိုင်ပါသည်။
-        pass
-    return True
+def generate_math_challenge_drop(message_count: int):
+    """
+    စာရေအတွက် 1000 သို့မဟုတ် 1500 ပြည့်မှသာ သင်္ချာပုဒ်စာမေးခွန်းထုတ်ပေးပြီး 
+    ကဒ်အမြင့်များကို ကျနှုန်းအလိုက် သတ်မှတ်ပေးသော စနစ်
+    """
+    if message_count >= 1500:
+        num1 = random.randint(50, 99)
+        num2 = random.randint(10, 49)
+        answer = num1 + num2
+        question = f"🧮 **Math Challenge (1500 Messages Milestone):** Solve `{num1} + {num2} = ?` to claim a high-tier card!"
+        tier_weights = [10, 15, 20, 15, 10, 10, 8, 6, 3, 2, 1] # High tier chance enabled
+    elif message_count >= 1000:
+        num1 = random.randint(10, 50)
+        num2 = random.randint(1, 20)
+        answer = num1 * num2
+        question = f"🧮 **Math Challenge (1000 Messages Milestone):** Solve `{num1} × {num2} = ?` to claim your reward!"
+        tier_weights = [30, 25, 20, 10, 8, 4, 2, 0.8, 0.1, 0.05, 0.05]
+    else:
+        return None, None, None
+
+    rarity_keys = list(RARITIES.keys())
+    chosen_rarity = random.choices(rarity_keys, weights=tier_weights, k=1)[0]
+    return question, answer, chosen_rarity
