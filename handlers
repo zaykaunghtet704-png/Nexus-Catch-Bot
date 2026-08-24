@@ -1,0 +1,121 @@
+from aiogram import Router
+from aiogram.filters import Command
+from aiogram.types import Message
+from sqlalchemy import select
+
+from database import Pack, SessionLocal, User
+from pack_engine import open_pack
+
+
+router = Router()
+
+
+@router.message(Command("packs"))
+async def packs_handler(message: Message):
+
+    async with SessionLocal() as session:
+
+        result = await session.execute(
+            select(Pack).where(Pack.active.is_(True))
+        )
+
+        packs = result.scalars().all()
+
+        if not packs:
+            await message.answer(
+                "🎴 No packs are currently available."
+            )
+            return
+
+        text = "🎴 AVAILABLE PACKS\n\n"
+
+        for pack in packs:
+            text += (
+                f"📦 {pack.name}\n"
+                f"💰 {pack.price_coins:,} Coins\n"
+                f"🎁 {pack.cards_per_open} Card(s)\n"
+                f"🔓 /open_{pack.id}\n\n"
+            )
+
+        await message.answer(text)
+
+
+@router.message(lambda message: message.text.startswith("/open_"))
+async def open_pack_handler(message: Message):
+
+    try:
+        pack_id = int(
+            message.text.split("_", 1)[1]
+        )
+    except (ValueError, IndexError):
+        await message.answer(
+            "❌ Invalid pack ID."
+        )
+        return
+
+    async with SessionLocal() as session:
+
+        user_result = await session.execute(
+            select(User).where(
+                User.telegram_id
+                == message.from_user.id
+            )
+        )
+
+        user = user_result.scalar_one_or_none()
+
+        if user is None:
+            await message.answer(
+                "❌ Use /start first."
+            )
+            return
+
+        pack_result = await session.execute(
+            select(Pack).where(
+                Pack.id == pack_id,
+                Pack.active.is_(True),
+            )
+        )
+
+        pack = pack_result.scalar_one_or_none()
+
+        if pack is None:
+            await message.answer(
+                "❌ Pack not found."
+            )
+            return
+
+        try:
+            result = await open_pack(
+                session,
+                user,
+                pack,
+            )
+
+        except ValueError as error:
+            await message.answer(
+                f"❌ {error}"
+            )
+            return
+
+        cards = result["cards"]
+
+        text = (
+            f"🎉 {pack.name} OPENED!\n\n"
+        )
+
+        for card in cards:
+            text += (
+                f"🃏 {card.name}\n"
+                f"✨ {card.rarity}\n"
+                f"⚔️ ATK: {card.attack}\n"
+                f"🛡️ DEF: {card.defense}\n"
+                f"❤️ HP: {card.hp}\n\n"
+            )
+
+        text += (
+            f"💰 Remaining Coins: "
+            f"{user.coins:,}"
+        )
+
+        await message.answer(text)
