@@ -1,4 +1,4 @@
-```python
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -496,4 +496,4 @@ async def card_count(message: Message):
         f"🃏 Total Cards: <b>{total}</b>",
         parse_mode="HTML",
     )
-```
+
