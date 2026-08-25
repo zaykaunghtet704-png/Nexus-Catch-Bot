@@ -19,8 +19,10 @@ def load_settings() -> Settings:
     token = os.getenv("BOT_TOKEN", "").strip()
     owner_raw = os.getenv("OWNER_ID", "0").strip()
     database_url = os.getenv("DATABASE_URL", "").strip()
-
+if db.startswith("postgresql://"):
+    db = db.replace("postgresql://", "postgresql+asyncpg://", 1)
     try:
+        
         owner_id = int(owner_raw)
     except ValueError:
         owner_id = 0
