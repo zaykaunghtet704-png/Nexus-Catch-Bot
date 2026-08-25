@@ -23,35 +23,76 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from config import settings
 
 
+# =========================================================
+# BASE
+# =========================================================
+
 class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 
+# =========================================================
+# USER
+# =========================================================
+
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
     telegram_id: Mapped[int] = mapped_column(
-        BigInteger, unique=True, index=True
+        BigInteger,
+        unique=True,
+        index=True,
     )
-    username: Mapped[str | None] = mapped_column(String(255))
+
+    username: Mapped[str | None] = mapped_column(
+        String(255),
+    )
+
     first_name: Mapped[str] = mapped_column(
-        String(255), default="Player"
+        String(255),
+        default="Player",
     )
-    level: Mapped[int] = mapped_column(Integer, default=1)
-    xp: Mapped[int] = mapped_column(Integer, default=0)
-    coins: Mapped[int] = mapped_column(BigInteger, default=1000)
-    gems: Mapped[int] = mapped_column(Integer, default=100)
+
+    level: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+    )
+
+    xp: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
+
+    coins: Mapped[int] = mapped_column(
+        BigInteger,
+        default=1000,
+    )
+
+    gems: Mapped[int] = mapped_column(
+        Integer,
+        default=100,
+    )
+
     is_banned: Mapped[bool] = mapped_column(
-        Boolean, default=False
+        Boolean,
+        default=False,
     )
+
     is_muted: Mapped[bool] = mapped_column(
-        Boolean, default=False
+        Boolean,
+        default=False,
     )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -59,108 +100,280 @@ class User(Base):
     )
 
 
+# =========================================================
+# GROUP
+# =========================================================
+
 class Group(Base):
     __tablename__ = "groups"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
     telegram_id: Mapped[int] = mapped_column(
-        BigInteger, unique=True, index=True
+        BigInteger,
+        unique=True,
+        index=True,
     )
+
     title: Mapped[str] = mapped_column(
-        String(255), default="Telegram Group"
+        String(255),
+        default="Telegram Group",
     )
+
+    username: Mapped[str | None] = mapped_column(
+        String(255),
+    )
+
     enabled: Mapped[bool] = mapped_column(
-        Boolean, default=True
+        Boolean,
+        default=False,
     )
+
     drop_enabled: Mapped[bool] = mapped_column(
-        Boolean, default=True
+        Boolean,
+        default=True,
     )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
 
+
+# =========================================================
+# GROUP ACTIVATION
+# =========================================================
+
+class GroupActivation(Base):
+    __tablename__ = "group_activations"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id"),
+        unique=True,
+        index=True,
+    )
+
+    member_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
+
+    bot_is_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
+    owner_approved: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
+    requested_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+    )
+
+    approved_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+    )
+
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+# =========================================================
+# USER PREFERENCES
+# =========================================================
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        unique=True,
+        index=True,
+    )
+
+    language: Mapped[str] = mapped_column(
+        String(10),
+        default="my",
+    )
+
+    harem_mode: Mapped[str] = mapped_column(
+        String(30),
+        default="all",
+    )
+
+    catch_interval: Mapped[int] = mapped_column(
+        Integer,
+        default=85,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+# =========================================================
+# CARD
+# =========================================================
 
 class Card(Base):
     __tablename__ = "cards"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
+
     name: Mapped[str] = mapped_column(
-        String(255)
+        String(255),
     )
+
     rarity: Mapped[str] = mapped_column(
-        String(50), index=True
+        String(50),
+        index=True,
     )
+
     attack: Mapped[int] = mapped_column(
-        Integer, default=10
+        Integer,
+        default=10,
     )
+
     defense: Mapped[int] = mapped_column(
-        Integer, default=10
+        Integer,
+        default=10,
     )
+
     hp: Mapped[int] = mapped_column(
-        Integer, default=100
+        Integer,
+        default=100,
     )
+
     speed: Mapped[int] = mapped_column(
-        Integer, default=10
+        Integer,
+        default=10,
     )
+
     element: Mapped[str | None] = mapped_column(
-        String(50)
+        String(50),
     )
+
     card_class: Mapped[str | None] = mapped_column(
-        String(50)
+        String(50),
     )
+
     description: Mapped[str | None] = mapped_column(
-        Text
+        Text,
     )
+
     image_url: Mapped[str | None] = mapped_column(
-        Text
+        Text,
     )
+
+    base_price: Mapped[int] = mapped_column(
+        BigInteger,
+        default=100,
+    )
+
     is_limited: Mapped[bool] = mapped_column(
-        Boolean, default=False
+        Boolean,
+        default=False,
     )
+
     is_shiny: Mapped[bool] = mapped_column(
-        Boolean, default=False
+        Boolean,
+        default=False,
     )
+
     is_animated: Mapped[bool] = mapped_column(
-        Boolean, default=False
+        Boolean,
+        default=False,
     )
+
+    is_premium: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
 
 
+# =========================================================
+# USER CARD
+# =========================================================
+
 class UserCard(Base):
     __tablename__ = "user_cards"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
+
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         index=True,
     )
+
     card_id: Mapped[int] = mapped_column(
         ForeignKey("cards.id"),
         index=True,
     )
+
     level: Mapped[int] = mapped_column(
-        Integer, default=1
+        Integer,
+        default=1,
     )
+
     xp: Mapped[int] = mapped_column(
-        Integer, default=0
+        Integer,
+        default=0,
     )
+
     quantity: Mapped[int] = mapped_column(
-        Integer, default=1
+        Integer,
+        default=1,
     )
+
     is_favorite: Mapped[bool] = mapped_column(
-        Boolean, default=False
+        Boolean,
+        default=False,
     )
+
     is_locked: Mapped[bool] = mapped_column(
-        Boolean, default=False
+        Boolean,
+        default=False,
     )
+
     obtained_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -175,54 +388,80 @@ class UserCard(Base):
     )
 
 
+# =========================================================
+# PACK
+# =========================================================
+
 class Pack(Base):
     __tablename__ = "packs"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
+
     name: Mapped[str] = mapped_column(
-        String(255)
+        String(255),
     )
+
     description: Mapped[str | None] = mapped_column(
-        Text
+        Text,
     )
+
     price_coins: Mapped[int] = mapped_column(
-        BigInteger, default=0
+        BigInteger,
+        default=0,
     )
+
     price_gems: Mapped[int] = mapped_column(
-        Integer, default=0
+        Integer,
+        default=0,
     )
+
     opens_per_day: Mapped[int] = mapped_column(
-        Integer, default=10
+        Integer,
+        default=10,
     )
+
     cards_per_open: Mapped[int] = mapped_column(
-        Integer, default=1
+        Integer,
+        default=1,
     )
+
     active: Mapped[bool] = mapped_column(
-        Boolean, default=True
+        Boolean,
+        default=True,
     )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
 
 
+# =========================================================
+# PACK RATE
+# =========================================================
+
 class PackRate(Base):
     __tablename__ = "pack_rates"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
+
     pack_id: Mapped[int] = mapped_column(
         ForeignKey("packs.id"),
         index=True,
     )
+
     rarity: Mapped[str] = mapped_column(
-        String(50)
+        String(50),
     )
+
     rate: Mapped[float] = mapped_column(
-        Float
+        Float,
     )
 
     __table_args__ = (
@@ -234,55 +473,78 @@ class PackRate(Base):
     )
 
 
+# =========================================================
+# PACK OPENING
+# =========================================================
+
 class PackOpening(Base):
     __tablename__ = "pack_openings"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
+
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         index=True,
     )
+
     pack_id: Mapped[int] = mapped_column(
         ForeignKey("packs.id"),
         index=True,
     )
+
     card_id: Mapped[int] = mapped_column(
         ForeignKey("cards.id"),
         index=True,
     )
+
     rarity: Mapped[str] = mapped_column(
-        String(50)
+        String(50),
     )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
 
 
+# =========================================================
+# PITY
+# =========================================================
+
 class PityCounter(Base):
     __tablename__ = "pity_counters"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
+
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         index=True,
     )
+
     pack_id: Mapped[int] = mapped_column(
         ForeignKey("packs.id"),
         index=True,
     )
+
     pulls: Mapped[int] = mapped_column(
-        Integer, default=0
+        Integer,
+        default=0,
     )
+
     legendary_pity: Mapped[int] = mapped_column(
-        Integer, default=50
+        Integer,
+        default=50,
     )
+
     mythic_pity: Mapped[int] = mapped_column(
-        Integer, default=100
+        Integer,
+        default=100,
     )
 
     __table_args__ = (
@@ -294,81 +556,539 @@ class PityCounter(Base):
     )
 
 
+# =========================================================
+# ECONOMY TRANSACTION
+# =========================================================
+
 class EconomyTransaction(Base):
     __tablename__ = "economy_transactions"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
+
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         index=True,
     )
+
     transaction_type: Mapped[str] = mapped_column(
-        String(100)
+        String(100),
     )
+
     currency: Mapped[str] = mapped_column(
-        String(30)
+        String(30),
     )
+
     amount: Mapped[int] = mapped_column(
-        BigInteger
+        BigInteger,
     )
+
     description: Mapped[str | None] = mapped_column(
-        Text
+        Text,
     )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
 
+
+# =========================================================
+# DAILY REWARD
+# =========================================================
 
 class DailyReward(Base):
     __tablename__ = "daily_rewards"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
+
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         unique=True,
         index=True,
     )
+
     streak: Mapped[int] = mapped_column(
-        Integer, default=0
+        Integer,
+        default=0,
     )
+
     last_claimed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
+        DateTime(timezone=True),
     )
 
 
-class AuditLog(Base):
-    __tablename__ = "audit_logs"
+# =========================================================
+# MARKET
+# =========================================================
+
+class MarketListing(Base):
+    __tablename__ = "market_listings"
 
     id: Mapped[int] = mapped_column(
-        Integer, primary_key=True
+        Integer,
+        primary_key=True,
     )
-    actor_id: Mapped[int | None] = mapped_column(
-        BigInteger
+
+    seller_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
     )
-    action: Mapped[str] = mapped_column(
-        String(100)
+
+    user_card_id: Mapped[int] = mapped_column(
+        ForeignKey("user_cards.id"),
+        index=True,
     )
-    target_id: Mapped[int | None] = mapped_column(
-        BigInteger
+
+    card_id: Mapped[int] = mapped_column(
+        ForeignKey("cards.id"),
+        index=True,
     )
-    details: Mapped[str | None] = mapped_column(
-        Text
+
+    price: Mapped[int] = mapped_column(
+        BigInteger,
     )
+
+    active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        index=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    sold_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+
+# =========================================================
+# TRADE
+# =========================================================
+
+class Trade(Base):
+    __tablename__ = "trades"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    sender_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    receiver_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    sender_card_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_cards.id"),
+    )
+
+    receiver_card_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_cards.id"),
+    )
+
+    sender_coins: Mapped[int] = mapped_column(
+        BigInteger,
+        default=0,
+    )
+
+    receiver_coins: Mapped[int] = mapped_column(
+        BigInteger,
+        default=0,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30),
+        default="pending",
+        index=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+
+# =========================================================
+# GIFT
+# =========================================================
+
+class GiftLog(Base):
+    __tablename__ = "gift_logs"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    sender_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    receiver_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    user_card_id: Mapped[int] = mapped_column(
+        ForeignKey("user_cards.id"),
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
 
 
+# =========================================================
+# CATCH LOG
+# =========================================================
+
+class CatchLog(Base):
+    __tablename__ = "catch_logs"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("groups.id"),
+        index=True,
+    )
+
+    card_id: Mapped[int] = mapped_column(
+        ForeignKey("cards.id"),
+        index=True,
+    )
+
+    rarity: Mapped[str] = mapped_column(
+        String(50),
+    )
+
+    is_duplicate: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+# =========================================================
+# DUEL
+# =========================================================
+
+class Duel(Base):
+    __tablename__ = "duels"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    challenger_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    opponent_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    challenger_card_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_cards.id"),
+    )
+
+    opponent_card_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_cards.id"),
+    )
+
+    winner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+    )
+
+    reward_coins: Mapped[int] = mapped_column(
+        BigInteger,
+        default=0,
+    )
+
+    reward_xp: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30),
+        default="pending",
+        index=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+
+# =========================================================
+# MINES GAME
+# =========================================================
+
+class MinesGame(Base):
+    __tablename__ = "mines_games"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    grid_size: Mapped[int] = mapped_column(
+        Integer,
+        default=5,
+    )
+
+    mines_count: Mapped[int] = mapped_column(
+        Integer,
+        default=5,
+    )
+
+    revealed_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
+
+    multiplier: Mapped[float] = mapped_column(
+        Float,
+        default=1.0,
+    )
+
+    reward: Mapped[int] = mapped_column(
+        BigInteger,
+        default=0,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30),
+        default="active",
+        index=True,
+    )
+
+    # JSON string containing mine positions.
+    # Example: "3,7,11,18,22"
+    mine_positions: Mapped[str | None] = mapped_column(
+        Text,
+    )
+
+    # JSON string containing revealed cells.
+    # Example: "1,2,8,9"
+    revealed_cells: Mapped[str | None] = mapped_column(
+        Text,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+    )
+
+
+# =========================================================
+# ACHIEVEMENTS
+# =========================================================
+
+class Achievement(Base):
+    __tablename__ = "achievements"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    code: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        index=True,
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(255),
+    )
+
+    description: Mapped[str | None] = mapped_column(
+        Text,
+    )
+
+    reward_coins: Mapped[int] = mapped_column(
+        BigInteger,
+        default=0,
+    )
+
+    reward_gems: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+    )
+
+    active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+    )
+
+
+class UserAchievement(Base):
+    __tablename__ = "user_achievements"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+
+    achievement_id: Mapped[int] = mapped_column(
+        ForeignKey("achievements.id"),
+        index=True,
+    )
+
+    unlocked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "achievement_id",
+            name="uq_user_achievement",
+        ),
+    )
+
+
+# =========================================================
+# ADMIN
+# =========================================================
+
+class BotAdmin(Base):
+    __tablename__ = "bot_admins"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger,
+        unique=True,
+        index=True,
+    )
+
+    role: Mapped[str] = mapped_column(
+        String(30),
+        default="admin",
+    )
+
+    added_by: Mapped[int | None] = mapped_column(
+        BigInteger,
+    )
+
+    active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+# =========================================================
+# AUDIT LOG
+# =========================================================
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    actor_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+    )
+
+    action: Mapped[str] = mapped_column(
+        String(100),
+    )
+
+    target_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+    )
+
+    details: Mapped[str | None] = mapped_column(
+        Text,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+# =========================================================
+# ENGINE
+# =========================================================
+
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
 )
+
+
+# =========================================================
+# SESSION
+# =========================================================
 
 SessionLocal = async_sessionmaker(
     engine,
@@ -376,6 +1096,10 @@ SessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
+
+# =========================================================
+# INITIALIZE DATABASE
+# =========================================================
 
 async def init_db():
     async with engine.begin() as conn:
