@@ -1,4 +1,4 @@
-
+```python
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -6,9 +6,7 @@ from sqlalchemy import select
 
 from database import (
     SessionLocal,
-    User,
     Card,
-    BotAdmin,
 )
 
 
@@ -16,22 +14,18 @@ router = Router()
 
 
 # =========================================================
-# HELPERS
+# OWNER
 # =========================================================
 
-async def is_admin(telegram_id: int) -> bool:
-    async with SessionLocal() as session:
+OWNER_ID = 7974865879
 
-        result = await session.execute(
-            select(BotAdmin).where(
-                BotAdmin.telegram_id == telegram_id,
-                BotAdmin.active == True,
-            )
-        )
 
-        admin = result.scalar_one_or_none()
+# =========================================================
+# ADMIN CHECK
+# =========================================================
 
-        return admin is not None
+def is_admin(telegram_id: int) -> bool:
+    return telegram_id == OWNER_ID
 
 
 # =========================================================
@@ -63,6 +57,8 @@ async def cards_command(message: Message):
             "        🎴 <b>CARDS</b>",
             "╚══════════════════════════╝",
             "",
+            f"🃏 Total: <b>{len(cards)}</b>",
+            "",
         ]
 
         for card in cards:
@@ -85,6 +81,28 @@ async def cards_command(message: Message):
 
 
 # =========================================================
+# /cardcount
+# =========================================================
+
+@router.message(Command("cardcount"))
+async def card_count(message: Message):
+
+    async with SessionLocal() as session:
+
+        result = await session.execute(
+            select(Card)
+        )
+
+        cards = result.scalars().all()
+
+    await message.answer(
+        "🎴 <b>CARD DATABASE</b>\n\n"
+        f"🃏 Total Cards: <b>{len(cards)}</b>",
+        parse_mode="HTML",
+    )
+
+
+# =========================================================
 # /check
 # =========================================================
 
@@ -98,12 +116,9 @@ async def check_card(message: Message):
         await message.answer(
             "🎴 <b>Card Check</b>\n\n"
             "အသုံးပြုပုံ:\n"
-            "<code>/check 1</code>\n\n"
-            "ဥပမာ:\n"
             "<code>/check 001</code>",
             parse_mode="HTML",
         )
-
         return
 
     try:
@@ -112,9 +127,8 @@ async def check_card(message: Message):
     except ValueError:
 
         await message.answer(
-            "❌ Card ID မှားနေပါတယ်။"
+            "❌ Card ID က နံပါတ်ဖြစ်ရပါမယ်။"
         )
-
         return
 
     async with SessionLocal() as session:
@@ -132,7 +146,6 @@ async def check_card(message: Message):
             await message.answer(
                 "❌ ဒီ Card မရှိသေးပါဘူး။"
             )
-
             return
 
         text = (
@@ -156,14 +169,14 @@ async def check_card(message: Message):
             f"<b>{card.card_class or 'Unknown'}</b>\n"
 
             f"💰 Price: "
-            f"<b>{card.base_price:,}</b> Coins\n"
+            f"<b>{card.base_price:,}</b> Coins"
         )
 
         if card.description:
 
             text += (
-                "\n📝 <b>Description</b>\n"
-                f"{card.description}\n"
+                "\n\n📝 <b>Description</b>\n"
+                f"{card.description}"
             )
 
         if card.image_url:
@@ -183,26 +196,28 @@ async def check_card(message: Message):
 
 
 # =========================================================
-# /addcard HELP
+# /addcard
 # =========================================================
 
 @router.message(Command("addcard"))
-async def addcard_help(message: Message):
+async def addcard_command(message: Message):
 
-    if not await is_admin(message.from_user.id):
+    if message.from_user is None:
+        return
+
+    if not is_admin(message.from_user.id):
 
         await message.answer(
             "🚫 <b>Admin only.</b>",
             parse_mode="HTML",
         )
-
         return
 
     await message.answer(
         "🎴 <b>ADD CARD</b>\n\n"
 
-        "Card ပုံကို ဒီ Bot ဆီ ပို့ပြီး "
-        "caption ထဲမှာ ဒီလိုရေးပါ:\n\n"
+        "Card ပုံကို ပို့ပြီး "
+        "Caption ထဲမှာ ဒီလိုရေးပါ:\n\n"
 
         "<code>001 | Naruto | Legendary</code>\n\n"
 
@@ -210,38 +225,26 @@ async def addcard_help(message: Message):
         "<code>ID | Name | Rarity</code>\n\n"
 
         "ဥပမာ:\n"
-        "<code>25 | Sasuke | Epic</code>\n"
-        "<code>26 | Naruto | Legendary</code>\n"
-        "<code>27 | Sakura | Rare</code>\n\n"
-
-        "🖼️ ပုံ + Caption နှစ်ခုလုံး တစ်ခါတည်းပို့ရပါမယ်။",
+        "<code>1 | Naruto | Legendary</code>\n"
+        "<code>2 | Sasuke | Epic</code>\n"
+        "<code>3 | Sakura | Rare</code>",
         parse_mode="HTML",
     )
 
 
 # =========================================================
-# ADD CARD FROM PHOTO
+# PHOTO + CAPTION = ADD CARD
 # =========================================================
 
-@router.message(
-    F.photo
-)
+@router.message(F.photo)
 async def add_card_from_photo(message: Message):
 
     if message.from_user is None:
         return
 
-    # -----------------------------------------------------
-    # ADMIN CHECK
-    # -----------------------------------------------------
-
-    if not await is_admin(message.from_user.id):
-
+    # Owner only
+    if not is_admin(message.from_user.id):
         return
-
-    # -----------------------------------------------------
-    # CAPTION CHECK
-    # -----------------------------------------------------
 
     caption = message.caption
 
@@ -250,7 +253,7 @@ async def add_card_from_photo(message: Message):
         await message.answer(
             "❌ Caption မပါပါဘူး။\n\n"
 
-            "ဒီလိုပို့ပါ:\n"
+            "ပုံပေါ်မှာ Caption ကို ဒီလိုရေးပါ:\n"
             "<code>001 | Naruto | Legendary</code>",
             parse_mode="HTML",
         )
@@ -258,12 +261,12 @@ async def add_card_from_photo(message: Message):
         return
 
     # -----------------------------------------------------
-    # PARSE
+    # PARSE CAPTION
     # -----------------------------------------------------
 
     parts = [
-        x.strip()
-        for x in caption.split("|")
+        item.strip()
+        for item in caption.split("|")
     ]
 
     if len(parts) < 3:
@@ -271,7 +274,7 @@ async def add_card_from_photo(message: Message):
         await message.answer(
             "❌ Format မှားနေပါတယ်။\n\n"
 
-            "မှန်ကန်တဲ့ format:\n"
+            "မှန်ကန်တဲ့ Format:\n"
             "<code>ID | Name | Rarity</code>\n\n"
 
             "ဥပမာ:\n"
@@ -288,7 +291,7 @@ async def add_card_from_photo(message: Message):
     except ValueError:
 
         await message.answer(
-            "❌ ID က နံပါတ်ဖြစ်ရပါမယ်။\n\n"
+            "❌ Card ID က နံပါတ်ဖြစ်ရပါမယ်။\n\n"
             "ဥပမာ: <code>001</code>",
             parse_mode="HTML",
         )
@@ -303,7 +306,6 @@ async def add_card_from_photo(message: Message):
         await message.answer(
             "❌ Card Name မပါပါဘူး။"
         )
-
         return
 
     if not rarity:
@@ -311,16 +313,15 @@ async def add_card_from_photo(message: Message):
         await message.answer(
             "❌ Rarity မပါပါဘူး။"
         )
-
         return
 
     # -----------------------------------------------------
-    # TELEGRAM FILE ID
+    # TELEGRAM PHOTO FILE ID
     # -----------------------------------------------------
 
     photo = message.photo[-1]
 
-    file_id = photo.file_id
+    image_file_id = photo.file_id
 
     # -----------------------------------------------------
     # DATABASE
@@ -328,58 +329,68 @@ async def add_card_from_photo(message: Message):
 
     async with SessionLocal() as session:
 
-        # Check existing ID
-
         result = await session.execute(
             select(Card).where(
                 Card.id == card_id
             )
         )
 
-        existing = result.scalar_one_or_none()
+        existing_card = result.scalar_one_or_none()
 
-        if existing:
+        if existing_card is not None:
 
             await message.answer(
                 "❌ ဒီ Card ID ရှိပြီးသားပါ။\n\n"
-                f"🆔 ID: <code>{existing.id:04d}</code>\n"
-                f"🎴 Name: <b>{existing.name}</b>",
+
+                f"🆔 ID: <code>{existing_card.id:04d}</code>\n"
+                f"🎴 Name: <b>{existing_card.name}</b>\n"
+                f"💠 Rarity: <b>{existing_card.rarity}</b>",
                 parse_mode="HTML",
             )
 
             return
 
-        # Create card
+        # -------------------------------------------------
+        # CREATE CARD
+        # -------------------------------------------------
 
         card = Card(
             id=card_id,
+
             name=name,
+
             rarity=rarity,
 
             attack=10,
+
             defense=10,
+
             hp=100,
+
             speed=10,
 
             element=None,
+
             card_class=None,
+
             description=None,
 
-            image_url=file_id,
+            image_url=image_file_id,
 
             base_price=100,
 
             is_limited=False,
+
             is_shiny=False,
+
             is_animated=False,
+
             is_premium=False,
         )
 
         session.add(card)
 
         await session.commit()
-
-        await session.refresh(card)
 
     # -----------------------------------------------------
     # SUCCESS
@@ -388,13 +399,13 @@ async def add_card_from_photo(message: Message):
     await message.answer(
         "✅ <b>CARD ADDED!</b>\n\n"
 
-        f"🆔 ID: <code>{card.id:04d}</code>\n"
-        f"🎴 Name: <b>{card.name}</b>\n"
-        f"💠 Rarity: <b>{card.rarity}</b>\n"
-        f"🖼️ Image: ✅\n\n"
+        f"🆔 ID: <code>{card_id:04d}</code>\n"
+        f"🎴 Name: <b>{name}</b>\n"
+        f"💠 Rarity: <b>{rarity}</b>\n"
+        "🖼️ Image: ✅\n\n"
 
-        "🎉 ဒီ Card ကို Database ထဲသိမ်းပြီးပါပြီ။\n"
-        "🎲 နောက်ထပ် /drop လုပ်တဲ့အခါ ဒီ Card ပါဝင်နိုင်ပါပြီ။",
+        "🎉 Database ထဲကို Card ထည့်ပြီးပါပြီ။\n"
+        "🎲 /drop မှာ ဒီ Card ကို အသုံးပြုနိုင်ပါပြီ။",
         parse_mode="HTML",
     )
 
@@ -409,13 +420,12 @@ async def delete_card(message: Message):
     if message.from_user is None:
         return
 
-    if not await is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
 
         await message.answer(
             "🚫 <b>Admin only.</b>",
             parse_mode="HTML",
         )
-
         return
 
     parts = message.text.split() if message.text else []
@@ -423,11 +433,10 @@ async def delete_card(message: Message):
     if len(parts) < 2:
 
         await message.answer(
-            "🗑️ အသုံးပြုပုံ:\n"
+            "🗑️ အသုံးပြုပုံ:\n\n"
             "<code>/deletecard 001</code>",
             parse_mode="HTML",
         )
-
         return
 
     try:
@@ -439,7 +448,6 @@ async def delete_card(message: Message):
         await message.answer(
             "❌ Invalid Card ID."
         )
-
         return
 
     async with SessionLocal() as session:
@@ -455,12 +463,11 @@ async def delete_card(message: Message):
         if card is None:
 
             await message.answer(
-                "❌ Card မတွေ့ပါဘူး။"
+                "❌ ဒီ Card မတွေ့ပါဘူး။"
             )
-
             return
 
-        name = card.name
+        card_name = card.name
 
         await session.delete(card)
 
@@ -468,32 +475,9 @@ async def delete_card(message: Message):
 
     await message.answer(
         "🗑️ <b>CARD DELETED</b>\n\n"
+
         f"🆔 ID: <code>{card_id:04d}</code>\n"
-        f"🎴 Name: <b>{name}</b>",
+        f"🎴 Name: <b>{card_name}</b>",
         parse_mode="HTML",
     )
-
-
-# =========================================================
-# /cardcount
-# =========================================================
-
-@router.message(Command("cardcount"))
-async def card_count(message: Message):
-
-    async with SessionLocal() as session:
-
-        result = await session.execute(
-            select(Card)
-        )
-
-        cards = result.scalars().all()
-
-        total = len(cards)
-
-    await message.answer(
-        "🎴 <b>CARD DATABASE</b>\n\n"
-        f"🃏 Total Cards: <b>{total}</b>",
-        parse_mode="HTML",
-    )
-
+```
