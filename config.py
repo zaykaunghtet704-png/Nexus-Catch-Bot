@@ -18,11 +18,16 @@ class Settings:
 def load_settings() -> Settings:
     token = os.getenv("BOT_TOKEN", "").strip()
     owner_raw = os.getenv("OWNER_ID", "0").strip()
-    database_url = os.getenv("DATABASE_URL", "").strip()
-if db.startswith("postgresql://"):
-    db = db.replace("postgresql://", "postgresql+asyncpg://", 1)
+    db = os.getenv("DATABASE_URL", "").strip()
+
+    if db.startswith("postgresql://"):
+        db = db.replace(
+            "postgresql://",
+            "postgresql+asyncpg://",
+            1,
+        )
+
     try:
-        
         owner_id = int(owner_raw)
     except ValueError:
         owner_id = 0
@@ -33,15 +38,23 @@ if db.startswith("postgresql://"):
     if owner_id <= 0:
         raise RuntimeError("OWNER_ID is not set correctly")
 
-    if not database_url:
+    if not db:
         raise RuntimeError("DATABASE_URL is not set")
 
     return Settings(
         bot_token=token,
         owner_id=owner_id,
-        database_url=database_url,
-        web_host=os.getenv("WEB_HOST", "0.0.0.0"),
-        web_port=int(os.getenv("WEB_PORT", "8000")),
+        database_url=db,
+        web_host=os.getenv(
+            "WEB_HOST",
+            "0.0.0.0",
+        ),
+        web_port=int(
+            os.getenv(
+                "WEB_PORT",
+                "8000",
+            )
+        ),
     )
 
 
