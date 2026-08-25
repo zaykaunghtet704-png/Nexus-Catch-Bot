@@ -1,3 +1,4 @@
+
 from datetime import datetime
 
 from sqlalchemy import (
@@ -11,6 +12,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
@@ -51,6 +53,7 @@ class User(Base):
 
     username: Mapped[str | None] = mapped_column(
         String(255),
+        nullable=True,
     )
 
     first_name: Mapped[str] = mapped_column(
@@ -125,6 +128,7 @@ class Group(Base):
 
     username: Mapped[str | None] = mapped_column(
         String(255),
+        nullable=True,
     )
 
     enabled: Mapped[bool] = mapped_column(
@@ -178,14 +182,17 @@ class GroupActivation(Base):
 
     requested_by: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     approved_by: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     approved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -282,18 +289,22 @@ class Card(Base):
 
     element: Mapped[str | None] = mapped_column(
         String(50),
+        nullable=True,
     )
 
     card_class: Mapped[str | None] = mapped_column(
         String(50),
+        nullable=True,
     )
 
     description: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     image_url: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     base_price: Mapped[int] = mapped_column(
@@ -406,6 +417,7 @@ class Pack(Base):
 
     description: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     price_coins: Mapped[int] = mapped_column(
@@ -587,6 +599,7 @@ class EconomyTransaction(Base):
 
     description: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -620,6 +633,7 @@ class DailyReward(Base):
 
     last_claimed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -667,6 +681,7 @@ class MarketListing(Base):
 
     sold_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -694,10 +709,12 @@ class Trade(Base):
 
     sender_card_id: Mapped[int | None] = mapped_column(
         ForeignKey("user_cards.id"),
+        nullable=True,
     )
 
     receiver_card_id: Mapped[int | None] = mapped_column(
         ForeignKey("user_cards.id"),
+        nullable=True,
     )
 
     sender_coins: Mapped[int] = mapped_column(
@@ -723,6 +740,7 @@ class Trade(Base):
 
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -778,6 +796,7 @@ class CatchLog(Base):
     group_id: Mapped[int | None] = mapped_column(
         ForeignKey("groups.id"),
         index=True,
+        nullable=True,
     )
 
     card_id: Mapped[int] = mapped_column(
@@ -824,14 +843,17 @@ class Duel(Base):
 
     challenger_card_id: Mapped[int | None] = mapped_column(
         ForeignKey("user_cards.id"),
+        nullable=True,
     )
 
     opponent_card_id: Mapped[int | None] = mapped_column(
         ForeignKey("user_cards.id"),
+        nullable=True,
     )
 
     winner_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"),
+        nullable=True,
     )
 
     reward_coins: Mapped[int] = mapped_column(
@@ -857,6 +879,7 @@ class Duel(Base):
 
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -908,16 +931,14 @@ class MinesGame(Base):
         index=True,
     )
 
-    # JSON string containing mine positions.
-    # Example: "3,7,11,18,22"
     mine_positions: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
-    # JSON string containing revealed cells.
-    # Example: "1,2,8,9"
     revealed_cells: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -927,6 +948,7 @@ class MinesGame(Base):
 
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -954,6 +976,7 @@ class Achievement(Base):
 
     description: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     reward_coins: Mapped[int] = mapped_column(
@@ -971,6 +994,10 @@ class Achievement(Base):
         default=True,
     )
 
+
+# =========================================================
+# USER ACHIEVEMENT
+# =========================================================
 
 class UserAchievement(Base):
     __tablename__ = "user_achievements"
@@ -1029,6 +1056,7 @@ class BotAdmin(Base):
 
     added_by: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     active: Mapped[bool] = mapped_column(
@@ -1056,6 +1084,7 @@ class AuditLog(Base):
 
     actor_id: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     action: Mapped[str] = mapped_column(
@@ -1064,10 +1093,12 @@ class AuditLog(Base):
 
     target_id: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     details: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -1098,11 +1129,147 @@ SessionLocal = async_sessionmaker(
 
 
 # =========================================================
-# INITIALIZE DATABASE
+# DATABASE INIT + AUTO MIGRATION
 # =========================================================
 
 async def init_db():
     async with engine.begin() as conn:
+
+        # Create tables that don't exist yet.
         await conn.run_sync(
             Base.metadata.create_all
+        )
+
+        # -------------------------------------------------
+        # CARD TABLE MIGRATION
+        # -------------------------------------------------
+        # These commands safely add columns if they are
+        # missing from an existing PostgreSQL database.
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE cards
+                ADD COLUMN IF NOT EXISTS base_price
+                BIGINT DEFAULT 100
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE cards
+                ADD COLUMN IF NOT EXISTS is_limited
+                BOOLEAN DEFAULT FALSE
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE cards
+                ADD COLUMN IF NOT EXISTS is_shiny
+                BOOLEAN DEFAULT FALSE
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE cards
+                ADD COLUMN IF NOT EXISTS is_animated
+                BOOLEAN DEFAULT FALSE
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE cards
+                ADD COLUMN IF NOT EXISTS is_premium
+                BOOLEAN DEFAULT FALSE
+                """
+            )
+        )
+
+        # -------------------------------------------------
+        # USER CARD TABLE MIGRATION
+        # -------------------------------------------------
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE user_cards
+                ADD COLUMN IF NOT EXISTS level
+                INTEGER DEFAULT 1
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE user_cards
+                ADD COLUMN IF NOT EXISTS xp
+                INTEGER DEFAULT 0
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE user_cards
+                ADD COLUMN IF NOT EXISTS quantity
+                INTEGER DEFAULT 1
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE user_cards
+                ADD COLUMN IF NOT EXISTS is_favorite
+                BOOLEAN DEFAULT FALSE
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE user_cards
+                ADD COLUMN IF NOT EXISTS is_locked
+                BOOLEAN DEFAULT FALSE
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE user_cards
+                ADD COLUMN IF NOT EXISTS obtained_at
+                TIMESTAMPTZ DEFAULT NOW()
+                """
+            )
+        )
+
+        # -------------------------------------------------
+        # CATCH LOG TABLE MIGRATION
+        # -------------------------------------------------
+
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE catch_logs
+                ADD COLUMN IF NOT EXISTS is_duplicate
+                BOOLEAN DEFAULT FALSE
+                """
+            )
         )
