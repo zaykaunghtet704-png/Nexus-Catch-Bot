@@ -1,47 +1,85 @@
 RARITIES = {
-    "COMMON": {
-        "name": "Common",
-        "weight": 60.0,
+    "Common": {
+        "tier": 1,
+        "weight": 40.00,
+        "price": 50,
     },
-    "UNCOMMON": {
-        "name": "Uncommon",
-        "weight": 25.0,
+    "Uncommon": {
+        "tier": 2,
+        "weight": 25.00,
+        "price": 100,
     },
-    "RARE": {
-        "name": "Rare",
-        "weight": 10.0,
+    "Rare": {
+        "tier": 3,
+        "weight": 14.00,
+        "price": 200,
     },
-    "EPIC": {
-        "name": "Epic",
-        "weight": 3.5,
+    "Elite": {
+        "tier": 4,
+        "weight": 8.00,
+        "price": 350,
     },
-    "LEGENDARY": {
-        "name": "Legendary",
-        "weight": 1.2,
+    "Epic": {
+        "tier": 5,
+        "weight": 5.00,
+        "price": 550,
     },
-    "MYTHIC": {
-        "name": "Mythic",
-        "weight": 0.3,
+    "Legend": {
+        "tier": 6,
+        "weight": 2.50,
+        "price": 800,
+    },
+    "Mythic": {
+        "tier": 7,
+        "weight": 1.50,
+        "price": 1200,
+    },
+    "Celestial": {
+        "tier": 8,
+        "weight": 0.80,
+        "price": 1800,
+    },
+    "Astral": {
+        "tier": 9,
+        "weight": 0.50,
+        "price": 2700,
+    },
+    "Eternal": {
+        "tier": 10,
+        "weight": 0.30,
+        "price": 4000,
+    },
+    "Transcendent": {
+        "tier": 11,
+        "weight": 0.20,
+        "price": 6000,
+    },
+    "Immortal": {
+        "tier": 12,
+        "weight": 0.15,
+        "price": 9000,
+    },
+    "Premium Edition": {
+        "tier": 13,
+        "weight": 0.05,
+        "price": 15000,
     },
 }
 
 
-RARITY_ORDER = [
-    "COMMON",
-    "UNCOMMON",
-    "RARE",
-    "EPIC",
-    "LEGENDARY",
-    "MYTHIC",
-]
+def get_rarity_price(rarity: str) -> int:
+    data = RARITIES.get(rarity)
+
+    if data is None:
+        return 0
+
+    return data["price"]
 
 
-def get_rarity(rarity: str) -> dict:
-    return RARITIES.get(
-        rarity.upper(),
-        RARITIES["COMMON"],
-    )
+def get_rarity_tier(rarity: str) -> int:
+    data = RARITIES.get(rarity)
 
+    if data is None:
+        return 0
 
-def get_rarity_weight(rarity: str) -> float:
-    return get_rarity(rarity)["weight"]
+    return data["tier"]
