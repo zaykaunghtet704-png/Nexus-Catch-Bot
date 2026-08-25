@@ -1,0 +1,384 @@
+from datetime import datetime
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.ext.asyncio import (
+    AsyncAttrs,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from config import settings
+
+
+class Base(AsyncAttrs, DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, index=True
+    )
+    username: Mapped[str | None] = mapped_column(String(255))
+    first_name: Mapped[str] = mapped_column(
+        String(255), default="Player"
+    )
+    level: Mapped[int] = mapped_column(Integer, default=1)
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    coins: Mapped[int] = mapped_column(BigInteger, default=1000)
+    gems: Mapped[int] = mapped_column(Integer, default=100)
+    is_banned: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    is_muted: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, index=True
+    )
+    title: Mapped[str] = mapped_column(
+        String(255), default="Telegram Group"
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True
+    )
+    drop_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+class Card(Base):
+    __tablename__ = "cards"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    name: Mapped[str] = mapped_column(
+        String(255)
+    )
+    rarity: Mapped[str] = mapped_column(
+        String(50), index=True
+    )
+    attack: Mapped[int] = mapped_column(
+        Integer, default=10
+    )
+    defense: Mapped[int] = mapped_column(
+        Integer, default=10
+    )
+    hp: Mapped[int] = mapped_column(
+        Integer, default=100
+    )
+    speed: Mapped[int] = mapped_column(
+        Integer, default=10
+    )
+    element: Mapped[str | None] = mapped_column(
+        String(50)
+    )
+    card_class: Mapped[str | None] = mapped_column(
+        String(50)
+    )
+    description: Mapped[str | None] = mapped_column(
+        Text
+    )
+    image_url: Mapped[str | None] = mapped_column(
+        Text
+    )
+    is_limited: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    is_shiny: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    is_animated: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+class UserCard(Base):
+    __tablename__ = "user_cards"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+    card_id: Mapped[int] = mapped_column(
+        ForeignKey("cards.id"),
+        index=True,
+    )
+    level: Mapped[int] = mapped_column(
+        Integer, default=1
+    )
+    xp: Mapped[int] = mapped_column(
+        Integer, default=0
+    )
+    quantity: Mapped[int] = mapped_column(
+        Integer, default=1
+    )
+    is_favorite: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    is_locked: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    obtained_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "card_id",
+            name="uq_user_card",
+        ),
+    )
+
+
+class Pack(Base):
+    __tablename__ = "packs"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    name: Mapped[str] = mapped_column(
+        String(255)
+    )
+    description: Mapped[str | None] = mapped_column(
+        Text
+    )
+    price_coins: Mapped[int] = mapped_column(
+        BigInteger, default=0
+    )
+    price_gems: Mapped[int] = mapped_column(
+        Integer, default=0
+    )
+    opens_per_day: Mapped[int] = mapped_column(
+        Integer, default=10
+    )
+    cards_per_open: Mapped[int] = mapped_column(
+        Integer, default=1
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, default=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+class PackRate(Base):
+    __tablename__ = "pack_rates"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    pack_id: Mapped[int] = mapped_column(
+        ForeignKey("packs.id"),
+        index=True,
+    )
+    rarity: Mapped[str] = mapped_column(
+        String(50)
+    )
+    rate: Mapped[float] = mapped_column(
+        Float
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "pack_id",
+            "rarity",
+            name="uq_pack_rarity",
+        ),
+    )
+
+
+class PackOpening(Base):
+    __tablename__ = "pack_openings"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+    pack_id: Mapped[int] = mapped_column(
+        ForeignKey("packs.id"),
+        index=True,
+    )
+    card_id: Mapped[int] = mapped_column(
+        ForeignKey("cards.id"),
+        index=True,
+    )
+    rarity: Mapped[str] = mapped_column(
+        String(50)
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+class PityCounter(Base):
+    __tablename__ = "pity_counters"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+    pack_id: Mapped[int] = mapped_column(
+        ForeignKey("packs.id"),
+        index=True,
+    )
+    pulls: Mapped[int] = mapped_column(
+        Integer, default=0
+    )
+    legendary_pity: Mapped[int] = mapped_column(
+        Integer, default=50
+    )
+    mythic_pity: Mapped[int] = mapped_column(
+        Integer, default=100
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "pack_id",
+            name="uq_user_pack_pity",
+        ),
+    )
+
+
+class EconomyTransaction(Base):
+    __tablename__ = "economy_transactions"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        index=True,
+    )
+    transaction_type: Mapped[str] = mapped_column(
+        String(100)
+    )
+    currency: Mapped[str] = mapped_column(
+        String(30)
+    )
+    amount: Mapped[int] = mapped_column(
+        BigInteger
+    )
+    description: Mapped[str | None] = mapped_column(
+        Text
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+class DailyReward(Base):
+    __tablename__ = "daily_rewards"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        unique=True,
+        index=True,
+    )
+    streak: Mapped[int] = mapped_column(
+        Integer, default=0
+    )
+    last_claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True
+    )
+    actor_id: Mapped[int | None] = mapped_column(
+        BigInteger
+    )
+    action: Mapped[str] = mapped_column(
+        String(100)
+    )
+    target_id: Mapped[int | None] = mapped_column(
+        BigInteger
+    )
+    details: Mapped[str | None] = mapped_column(
+        Text
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+
+engine = create_async_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+)
+
+SessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            Base.metadata.create_all
+        )
