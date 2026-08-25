@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import random
-from datetime import datetime
-from typing import Optional
+from collections import defaultdict
+from datetime import datetime, timezone
 
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -12,7 +12,6 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
 )
-from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import select, func
 
 from database import (
@@ -35,95 +34,165 @@ router = Router()
 
 OWNER_ID = 7974865879
 
-# Group message thresholds
-NORMAL_DROP_MESSAGES = 85
-RARE_DROP_MESSAGES = 1000
+# Group message count before automatic drop
+DROP_MESSAGE_COUNT = 85
+
+# At 1000 messages, give better cards
+HIGH_DROP_MESSAGE_COUNT = 1000
 
 PAGE_SIZE = 5
 
 
-# =========================================================
-# IN-MEMORY GROUP MESSAGE COUNTER
-# =========================================================
-#
-# 85 messages -> normal/good card
-# 1000 messages -> better card
-#
-# NOTE:
-# This counter resets if Render restarts the service.
-# The card collection itself is stored permanently in DB.
-#
-
-group_message_counts: dict[int, int] = {}
+# Runtime message counters.
+# This resets if Render restarts.
+group_message_counts: dict[int, int] = defaultdict(int)
 
 
 # =========================================================
-# RARITY SETTINGS
-# =========================================================
-
-RARITY_ORDER = [
-    "Common",
-    "Uncommon",
-    "Rare",
-    "Epic",
-    "Legendary",
-    "Mythic",
-    "Premium Edition",
-]
-
-
-RARITY_WEIGHTS_NORMAL = {
-    "Common": 55,
-    "Uncommon": 25,
-    "Rare": 12,
-    "Epic": 6,
-    "Legendary": 1.8,
-    "Mythic": 0.2,
-}
-
-
-RARITY_WEIGHTS_RARE = {
-    "Uncommon": 25,
-    "Rare": 30,
-    "Epic": 25,
-    "Legendary": 15,
-    "Mythic": 4,
-    "Premium Edition": 1,
-}
-
-
-# =========================================================
-# HELPERS
+# ADMIN / OWNER
 # =========================================================
 
 def is_owner(user_id: int) -> bool:
     return user_id == OWNER_ID
 
 
-def safe_html(text: Optional[str]) -> str:
-    if not text:
-        return "Unknown"
+# =========================================================
+# HTML ESCAPE
+# =========================================================
+
+def safe_text(value) -> str:
+    if value is None:
+        return ""
+
+    text = str(value)
 
     return (
-        str(text)
-        .replace("&", "&amp;")
+        text.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
 
 
-def drop_keyboard(drop_id: int) -> InlineKeyboardMarkup:
+# =========================================================
+# GET / CREATE USER
+# =========================================================
+
+async def get_or_create_user(message: Message):
+    if message.from_user is None:
+        return None
+
+    telegram_id = message.from_user.id
+
+    async with SessionLocal() as session:
+
+        result = await session.execute(
+            select(User).where(
+                User.telegram_id == telegram_id
+            )
+        )
+
+        user = result.scalar_one_or_none()
+
+        if user is None:
+
+            user = User(
+                telegram_id=telegram_id,
+                username=message.from_user.username,
+                first_name=message.from_user.first_name or "Player",
+            )
+
+            session.add(user)
+
+            await session.commit()
+            await session.refresh(user)
+
+        else:
+
+            user.username = message.from_user.username
+            user.first_name = (
+                message.from_user.first_name or user.first_name
+            )
+
+            await session.commit()
+
+        return user
+
+
+# =========================================================
+# GET / CREATE GROUP
+# =========================================================
+
+async def get_or_create_group(message: Message):
+    if message.chat.type not in ("group", "supergroup"):
+        return None
+
+    async with SessionLocal() as session:
+
+        result = await session.execute(
+            select(Group).where(
+                Group.telegram_id == message.chat.id
+            )
+        )
+
+        group = result.scalar_one_or_none()
+
+        if group is None:
+
+            group = Group(
+                telegram_id=message.chat.id,
+                title=message.chat.title or "Telegram Group",
+                username=getattr(
+                    message.chat,
+                    "username",
+                    None,
+                ),
+                enabled=True,
+                drop_enabled=True,
+            )
+
+            session.add(group)
+
+            await session.commit()
+            await session.refresh(group)
+
+        else:
+
+            group.title = (
+                message.chat.title or group.title
+            )
+
+            group.username = getattr(
+                message.chat,
+                "username",
+                group.username,
+            )
+
+            await session.commit()
+
+        return group
+
+
+# =========================================================
+# CARD KEYBOARD
+# =========================================================
+
+def catch_keyboard(drop_id: int) -> InlineKeyboardMarkup:
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🎴 GET CARD",
-                    callback_data=f"carddrop:{drop_id}",
+                    text="🎴 CATCH CARD",
+                    callback_data=f"catchcard:{drop_id}",
                 )
             ]
         ]
     )
 
+
+# =========================================================
+# HAREM KEYBOARD
+# =========================================================
 
 def harem_keyboard(
     page: int,
@@ -168,313 +237,132 @@ def harem_keyboard(
     )
 
 
-def rarity_weight_table(rare: bool = False):
-    if rare:
-        return RARITY_WEIGHTS_RARE
-
-    return RARITY_WEIGHTS_NORMAL
-
-
-# =========================================================
-# GET / CREATE USER
-# =========================================================
-
-async def get_or_create_user(
-    telegram_id: int,
-    username: Optional[str] = None,
-    first_name: Optional[str] = None,
-):
-    async with SessionLocal() as session:
-
-        result = await session.execute(
-            select(User).where(
-                User.telegram_id == telegram_id
-            )
-        )
-
-        user = result.scalar_one_or_none()
-
-        if user is None:
-
-            user = User(
-                telegram_id=telegram_id,
-                username=username,
-                first_name=first_name or "Player",
-            )
-
-            session.add(user)
-
-            await session.commit()
-            await session.refresh(user)
-
-        else:
-
-            changed = False
-
-            if username is not None and user.username != username:
-                user.username = username
-                changed = True
-
-            if first_name is not None and user.first_name != first_name:
-                user.first_name = first_name
-                changed = True
-
-            if changed:
-                await session.commit()
-
-        return user
-
-
-# =========================================================
-# GET GROUP
-# =========================================================
-
-async def get_or_create_group(
-    telegram_group_id: int,
-    title: str = "Telegram Group",
-    username: Optional[str] = None,
-):
-    async with SessionLocal() as session:
-
-        result = await session.execute(
-            select(Group).where(
-                Group.telegram_id == telegram_group_id
-            )
-        )
-
-        group = result.scalar_one_or_none()
-
-        if group is None:
-
-            group = Group(
-                telegram_id=telegram_group_id,
-                title=title,
-                username=username,
-                enabled=True,
-                drop_enabled=True,
-            )
-
-            session.add(group)
-
-            await session.commit()
-            await session.refresh(group)
-
-        else:
-
-            changed = False
-
-            if title and group.title != title:
-                group.title = title
-                changed = True
-
-            if username != group.username:
-                group.username = username
-                changed = True
-
-            if not group.enabled:
-                group.enabled = True
-                changed = True
-
-            if changed:
-                await session.commit()
-
-        return group
-
-
-# =========================================================
-# SELECT RANDOM CARD
-# =========================================================
-
-async def get_random_card(
-    rare: bool = False,
-):
-    async with SessionLocal() as session:
-
-        result = await session.execute(
-            select(Card).where(
-                Card.rarity.in_(
-                    list(
-                        rarity_weight_table(
-                            rare
-                        ).keys()
-                    )
-                )
-            )
-        )
-
-        cards = result.scalars().all()
-
-        if not cards:
-            return None
-
-        weights = rarity_weight_table(rare)
-
-        weighted_cards = []
-        weighted_values = []
-
-        for card in cards:
-
-            weighted_cards.append(card)
-            weighted_values.append(
-                weights.get(card.rarity, 0.1)
-            )
-
-        return random.choices(
-            weighted_cards,
-            weights=weighted_values,
-            k=1,
-        )[0]
-
-
-# =========================================================
-# ADD CARD TO USER
-# =========================================================
-
-async def give_card_to_user(
-    telegram_id: int,
-    card_id: int,
-):
-    async with SessionLocal() as session:
-
-        user_result = await session.execute(
-            select(User).where(
-                User.telegram_id == telegram_id
-            )
-        )
-
-        user = user_result.scalar_one_or_none()
-
-        if user is None:
-
-            user = User(
-                telegram_id=telegram_id,
-                first_name="Player",
-            )
-
-            session.add(user)
-            await session.flush()
-
-        card_result = await session.execute(
-            select(Card).where(
-                Card.id == card_id
-            )
-        )
-
-        card = card_result.scalar_one_or_none()
-
-        if card is None:
-            return None, False
-
-        user_card_result = await session.execute(
-            select(UserCard).where(
-                UserCard.user_id == user.id,
-                UserCard.card_id == card.id,
-            )
-        )
-
-        user_card = user_card_result.scalar_one_or_none()
-
-        duplicate = user_card is not None
-
-        if user_card is None:
-
-            user_card = UserCard(
-                user_id=user.id,
-                card_id=card.id,
-                level=1,
-                xp=0,
-                quantity=1,
-                is_favorite=False,
-                is_locked=False,
-            )
-
-            session.add(user_card)
-
-        else:
-
-            user_card.quantity += 1
-
-        await session.commit()
-
-        return card, duplicate
-
-
 # =========================================================
 # CARD TEXT
 # =========================================================
 
-def card_drop_text(
-    card: Card,
-    count: Optional[int] = None,
-    rare: bool = False,
-) -> str:
+def card_caption(card: Card) -> str:
 
-    rarity = safe_html(card.rarity)
-    name = safe_html(card.name)
+    premium = " 💎" if card.is_premium else ""
+    limited = " 🔥" if card.is_limited else ""
+    shiny = " ✨" if card.is_shiny else ""
+    animated = " 🎞" if card.is_animated else ""
 
-    if count is None:
-        count_line = ""
-    else:
-        count_line = (
-            f"\n💬 Messages: <b>{count:,}</b>"
-        )
-
-    if rare:
-        title = "💎 <b>RARE CARD DROP!</b>"
-    else:
-        title = "🎴 <b>CARD DROP!</b>"
-
-    premium = ""
-
-    if card.is_premium:
-        premium = "\n👑 <b>PREMIUM EDITION</b>"
-
-    shiny = ""
-
-    if card.is_shiny:
-        shiny = " ✨ SHINY"
-
-    animated = ""
-
-    if card.is_animated:
-        animated = " 🎞️ ANIMATED"
-
-    return (
-        f"{title}\n\n"
+    text = (
+        "╔══════════════════════╗\n"
+        "       🎴 <b>CARD DROP</b>\n"
+        "╚══════════════════════╝\n\n"
         f"🎴 <b>#{card.id:04d}</b>\n"
-        f"✨ <b>{name}</b>\n"
-        f"💠 Rarity: <b>{rarity}</b>"
-        f"{shiny}{animated}"
-        f"{premium}\n"
+        f"✨ <b>{safe_text(card.name)}</b>\n\n"
+        f"💠 Rarity: <b>{safe_text(card.rarity)}</b>"
+        f"{premium}{limited}{shiny}{animated}\n\n"
         f"⚔️ ATK: <b>{card.attack}</b>\n"
         f"🛡 DEF: <b>{card.defense}</b>\n"
         f"❤️ HP: <b>{card.hp}</b>\n"
-        f"💨 Speed: <b>{card.speed}</b>"
-        f"{count_line}\n\n"
-        "⚡ <b>First person to press GET CARD wins!</b>"
+        f"💨 Speed: <b>{card.speed}</b>\n"
     )
 
+    if card.element:
+        text += (
+            f"\n🌟 Element: "
+            f"<b>{safe_text(card.element)}</b>\n"
+        )
+
+    if card.card_class:
+        text += (
+            f"🎭 Class: "
+            f"<b>{safe_text(card.card_class)}</b>\n"
+        )
+
+    if card.description:
+        text += (
+            f"\n📝 {safe_text(card.description)}\n"
+        )
+
+    text += (
+        "\n━━━━━━━━━━━━━━━━━━━━\n"
+        "⚡ <b>First person to press CATCH gets this card!</b>"
+    )
+
+    return text
+
 
 # =========================================================
-# SEND CARD DROP
+# CHOOSE RANDOM CARD
 # =========================================================
 
-async def send_card_drop(
-    message: Message,
-    card: Card,
-    group_id: int,
-    rare: bool = False,
-    count: Optional[int] = None,
+async def choose_random_card(
+    high_quality: bool = False,
 ):
     async with SessionLocal() as session:
 
+        result = await session.execute(
+            select(Card)
+        )
+
+        cards = list(result.scalars().all())
+
+        if not cards:
+            return None
+
+        # At 1000 messages prefer premium / legendary /
+        # mythic / high rarity cards.
+        if high_quality:
+
+            preferred = [
+                card
+                for card in cards
+                if card.is_premium
+                or card.is_limited
+                or card.rarity.lower()
+                in {
+                    "legendary",
+                    "mythic",
+                    "premium",
+                    "secret",
+                }
+            ]
+
+            if preferred:
+                return random.choice(preferred)
+
+        return random.choice(cards)
+
+
+# =========================================================
+# SEND DROP
+# =========================================================
+
+async def create_card_drop(
+    message: Message,
+    card: Card,
+):
+
+    group = await get_or_create_group(message)
+
+    if group is None:
+        return
+
+    async with SessionLocal() as session:
+
+        # Make previous active drops inactive.
+        old_result = await session.execute(
+            select(CardDrop).where(
+                CardDrop.group_id == group.id,
+                CardDrop.active == True,
+            )
+        )
+
+        old_drops = old_result.scalars().all()
+
+        for old_drop in old_drops:
+            old_drop.active = False
+
         drop = CardDrop(
-            group_id=group_id,
+            group_id=group.id,
             card_id=card.id,
             message_id=0,
             active=True,
-            caught_by=None,
-            caught_at=None,
         )
 
         session.add(drop)
@@ -482,328 +370,166 @@ async def send_card_drop(
         await session.commit()
         await session.refresh(drop)
 
-        text = card_drop_text(
-            card,
-            count=count,
-            rare=rare,
-        )
+        caption = card_caption(card)
 
-        keyboard = drop_keyboard(drop.id)
+        sent_message = None
 
-        try:
+        if card.image_url:
 
-            if card.image_url:
+            try:
 
-                sent = await message.answer_photo(
+                sent_message = await message.answer_photo(
                     photo=card.image_url,
-                    caption=text,
+                    caption=caption,
                     parse_mode="HTML",
-                    reply_markup=keyboard,
+                    reply_markup=catch_keyboard(drop.id),
                 )
 
-            else:
+            except Exception:
 
-                sent = await message.answer(
-                    text,
+                sent_message = await message.answer(
+                    caption,
                     parse_mode="HTML",
-                    reply_markup=keyboard,
+                    reply_markup=catch_keyboard(drop.id),
                 )
-
-            drop.message_id = sent.message_id
-
-            await session.commit()
-
-        except Exception:
-
-            drop.active = False
-
-            await session.commit()
-
-            raise
-
-        return drop
-
-
-# =========================================================
-# /addcard
-#
-# Text:
-# /addcard Name | Rarity | ATK | DEF | HP | SPEED | ELEMENT | CLASS | PRICE | IMAGE_URL
-#
-# Or send:
-# /addcard Name | Rarity | ATK | DEF | HP | SPEED | ELEMENT | CLASS | PRICE
-# as a reply to a Telegram photo.
-# =========================================================
-
-@router.message(Command("addcard"))
-async def addcard_command(message: Message):
-
-    if message.from_user is None:
-        return
-
-    if not is_owner(message.from_user.id):
-
-        await message.answer(
-            "❌ <b>Owner Only</b>\n\n"
-            "ဒီ command ကို bot owner ပဲ သုံးနိုင်ပါတယ်။",
-            parse_mode="HTML",
-        )
-
-        return
-
-    text = message.text or ""
-
-    raw = text.partition(" ")[2].strip()
-
-    if not raw:
-
-        await message.answer(
-            "➕ <b>ADD CARD</b>\n\n"
-            "Format:\n\n"
-            "<code>/addcard Name | Rarity | ATK | DEF | HP | SPEED | ELEMENT | CLASS | PRICE | IMAGE_URL</code>\n\n"
-            "ဥပမာ:\n"
-            "<code>/addcard Naruto | Legendary | 95 | 90 | 100 | 88 | Fire | Ninja | 50000 | https://example.com/naruto.jpg</code>\n\n"
-            "🖼️ Photo နဲ့ထည့်ချင်ရင် photo ကို reply လုပ်ပြီး "
-            "IMAGE_URL မထည့်လည်းရပါတယ်။",
-            parse_mode="HTML",
-        )
-
-        return
-
-    parts = [
-        x.strip()
-        for x in raw.split("|")
-    ]
-
-    if len(parts) < 9:
-
-        await message.answer(
-            "❌ Format မပြည့်စုံပါဘူး။\n\n"
-            "လိုအပ်တာ:\n"
-            "Name | Rarity | ATK | DEF | HP | SPEED | ELEMENT | CLASS | PRICE | IMAGE_URL",
-        )
-
-        return
-
-    name = parts[0]
-    rarity = parts[1]
-
-    try:
-        attack = int(parts[2])
-        defense = int(parts[3])
-        hp = int(parts[4])
-        speed = int(parts[5])
-        base_price = int(parts[8])
-    except ValueError:
-
-        await message.answer(
-            "❌ ATK / DEF / HP / SPEED / PRICE တွေက number ဖြစ်ရပါမယ်။"
-        )
-
-        return
-
-    element = parts[6] or None
-    card_class = parts[7] or None
-
-    image_url = None
-
-    if len(parts) >= 10 and parts[9]:
-        image_url = parts[9]
-
-    # If command is a reply to photo
-    if (
-        image_url is None
-        and message.reply_to_message is not None
-        and message.reply_to_message.photo
-    ):
-
-        image_url = (
-            message.reply_to_message
-            .photo[-1]
-            .file_id
-        )
-
-    async with SessionLocal() as session:
-
-        card = Card(
-            name=name,
-            rarity=rarity,
-            attack=attack,
-            defense=defense,
-            hp=hp,
-            speed=speed,
-            element=element,
-            card_class=card_class,
-            description=None,
-            image_url=image_url,
-            base_price=base_price,
-            is_limited=False,
-            is_shiny=False,
-            is_animated=False,
-            is_premium=(
-                rarity.lower()
-                == "premium edition".lower()
-            ),
-        )
-
-        session.add(card)
-
-        await session.commit()
-        await session.refresh(card)
-
-        await message.answer(
-            "✅ <b>CARD ADDED!</b>\n\n"
-            f"🆔 ID: <code>{card.id:04d}</code>\n"
-            f"🎴 Name: <b>{safe_html(card.name)}</b>\n"
-            f"💠 Rarity: <b>{safe_html(card.rarity)}</b>\n"
-            f"⚔️ ATK: <b>{card.attack}</b>\n"
-            f"🛡 DEF: <b>{card.defense}</b>\n"
-            f"❤️ HP: <b>{card.hp}</b>\n"
-            f"💨 Speed: <b>{card.speed}</b>\n"
-            f"🖼️ Image: "
-            f"<b>{'YES' if card.image_url else 'NO'}</b>",
-            parse_mode="HTML",
-        )
-
-
-# =========================================================
-# /drop
-#
-# Owner only.
-#
-# /drop
-# -> random normal/good card
-#
-# /drop 0021
-# -> specific card
-#
-# /drop premium
-# -> random Premium Edition
-#
-# /drop 0021 @username
-# -> card is directly assigned to mentioned user
-#
-# =========================================================
-
-@router.message(Command("drop"))
-async def drop_command(message: Message):
-
-    if message.from_user is None:
-        return
-
-    if not is_owner(message.from_user.id):
-
-        await message.answer(
-            "❌ <b>Owner Only</b>\n\n"
-            "Card drop ကို owner ပဲလုပ်နိုင်ပါတယ်။",
-            parse_mode="HTML",
-        )
-
-        return
-
-    if message.chat.type not in (
-        "group",
-        "supergroup",
-    ):
-
-        await message.answer(
-            "❌ /drop ကို group ထဲမှာပဲ သုံးပါ။"
-        )
-
-        return
-
-    parts = (
-        message.text.split()
-        if message.text
-        else []
-    )
-
-    card = None
-
-    if len(parts) >= 2:
-
-        value = parts[1].strip()
-
-        if value.lower() == "premium":
-
-            async with SessionLocal() as session:
-
-                result = await session.execute(
-                    select(Card).where(
-                        Card.rarity
-                        == "Premium Edition"
-                    )
-                )
-
-                cards = result.scalars().all()
-
-                if cards:
-                    card = random.choice(cards)
 
         else:
 
-            try:
-                card_id = int(value)
-            except ValueError:
-                card_id = 0
+            sent_message = await message.answer(
+                caption,
+                parse_mode="HTML",
+                reply_markup=catch_keyboard(drop.id),
+            )
 
-            if card_id:
+        drop.message_id = sent_message.message_id
 
-                async with SessionLocal() as session:
+        await session.commit()
 
-                    result = await session.execute(
-                        select(Card).where(
-                            Card.id == card_id
-                        )
-                    )
 
-                    card = result.scalar_one_or_none()
+# =========================================================
+# AUTO DROP
+# =========================================================
 
-    else:
+@router.message(
+    F.chat.type.in_({"group", "supergroup"})
+)
+async def group_message_counter(message: Message):
 
-        card = await get_random_card(
-            rare=False
-        )
+    if message.from_user is None:
+        return
+
+    # Ignore bot messages.
+    if message.from_user.is_bot:
+        return
+
+    group_id = message.chat.id
+
+    group_message_counts[group_id] += 1
+
+    current_count = group_message_counts[group_id]
+
+    # Every 85 messages.
+    if current_count < DROP_MESSAGE_COUNT:
+        return
+
+    # Reset counter immediately.
+    group_message_counts[group_id] = 0
+
+    high_quality = (
+        current_count >= HIGH_DROP_MESSAGE_COUNT
+    )
+
+    card = await choose_random_card(
+        high_quality=high_quality
+    )
 
     if card is None:
+        return
+
+    await create_card_drop(
+        message,
+        card,
+    )
+
+
+# =========================================================
+# MANUAL DROP
+# =========================================================
+
+@router.message(Command("dropcard"))
+async def dropcard_command(message: Message):
+
+    if message.from_user is None:
+        return
+
+    if not is_owner(message.from_user.id):
 
         await message.answer(
-            "❌ Drop လုပ်ဖို့ card မရှိသေးပါဘူး။\n\n"
-            "အရင်ဆုံး /addcard နဲ့ card ထည့်ပါ။"
+            "❌ <b>Owner Only</b>\n\n"
+            "Only the bot owner can manually drop cards.",
+            parse_mode="HTML",
         )
 
         return
 
-    group = await get_or_create_group(
-        telegram_group_id=message.chat.id,
-        title=message.chat.title or "Telegram Group",
-        username=message.chat.username,
-    )
+    parts = message.text.split() if message.text else []
 
-    await send_card_drop(
-        message=message,
-        card=card,
-        group_id=group.id,
-        rare=(
-            card.rarity in (
-                "Legendary",
-                "Mythic",
-                "Premium Edition",
+    if len(parts) < 2:
+
+        await message.answer(
+            "🎴 <b>Manual Card Drop</b>\n\n"
+            "Usage:\n"
+            "<code>/dropcard 21</code>\n\n"
+            "You can drop any card ID.",
+            parse_mode="HTML",
+        )
+
+        return
+
+    try:
+        card_id = int(parts[1])
+    except ValueError:
+
+        await message.answer(
+            "❌ Invalid card ID."
+        )
+
+        return
+
+    async with SessionLocal() as session:
+
+        result = await session.execute(
+            select(Card).where(
+                Card.id == card_id
             )
-        ),
+        )
+
+        card = result.scalar_one_or_none()
+
+        if card is None:
+
+            await message.answer(
+                f"❌ Card <code>{card_id:04d}</code> "
+                "not found.",
+                parse_mode="HTML",
+            )
+
+            return
+
+    await create_card_drop(
+        message,
+        card,
     )
 
 
 # =========================================================
-# CARD DROP BUTTON
-#
-# FIRST CLICK WINS
+# CATCH CARD
 # =========================================================
 
 @router.callback_query(
-    F.data.startswith("carddrop:")
+    F.data.startswith("catchcard:")
 )
-async def carddrop_callback(
+async def catch_card_callback(
     callback: CallbackQuery,
 ):
 
@@ -812,15 +538,10 @@ async def carddrop_callback(
         return
 
     try:
-
         drop_id = int(
             callback.data.split(":")[1]
         )
-
-    except (
-        ValueError,
-        IndexError,
-    ):
+    except (ValueError, IndexError):
 
         await callback.answer(
             "❌ Invalid drop.",
@@ -829,38 +550,17 @@ async def carddrop_callback(
 
         return
 
+    if callback.from_user is None:
+        await callback.answer()
+        return
+
     telegram_id = callback.from_user.id
 
     async with SessionLocal() as session:
 
-        # Lock the drop row where supported.
-        result = await session.execute(
-            select(CardDrop)
-            .where(
-                CardDrop.id == drop_id
-            )
-            .with_for_update()
-        )
-
-        drop = result.scalar_one_or_none()
-
-        if drop is None:
-
-            await callback.answer(
-                "❌ Card drop မတွေ့ပါဘူး။",
-                show_alert=True,
-            )
-
-            return
-
-        if not drop.active:
-
-            await callback.answer(
-                "😢 ဒီ card ကို တစ်ယောက်ယောက် ရပြီးပါပြီ။",
-                show_alert=True,
-            )
-
-            return
+        # -------------------------------------------------
+        # USER
+        # -------------------------------------------------
 
         user_result = await session.execute(
             select(User).where(
@@ -885,6 +585,44 @@ async def carddrop_callback(
 
             await session.flush()
 
+        # -------------------------------------------------
+        # DROP
+        # -------------------------------------------------
+
+        drop_result = await session.execute(
+            select(CardDrop).where(
+                CardDrop.id == drop_id
+            )
+        )
+
+        drop = drop_result.scalar_one_or_none()
+
+        if drop is None:
+
+            await callback.answer(
+                "❌ This drop no longer exists.",
+                show_alert=True,
+            )
+
+            return
+
+        # -------------------------------------------------
+        # FIRST USER ONLY
+        # -------------------------------------------------
+
+        if not drop.active or drop.caught_by is not None:
+
+            await callback.answer(
+                "❌ Too late! Someone already caught it.",
+                show_alert=True,
+            )
+
+            return
+
+        # -------------------------------------------------
+        # CARD
+        # -------------------------------------------------
+
         card_result = await session.execute(
             select(Card).where(
                 Card.id == drop.card_id
@@ -895,20 +633,24 @@ async def carddrop_callback(
 
         if card is None:
 
-            drop.active = False
-
-            await session.commit()
-
             await callback.answer(
-                "❌ Card မတွေ့ပါဘူး။",
+                "❌ Card not found.",
                 show_alert=True,
             )
 
             return
 
-        # ---------------------------------------------
-        # GIVE CARD
-        # ---------------------------------------------
+        # -------------------------------------------------
+        # CATCH
+        # -------------------------------------------------
+
+        drop.active = False
+        drop.caught_by = user.id
+        drop.caught_at = datetime.now(timezone.utc)
+
+        # -------------------------------------------------
+        # EXISTING USER CARD
+        # -------------------------------------------------
 
         user_card_result = await session.execute(
             select(UserCard).where(
@@ -931,8 +673,6 @@ async def carddrop_callback(
                 level=1,
                 xp=0,
                 quantity=1,
-                is_favorite=False,
-                is_locked=False,
             )
 
             session.add(user_card)
@@ -942,13 +682,9 @@ async def carddrop_callback(
             user_card.quantity += 1
             duplicate = True
 
-        # ---------------------------------------------
-        # MARK DROP AS CAUGHT
-        # ---------------------------------------------
-
-        drop.active = False
-        drop.caught_by = user.id
-        drop.caught_at = datetime.utcnow()
+        # -------------------------------------------------
+        # CATCH LOG
+        # -------------------------------------------------
 
         catch_log = CatchLog(
             user_id=user.id,
@@ -962,224 +698,328 @@ async def carddrop_callback(
 
         await session.commit()
 
-        # ---------------------------------------------
-        # SUCCESS MESSAGE
-        # ---------------------------------------------
+        # -------------------------------------------------
+        # BUTTON DISABLE
+        # -------------------------------------------------
+
+        try:
+
+            disabled_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="✅ CAUGHT",
+                            callback_data="catchcard:done",
+                        )
+                    ]
+                ]
+            )
+
+            await callback.message.edit_reply_markup(
+                reply_markup=disabled_keyboard
+            )
+
+        except Exception:
+            pass
+
+        # -------------------------------------------------
+        # RESULT
+        # -------------------------------------------------
 
         await callback.answer(
-            "🎉 You got the card!",
+            f"🎴 {card.name} caught!",
             show_alert=False,
-        )
-
-        text = (
-            "╔══════════════════════════╗\n"
-            "       🎉 <b>CARD CLAIMED!</b>\n"
-            "╚══════════════════════════╝\n\n"
-            f"👤 <b>{safe_html(user.first_name)}</b>\n"
-            f"🎴 <b>#{card.id:04d}</b>\n"
-            f"✨ <b>{safe_html(card.name)}</b>\n"
-            f"💠 Rarity: <b>{safe_html(card.rarity)}</b>\n\n"
         )
 
         if duplicate:
 
-            text += (
-                "♻️ <b>DUPLICATE!</b>\n"
-                "ဒီ card ကို collection ထဲမှာရှိပြီးသားမို့ "
-                "quantity +1 ဖြစ်သွားပါတယ်။\n"
+            await callback.message.answer(
+                "🎉 <b>CARD CAUGHT!</b>\n\n"
+                f"👤 <b>{safe_text(user.first_name)}</b>\n"
+                f"🎴 <b>#{card.id:04d}</b> "
+                f"{safe_text(card.name)}\n"
+                f"💠 {safe_text(card.rarity)}\n\n"
+                f"📦 Duplicate!\n"
+                f"Quantity: <b>×{user_card.quantity}</b>",
+                parse_mode="HTML",
             )
 
         else:
 
-            text += (
-                "🆕 <b>NEW CARD!</b>\n"
-                "သင့် collection ထဲ ထည့်ပြီးပါပြီ။\n"
-            )
-
-        try:
-
-            await callback.message.edit_caption(
-                caption=text,
+            await callback.message.answer(
+                "🎉 <b>CARD CAUGHT!</b>\n\n"
+                f"👤 <b>{safe_text(user.first_name)}</b>\n"
+                f"🎴 <b>#{card.id:04d}</b> "
+                f"{safe_text(card.name)}\n"
+                f"💠 {safe_text(card.rarity)}\n\n"
+                "✨ Added to your Harem!",
                 parse_mode="HTML",
             )
 
-        except TelegramBadRequest:
-
-            try:
-
-                await callback.message.edit_text(
-                    text,
-                    parse_mode="HTML",
-                )
-
-            except TelegramBadRequest:
-                pass
-
 
 # =========================================================
-# AUTO DROP MESSAGE COUNTER
+# /ADDCard
 #
-# IMPORTANT:
-# This handler must be registered in cards.py.
+# Usage:
+# /addcard Name | Rarity | Attack | Defense | HP | Speed
 #
-# Every group message increments counter.
+# Then reply to a photo with:
+# /addcard Name | Rarity | Attack | Defense | HP | Speed
 #
-# 85 -> drop
-# 170 -> drop
-# ...
-#
-# 1000 -> better card
-#
+# Example:
+# /addcard Naruto | Legendary | 95 | 90 | 120 | 85
 # =========================================================
 
-@router.message(
-    F.chat.type.in_(
-        {
-            "group",
-            "supergroup",
-        }
-    )
-)
-async def group_message_counter(
-    message: Message,
-):
-
-    # Commands should not count.
-    if message.text and message.text.startswith("/"):
-        return
+@router.message(Command("addcard"))
+async def addcard_command(message: Message):
 
     if message.from_user is None:
         return
 
-    group_id = message.chat.id
+    if not is_owner(message.from_user.id):
 
-    current = group_message_counts.get(
-        group_id,
-        0,
-    )
-
-    current += 1
-
-    group_message_counts[group_id] = current
-
-    # ---------------------------------------------
-    # 1000 MESSAGE SPECIAL DROP
-    # ---------------------------------------------
-
-    if current >= RARE_DROP_MESSAGES:
-
-        group_message_counts[group_id] = 0
-
-        async with SessionLocal() as session:
-
-            group_result = await session.execute(
-                select(Group).where(
-                    Group.telegram_id == group_id
-                )
-            )
-
-            group = (
-                group_result.scalar_one_or_none()
-            )
-
-            if group is None:
-
-                group = Group(
-                    telegram_id=group_id,
-                    title=(
-                        message.chat.title
-                        or "Telegram Group"
-                    ),
-                    username=message.chat.username,
-                    enabled=True,
-                    drop_enabled=True,
-                )
-
-                session.add(group)
-
-                await session.commit()
-                await session.refresh(group)
-
-        card = await get_random_card(
-            rare=True
+        await message.answer(
+            "❌ <b>Admin / Owner Only</b>\n\n"
+            "You don't have permission to add cards.",
+            parse_mode="HTML",
         )
-
-        if card is not None:
-
-            await send_card_drop(
-                message=message,
-                card=card,
-                group_id=group.id,
-                rare=True,
-                count=current,
-            )
 
         return
 
-    # ---------------------------------------------
-    # NORMAL 85 MESSAGE DROP
-    # ---------------------------------------------
+    parts = message.text.split("|") if message.text else []
 
-    if current >= NORMAL_DROP_MESSAGES:
+    if len(parts) < 6:
 
-        group_message_counts[group_id] = 0
-
-        async with SessionLocal() as session:
-
-            group_result = await session.execute(
-                select(Group).where(
-                    Group.telegram_id == group_id
-                )
-            )
-
-            group = (
-                group_result.scalar_one_or_none()
-            )
-
-            if group is None:
-
-                group = Group(
-                    telegram_id=group_id,
-                    title=(
-                        message.chat.title
-                        or "Telegram Group"
-                    ),
-                    username=message.chat.username,
-                    enabled=True,
-                    drop_enabled=True,
-                )
-
-                session.add(group)
-
-                await session.commit()
-                await session.refresh(group)
-
-            if not group.drop_enabled:
-                return
-
-        card = await get_random_card(
-            rare=False
+        await message.answer(
+            "🎴 <b>ADD CARD</b>\n\n"
+            "Reply to a card image and send:\n\n"
+            "<code>"
+            "/addcard Name | Rarity | ATK | DEF | HP | Speed"
+            "</code>\n\n"
+            "Example:\n"
+            "<code>"
+            "/addcard Naruto | Legendary | 95 | 90 | 120 | 85"
+            "</code>\n\n"
+            "The replied photo will become the card image.",
+            parse_mode="HTML",
         )
 
-        if card is not None:
+        return
 
-            await send_card_drop(
-                message=message,
-                card=card,
-                group_id=group.id,
-                rare=False,
-                count=current,
-            )
+    try:
+
+        name = parts[0].replace("/addcard", "").strip()
+        rarity = parts[1].strip()
+        attack = int(parts[2].strip())
+        defense = int(parts[3].strip())
+        hp = int(parts[4].strip())
+        speed = int(parts[5].strip())
+
+    except (ValueError, IndexError):
+
+        await message.answer(
+            "❌ Invalid card format.",
+            parse_mode="HTML",
+        )
+
+        return
+
+    if not name:
+
+        await message.answer(
+            "❌ Card name cannot be empty."
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # IMAGE
+    # -----------------------------------------------------
+
+    image_url = None
+
+    if message.reply_to_message:
+
+        replied = message.reply_to_message
+
+        if replied.photo:
+
+            # Telegram file_id works as photo identifier.
+            image_url = replied.photo[-1].file_id
+
+        elif replied.document:
+
+            mime = replied.document.mime_type or ""
+
+            if mime.startswith("image/"):
+                image_url = replied.document.file_id
+
+    # -----------------------------------------------------
+    # CARD TYPE
+    # -----------------------------------------------------
+
+    rarity_lower = rarity.lower()
+
+    is_premium = (
+        rarity_lower
+        in {
+            "premium",
+            "premium edition",
+        }
+    )
+
+    is_limited = (
+        "limited" in rarity_lower
+        or "event" in rarity_lower
+    )
+
+    is_shiny = (
+        "shiny" in rarity_lower
+    )
+
+    is_animated = (
+        "animated" in rarity_lower
+        or "animation" in rarity_lower
+    )
+
+    async with SessionLocal() as session:
+
+        card = Card(
+            name=name,
+            rarity=rarity,
+            attack=attack,
+            defense=defense,
+            hp=hp,
+            speed=speed,
+            image_url=image_url,
+            base_price=100,
+            is_limited=is_limited,
+            is_shiny=is_shiny,
+            is_animated=is_animated,
+            is_premium=is_premium,
+        )
+
+        session.add(card)
+
+        await session.commit()
+        await session.refresh(card)
+
+    await message.answer(
+        "✅ <b>CARD ADDED!</b>\n\n"
+        f"🎴 ID: <code>{card.id:04d}</code>\n"
+        f"✨ Name: <b>{safe_text(card.name)}</b>\n"
+        f"💠 Rarity: <b>{safe_text(card.rarity)}</b>\n"
+        f"⚔️ ATK: <b>{card.attack}</b>\n"
+        f"🛡 DEF: <b>{card.defense}</b>\n"
+        f"❤️ HP: <b>{card.hp}</b>\n"
+        f"💨 Speed: <b>{card.speed}</b>\n"
+        f"🖼 Image: "
+        f"<b>{'YES' if image_url else 'NO'}</b>",
+        parse_mode="HTML",
+    )
 
 
 # =========================================================
-# /harem
+# /CHECK
+# =========================================================
+
+@router.message(Command("check"))
+async def check_command(message: Message):
+
+    parts = message.text.split() if message.text else []
+
+    if len(parts) < 2:
+
+        await message.answer(
+            "🎴 <b>Card Check</b>\n\n"
+            "Usage:\n"
+            "<code>/check 0021</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    try:
+        card_id = int(parts[1])
+    except ValueError:
+
+        await message.answer(
+            "❌ Invalid card ID."
+        )
+
+        return
+
+    async with SessionLocal() as session:
+
+        result = await session.execute(
+            select(Card).where(
+                Card.id == card_id
+            )
+        )
+
+        card = result.scalar_one_or_none()
+
+        if card is None:
+
+            await message.answer(
+                "❌ Card not found."
+            )
+
+            return
+
+    text = (
+        "╔══════════════════════════╗\n"
+        "        🎴 <b>CARD</b>\n"
+        "╚══════════════════════════╝\n\n"
+        f"🆔 ID: <code>{card.id:04d}</code>\n"
+        f"✨ Name: <b>{safe_text(card.name)}</b>\n"
+        f"💠 Rarity: <b>{safe_text(card.rarity)}</b>\n\n"
+        f"⚔️ ATK: <b>{card.attack}</b>\n"
+        f"🛡 DEF: <b>{card.defense}</b>\n"
+        f"❤️ HP: <b>{card.hp}</b>\n"
+        f"💨 Speed: <b>{card.speed}</b>\n\n"
+        f"🌟 Element: "
+        f"<b>{safe_text(card.element or 'Unknown')}</b>\n"
+        f"🎭 Class: "
+        f"<b>{safe_text(card.card_class or 'Unknown')}</b>\n"
+        f"💰 Base Price: "
+        f"<b>{card.base_price:,}</b> Coins\n"
+    )
+
+    if card.description:
+
+        text += (
+            f"\n📝 <b>Description</b>\n"
+            f"{safe_text(card.description)}\n"
+        )
+
+    if card.image_url:
+
+        try:
+
+            await message.answer_photo(
+                photo=card.image_url,
+                caption=text,
+                parse_mode="HTML",
+            )
+
+            return
+
+        except Exception:
+            pass
+
+    await message.answer(
+        text,
+        parse_mode="HTML",
+    )
+
+
+# =========================================================
+# /HAREM
 # =========================================================
 
 @router.message(Command("harem"))
-async def harem_command(
-    message: Message,
-):
+async def harem_command(message: Message):
 
     if message.from_user is None:
         return
@@ -1190,10 +1030,6 @@ async def harem_command(
         1,
     )
 
-
-# =========================================================
-# SHOW HAREM
-# =========================================================
 
 async def show_harem(
     message: Message,
@@ -1259,16 +1095,12 @@ async def show_harem(
             select(UserCard, Card)
             .join(
                 Card,
-                UserCard.card_id
-                == Card.id,
+                UserCard.card_id == Card.id,
             )
             .where(
-                UserCard.user_id
-                == user.id
+                UserCard.user_id == user.id
             )
-            .order_by(
-                Card.id.asc()
-            )
+            .order_by(Card.id.asc())
             .offset(offset)
             .limit(PAGE_SIZE)
         )
@@ -1280,7 +1112,7 @@ async def show_harem(
             "        🎴 <b>HAREM</b>",
             "╚══════════════════════════╝",
             "",
-            f"👤 <b>{safe_html(user.first_name)}</b>",
+            f"👤 <b>{safe_text(user.first_name)}</b>",
             f"🃏 Cards: <b>{total}</b>",
             "",
         ]
@@ -1301,11 +1133,11 @@ async def show_harem(
 
             lines.append(
                 f"🎴 <b>#{card.id:04d}</b> — "
-                f"<b>{safe_html(card.name)}</b>"
+                f"<b>{safe_text(card.name)}</b>"
             )
 
             lines.append(
-                f"   ✦ {safe_html(card.rarity)}"
+                f"   ✦ {safe_text(card.rarity)}"
                 f" • Lv.{user_card.level}"
                 f" • ×{user_card.quantity}"
                 f"{favorite}{locked}"
@@ -1343,15 +1175,14 @@ async def harem_callback(
     callback: CallbackQuery,
 ):
 
+    await callback.answer()
+
     if callback.message is None:
-        await callback.answer()
         return
 
     data = callback.data
 
     if data == "harem:current":
-
-        await callback.answer()
         return
 
     try:
@@ -1360,14 +1191,22 @@ async def harem_callback(
             data.split(":")[1]
         )
 
-    except (
-        ValueError,
-        IndexError,
-    ):
+    except (ValueError, IndexError):
 
         page = 1
 
-    telegram_id = callback.from_user.id
+    await update_harem_message(
+        callback.message,
+        callback.from_user.id,
+        page,
+    )
+
+
+async def update_harem_message(
+    message: Message,
+    telegram_id: int,
+    page: int,
+):
 
     async with SessionLocal() as session:
 
@@ -1381,9 +1220,8 @@ async def harem_callback(
 
         if user is None:
 
-            await callback.answer(
-                "❌ Please use /start first.",
-                show_alert=True,
+            await message.answer(
+                "❌ Please use /start first."
             )
 
             return
@@ -1400,18 +1238,12 @@ async def harem_callback(
 
         if total == 0:
 
-            try:
+            await message.edit_text(
+                "🎴 <b>YOUR HAREM</b>\n\n"
+                "📭 Your collection is empty.",
+                parse_mode="HTML",
+            )
 
-                await callback.message.edit_text(
-                    "🎴 <b>YOUR HAREM</b>\n\n"
-                    "📭 Your collection is empty.",
-                    parse_mode="HTML",
-                )
-
-            except TelegramBadRequest:
-                pass
-
-            await callback.answer()
             return
 
         total_pages = max(
@@ -1433,16 +1265,12 @@ async def harem_callback(
             select(UserCard, Card)
             .join(
                 Card,
-                UserCard.card_id
-                == Card.id,
+                UserCard.card_id == Card.id,
             )
             .where(
-                UserCard.user_id
-                == user.id
+                UserCard.user_id == user.id
             )
-            .order_by(
-                Card.id.asc()
-            )
+            .order_by(Card.id.asc())
             .offset(offset)
             .limit(PAGE_SIZE)
         )
@@ -1454,7 +1282,7 @@ async def harem_callback(
             "        🎴 <b>HAREM</b>",
             "╚══════════════════════════╝",
             "",
-            f"👤 <b>{safe_html(user.first_name)}</b>",
+            f"👤 <b>{safe_text(user.first_name)}</b>",
             f"🃏 Cards: <b>{total}</b>",
             "",
         ]
@@ -1475,11 +1303,11 @@ async def harem_callback(
 
             lines.append(
                 f"🎴 <b>#{card.id:04d}</b> — "
-                f"<b>{safe_html(card.name)}</b>"
+                f"<b>{safe_text(card.name)}</b>"
             )
 
             lines.append(
-                f"   ✦ {safe_html(card.rarity)}"
+                f"   ✦ {safe_text(card.rarity)}"
                 f" • Lv.{user_card.level}"
                 f" • ×{user_card.quantity}"
                 f"{favorite}{locked}"
@@ -1496,180 +1324,46 @@ async def harem_callback(
             f"<b>{total_pages}</b>"
         )
 
-        new_text = "\n".join(lines)
-
-        try:
-
-            await callback.message.edit_text(
-                new_text,
-                parse_mode="HTML",
-                reply_markup=harem_keyboard(
-                    page,
-                    total_pages,
-                ),
-            )
-
-        except TelegramBadRequest as e:
-
-            # Fix:
-            # TelegramBadRequest:
-            # message is not modified
-            if "message is not modified" not in str(e):
-                raise
-
-    await callback.answer()
-
-
-# =========================================================
-# /check
-# =========================================================
-
-@router.message(Command("check"))
-async def check_command(
-    message: Message,
-):
-
-    parts = (
-        message.text.split()
-        if message.text
-        else []
-    )
-
-    if len(parts) < 2:
-
-        await message.answer(
-            "🎴 <b>Card Check</b>\n\n"
-            "Usage:\n"
-            "<code>/check 0021</code>",
+        await message.edit_text(
+            "\n".join(lines),
             parse_mode="HTML",
+            reply_markup=harem_keyboard(
+                page,
+                total_pages,
+            ),
         )
-
-        return
-
-    try:
-
-        card_id = int(parts[1])
-
-    except ValueError:
-
-        await message.answer(
-            "❌ Invalid card ID."
-        )
-
-        return
-
-    async with SessionLocal() as session:
-
-        result = await session.execute(
-            select(Card).where(
-                Card.id == card_id
-            )
-        )
-
-        card = result.scalar_one_or_none()
-
-        if card is None:
-
-            await message.answer(
-                "❌ Card not found."
-            )
-
-            return
-
-        text = (
-            "╔══════════════════════════╗\n"
-            "        🎴 <b>CARD</b>\n"
-            "╚══════════════════════════╝\n\n"
-            f"🆔 ID: <code>{card.id:04d}</code>\n"
-            f"✨ Name: <b>{safe_html(card.name)}</b>\n"
-            f"💠 Rarity: <b>{safe_html(card.rarity)}</b>\n\n"
-            f"⚔️ ATK: <b>{card.attack}</b>\n"
-            f"🛡 DEF: <b>{card.defense}</b>\n"
-            f"❤️ HP: <b>{card.hp}</b>\n"
-            f"💨 Speed: <b>{card.speed}</b>\n\n"
-            f"🌟 Element: <b>{safe_html(card.element)}</b>\n"
-            f"🎭 Class: <b>{safe_html(card.card_class)}</b>\n"
-            f"💰 Base Price: <b>{card.base_price:,}</b> Coins\n"
-        )
-
-        if card.is_premium:
-
-            text += (
-                "\n👑 <b>PREMIUM EDITION</b>\n"
-            )
-
-        if card.is_shiny:
-
-            text += (
-                "✨ <b>SHINY</b>\n"
-            )
-
-        if card.is_animated:
-
-            text += (
-                "🎞️ <b>ANIMATED</b>\n"
-            )
-
-        if card.description:
-
-            text += (
-                f"\n📝 <b>Description</b>\n"
-                f"{safe_html(card.description)}\n"
-            )
-
-        if card.image_url:
-
-            await message.answer_photo(
-                photo=card.image_url,
-                caption=text,
-                parse_mode="HTML",
-            )
-
-        else:
-
-            await message.answer(
-                text,
-                parse_mode="HTML",
-            )
 
 
 # =========================================================
-# /fav
+# /FAV
 # =========================================================
 
 @router.message(Command("fav"))
-async def fav_command(
-    message: Message,
-):
+async def fav_command(message: Message):
 
-    if message.from_user is None:
-        return
-
-    parts = (
-        message.text.split()
-        if message.text
-        else []
-    )
+    parts = message.text.split() if message.text else []
 
     if len(parts) < 2:
 
         await message.answer(
-            "❤️ Usage: <code>/fav 0021</code>",
+            "❤️ Usage: "
+            "<code>/fav 0021</code>",
             parse_mode="HTML",
         )
 
         return
 
     try:
-
         card_id = int(parts[1])
-
     except ValueError:
 
         await message.answer(
             "❌ Invalid card ID."
         )
 
+        return
+
+    if message.from_user is None:
         return
 
     async with SessionLocal() as session:
@@ -1712,50 +1406,43 @@ async def fav_command(
 
         await session.commit()
 
-        await message.answer(
-            f"❤️ Card <code>{card_id:04d}</code> "
-            "has been added to your favorites!",
-            parse_mode="HTML",
-        )
+    await message.answer(
+        f"❤️ Card <code>{card_id:04d}</code> "
+        "added to favorites!",
+        parse_mode="HTML",
+    )
 
 
 # =========================================================
-# /unfav
+# /UNFAV
 # =========================================================
 
 @router.message(Command("unfav"))
-async def unfav_command(
-    message: Message,
-):
+async def unfav_command(message: Message):
 
-    if message.from_user is None:
-        return
-
-    parts = (
-        message.text.split()
-        if message.text
-        else []
-    )
+    parts = message.text.split() if message.text else []
 
     if len(parts) < 2:
 
         await message.answer(
-            "Usage: <code>/unfav 0021</code>",
+            "Usage: "
+            "<code>/unfav 0021</code>",
             parse_mode="HTML",
         )
 
         return
 
     try:
-
         card_id = int(parts[1])
-
     except ValueError:
 
         await message.answer(
             "❌ Invalid card ID."
         )
 
+        return
+
+    if message.from_user is None:
         return
 
     async with SessionLocal() as session:
@@ -1798,30 +1485,21 @@ async def unfav_command(
 
         await session.commit()
 
-        await message.answer(
-            f"💔 Card <code>{card_id:04d}</code> "
-            "removed from favorites.",
-            parse_mode="HTML",
-        )
+    await message.answer(
+        f"💔 Card <code>{card_id:04d}</code> "
+        "removed from favorites.",
+        parse_mode="HTML",
+    )
 
 
 # =========================================================
-# /upgrade
+# /UPGRADE
 # =========================================================
 
 @router.message(Command("upgrade"))
-async def upgrade_command(
-    message: Message,
-):
+async def upgrade_command(message: Message):
 
-    if message.from_user is None:
-        return
-
-    parts = (
-        message.text.split()
-        if message.text
-        else []
-    )
+    parts = message.text.split() if message.text else []
 
     if len(parts) < 2:
 
@@ -1835,15 +1513,16 @@ async def upgrade_command(
         return
 
     try:
-
         card_id = int(parts[1])
-
     except ValueError:
 
         await message.answer(
             "❌ Invalid card ID."
         )
 
+        return
+
+    if message.from_user is None:
         return
 
     async with SessionLocal() as session:
@@ -1888,8 +1567,10 @@ async def upgrade_command(
 
             await message.answer(
                 "❌ Not enough Coins.\n\n"
-                f"💰 Required: <b>{cost:,}</b>\n"
-                f"🪙 Your Coins: <b>{user.coins:,}</b>",
+                f"💰 Required: "
+                f"<b>{cost:,}</b>\n"
+                f"🪙 Your Coins: "
+                f"<b>{user.coins:,}</b>",
                 parse_mode="HTML",
             )
 
@@ -1901,45 +1582,47 @@ async def upgrade_command(
 
         await session.commit()
 
-        await message.answer(
-            "⬆️ <b>CARD UPGRADED!</b>\n\n"
-            f"🎴 Card: <code>{card_id:04d}</code>\n"
-            f"⭐ New Level: <b>{user_card.level}</b>\n"
-            f"💰 Cost: <b>{cost:,}</b> Coins",
-            parse_mode="HTML",
-        )
+        new_level = user_card.level
+
+    await message.answer(
+        "⬆️ <b>CARD UPGRADED!</b>\n\n"
+        f"🎴 Card: "
+        f"<code>{card_id:04d}</code>\n"
+        f"⭐ New Level: "
+        f"<b>{new_level}</b>\n"
+        f"💰 Cost: "
+        f"<b>{cost:,}</b> Coins",
+        parse_mode="HTML",
+    )
 
 
 # =========================================================
-# /hmode
+# /RESET
 # =========================================================
 
-@router.message(Command("hmode"))
-async def hmode_command(
-    message: Message,
+@router.message(Command("reset"))
+async def reset_command(message: Message):
+
+    await message.answer(
+        "🔄 <b>Harem Reset</b>\n\n"
+        "Your cards are not deleted.\n"
+        "Your collection remains safe.",
+        parse_mode="HTML",
+    )
+
+
+# =========================================================
+# DISABLE FINISHED CATCH CALLBACK
+# =========================================================
+
+@router.callback_query(
+    F.data == "catchcard:done"
+)
+async def finished_catch_callback(
+    callback: CallbackQuery,
 ):
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="⭐ Highest Level",
-                    callback_data="hmode:level",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="💠 Rarity",
-                    callback_data="hmode:rarity",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🆕 Newest",
-                    callback_data="hmode:newest",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔢 Card ID",
-                    callback_data="hmode:id",
+    await callback.answer(
+        "✅ This card has already been caught.",
+        show_alert=True,
+    )
