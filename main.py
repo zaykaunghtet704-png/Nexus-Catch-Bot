@@ -2,11 +2,14 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 
 from config import settings
 from database import init_db
+
+from handlers.basic import router as basic_router
+from handlers.daily import router as daily_router
+from handlers.pack import router as pack_router
+from handlers.owner import router as owner_router
 
 
 logging.basicConfig(
@@ -18,26 +21,28 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-    logger.info("Starting database initialization...")
+    logger.info("Initializing database...")
     await init_db()
 
-    bot = Bot(
-        token=settings.bot_token,
-        default=DefaultBotProperties(
-            parse_mode=ParseMode.HTML,
-        ),
-    )
+    bot = Bot(token=settings.bot_token)
 
     dp = Dispatcher()
 
+    dp.include_router(basic_router)
+    dp.include_router(daily_router)
+    dp.include_router(pack_router)
+    dp.include_router(owner_router)
+
     try:
-        logger.info("Bot is starting...")
         me = await bot.get_me()
+
         logger.info(
-            "Logged in as @%s (%s)",
+            "Bot connected: @%s (%s)",
             me.username,
             me.id,
         )
+
+        await bot.delete_webhook(drop_pending_updates=True)
 
         await dp.start_polling(bot)
 
@@ -46,7 +51,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot stopped.")
+    asyncio.run(main())
