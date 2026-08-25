@@ -1,4 +1,3 @@
-```python
 import asyncio
 import logging
 
@@ -14,10 +13,6 @@ from handlers.pack import router as pack_router
 from handlers.owner import router as owner_router
 
 
-# =========================================================
-# LOGGING
-# =========================================================
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -26,12 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# =========================================================
-# MAIN
-# =========================================================
-
 async def main():
-
     logger.info("Initializing database...")
 
     await init_db()
@@ -42,26 +32,13 @@ async def main():
 
     dp = Dispatcher()
 
-    # =====================================================
-    # ROUTERS
-    # =====================================================
-
     dp.include_router(basic_router)
-
-    # Card system
     dp.include_router(cards_router)
-
-    # Other systems
     dp.include_router(daily_router)
     dp.include_router(pack_router)
     dp.include_router(owner_router)
 
-    # =====================================================
-    # START BOT
-    # =====================================================
-
     try:
-
         me = await bot.get_me()
 
         logger.info(
@@ -74,23 +51,13 @@ async def main():
             drop_pending_updates=True
         )
 
-        logger.info(
-            "Starting polling..."
-        )
+        logger.info("Starting polling...")
 
-        await dp.start_polling(
-            bot
-        )
+        await dp.start_polling(bot)
 
     finally:
-
         await bot.session.close()
 
 
-# =========================================================
-# ENTRY POINT
-# =========================================================
-
 if __name__ == "__main__":
     asyncio.run(main())
-```
