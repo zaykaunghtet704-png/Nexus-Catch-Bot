@@ -1,4 +1,3 @@
-
 from datetime import datetime
 
 from sqlalchemy import (
@@ -43,10 +42,7 @@ class Base(AsyncAttrs, DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     telegram_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -56,6 +52,7 @@ class User(Base):
 
     username: Mapped[str | None] = mapped_column(
         String(255),
+        nullable=True,
     )
 
     first_name: Mapped[str] = mapped_column(
@@ -130,6 +127,7 @@ class Group(Base):
 
     username: Mapped[str | None] = mapped_column(
         String(255),
+        nullable=True,
     )
 
     enabled: Mapped[bool] = mapped_column(
@@ -183,14 +181,17 @@ class GroupActivation(Base):
 
     requested_by: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     approved_by: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     approved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -287,18 +288,22 @@ class Card(Base):
 
     element: Mapped[str | None] = mapped_column(
         String(50),
+        nullable=True,
     )
 
     card_class: Mapped[str | None] = mapped_column(
         String(50),
+        nullable=True,
     )
 
     description: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     image_url: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     base_price: Mapped[int] = mapped_column(
@@ -411,6 +416,7 @@ class Pack(Base):
 
     description: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     price_coins: Mapped[int] = mapped_column(
@@ -592,6 +598,7 @@ class EconomyTransaction(Base):
 
     description: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -625,6 +632,7 @@ class DailyReward(Base):
 
     last_claimed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -672,6 +680,7 @@ class MarketListing(Base):
 
     sold_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -699,10 +708,12 @@ class Trade(Base):
 
     sender_card_id: Mapped[int | None] = mapped_column(
         ForeignKey("user_cards.id"),
+        nullable=True,
     )
 
     receiver_card_id: Mapped[int | None] = mapped_column(
         ForeignKey("user_cards.id"),
+        nullable=True,
     )
 
     sender_coins: Mapped[int] = mapped_column(
@@ -728,6 +739,7 @@ class Trade(Base):
 
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -803,6 +815,7 @@ class CardDrop(Base):
 
     caught_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -831,6 +844,7 @@ class CatchLog(Base):
     group_id: Mapped[int | None] = mapped_column(
         ForeignKey("groups.id"),
         index=True,
+        nullable=True,
     )
 
     card_id: Mapped[int] = mapped_column(
@@ -877,14 +891,17 @@ class Duel(Base):
 
     challenger_card_id: Mapped[int | None] = mapped_column(
         ForeignKey("user_cards.id"),
+        nullable=True,
     )
 
     opponent_card_id: Mapped[int | None] = mapped_column(
         ForeignKey("user_cards.id"),
+        nullable=True,
     )
 
     winner_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"),
+        nullable=True,
     )
 
     reward_coins: Mapped[int] = mapped_column(
@@ -910,6 +927,7 @@ class Duel(Base):
 
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -963,10 +981,12 @@ class MinesGame(Base):
 
     mine_positions: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     revealed_cells: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -976,6 +996,7 @@ class MinesGame(Base):
 
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -1003,6 +1024,7 @@ class Achievement(Base):
 
     description: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     reward_coins: Mapped[int] = mapped_column(
@@ -1082,6 +1104,7 @@ class BotAdmin(Base):
 
     added_by: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     active: Mapped[bool] = mapped_column(
@@ -1109,6 +1132,7 @@ class AuditLog(Base):
 
     actor_id: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     action: Mapped[str] = mapped_column(
@@ -1117,10 +1141,12 @@ class AuditLog(Base):
 
     target_id: Mapped[int | None] = mapped_column(
         BigInteger,
+        nullable=True,
     )
 
     details: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -1151,12 +1177,123 @@ SessionLocal = async_sessionmaker(
 
 
 # =========================================================
-# INITIALIZE DATABASE
+# DATABASE INITIALIZATION + MIGRATION
 # =========================================================
 
 async def init_db():
+
     async with engine.begin() as conn:
+
+        # ---------------------------------------------
+        # CREATE MISSING TABLES
+        # ---------------------------------------------
+
         await conn.run_sync(
             Base.metadata.create_all
         )
 
+        # ---------------------------------------------
+        # GROUPS MIGRATION
+        # ---------------------------------------------
+
+        await conn.exec_driver_sql("""
+            ALTER TABLE groups
+            ADD COLUMN IF NOT EXISTS username VARCHAR(255)
+        """)
+
+        await conn.exec_driver_sql("""
+            ALTER TABLE groups
+            ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT FALSE
+        """)
+
+        await conn.exec_driver_sql("""
+            ALTER TABLE groups
+            ADD COLUMN IF NOT EXISTS drop_enabled BOOLEAN DEFAULT TRUE
+        """)
+
+        # ---------------------------------------------
+        # CARDS MIGRATION
+        # ---------------------------------------------
+
+        await conn.exec_driver_sql("""
+            ALTER TABLE cards
+            ADD COLUMN IF NOT EXISTS base_price BIGINT DEFAULT 100
+        """)
+
+        await conn.exec_driver_sql("""
+            ALTER TABLE cards
+            ADD COLUMN IF NOT EXISTS is_limited BOOLEAN DEFAULT FALSE
+        """)
+
+        await conn.exec_driver_sql("""
+            ALTER TABLE cards
+            ADD COLUMN IF NOT EXISTS is_shiny BOOLEAN DEFAULT FALSE
+        """)
+
+        await conn.exec_driver_sql("""
+            ALTER TABLE cards
+            ADD COLUMN IF NOT EXISTS is_animated BOOLEAN DEFAULT FALSE
+        """)
+
+        await conn.exec_driver_sql("""
+            ALTER TABLE cards
+            ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE
+        """)
+
+        # ---------------------------------------------
+        # FIX OLD NULL VALUES
+        # ---------------------------------------------
+
+        await conn.exec_driver_sql("""
+            UPDATE cards
+            SET base_price = 100
+            WHERE base_price IS NULL
+        """)
+
+        await conn.exec_driver_sql("""
+            UPDATE cards
+            SET is_limited = FALSE
+            WHERE is_limited IS NULL
+        """)
+
+        await conn.exec_driver_sql("""
+            UPDATE cards
+            SET is_shiny = FALSE
+            WHERE is_shiny IS NULL
+        """)
+
+        await conn.exec_driver_sql("""
+            UPDATE cards
+            SET is_animated = FALSE
+            WHERE is_animated IS NULL
+        """)
+
+        await conn.exec_driver_sql("""
+            UPDATE cards
+            SET is_premium = FALSE
+            WHERE is_premium IS NULL
+        """)
+
+        # ---------------------------------------------
+        # FIX OLD GROUP VALUES
+        # ---------------------------------------------
+
+        await conn.exec_driver_sql("""
+            UPDATE groups
+            SET enabled = FALSE
+            WHERE enabled IS NULL
+        """)
+
+        await conn.exec_driver_sql("""
+            UPDATE groups
+            SET drop_enabled = TRUE
+            WHERE drop_enabled IS NULL
+        """)
+
+        # ---------------------------------------------
+        # DONE
+        # ---------------------------------------------
+
+        print(
+            "✅ Database initialized successfully."
+        )
