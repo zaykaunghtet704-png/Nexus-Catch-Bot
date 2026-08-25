@@ -1,4 +1,4 @@
-```python
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -480,4 +480,4 @@ async def delete_card(message: Message):
         f"🎴 Name: <b>{card_name}</b>",
         parse_mode="HTML",
     )
-```
+
