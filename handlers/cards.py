@@ -1,4 +1,4 @@
-```python
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import (
@@ -696,4 +696,3 @@ async def upgrade_command(message: Message):
             f"💰 Cost: <b>{cost:,}</b> Coins",
             parse_mode="HTML",
         )
-```
