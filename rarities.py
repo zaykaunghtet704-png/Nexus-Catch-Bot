@@ -1,7 +1,7 @@
 RARITIES = {
     "Common": {
         "tier": 1,
-        "weight": 40.00,
+        "weight": 42.00,
         "price": 50,
     },
     "Uncommon": {
@@ -83,3 +83,12 @@ def get_rarity_tier(rarity: str) -> int:
         return 0
 
     return data["tier"]
+
+
+def get_rarity_weight(rarity: str) -> float:
+    data = RARITIES.get(rarity)
+
+    if data is None:
+        return 0.0
+
+    return data["weight"]
