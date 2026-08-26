@@ -8,59 +8,115 @@ DB_NAME = "cardbot.db"
 def get_db():
     conn = sqlite3.connect(
         DB_NAME,
-        timeout=10
+        timeout=15
     )
 
     conn.execute(
         "PRAGMA journal_mode=WAL"
     )
 
+    conn.execute(
+        "PRAGMA foreign_keys=ON"
+    )
+
     return conn
 
 
 def init_db():
+
     conn = get_db()
     cur = conn.cursor()
+
+    # =========================
+    # USERS
+    # =========================
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT DEFAULT '',
-            coins INTEGER DEFAULT 100,
-            xp INTEGER DEFAULT 0,
-            level INTEGER DEFAULT 1,
-            last_daily TEXT DEFAULT ''
+            first_name TEXT DEFAULT '',
+            coins INTEGER NOT NULL DEFAULT 100,
+            xp INTEGER NOT NULL DEFAULT 0,
+            level INTEGER NOT NULL DEFAULT 1,
+            last_daily TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # =========================
+    # CARDS
+    # =========================
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS cards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             edition TEXT NOT NULL,
-            price INTEGER DEFAULT 0,
-            drop_rate REAL DEFAULT 0,
+            price INTEGER NOT NULL DEFAULT 0,
+            drop_rate REAL NOT NULL DEFAULT 0,
             description TEXT DEFAULT '',
             media_type TEXT DEFAULT '',
-            file_id TEXT DEFAULT ''
+            file_id TEXT DEFAULT '',
+            limited INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # =========================
+    # COLLECTION
+    # =========================
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS collection (
             user_id INTEGER NOT NULL,
             card_id INTEGER NOT NULL,
-            amount INTEGER DEFAULT 1,
-            PRIMARY KEY (user_id, card_id)
+            amount INTEGER NOT NULL DEFAULT 1,
+
+            PRIMARY KEY (
+                user_id,
+                card_id
+            ),
+
+            FOREIGN KEY(user_id)
+                REFERENCES users(user_id)
+                ON DELETE CASCADE,
+
+            FOREIGN KEY(card_id)
+                REFERENCES cards(id)
+                ON DELETE CASCADE
         )
     """)
+
+    # =========================
+    # DROPS
+    # =========================
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS drops (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             card_id INTEGER NOT NULL,
             claimed_by INTEGER DEFAULT NULL,
-            active INTEGER DEFAULT 1,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY(card_id)
+                REFERENCES cards(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    # =========================
+    # TRANSACTIONS
+    # =========================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_user INTEGER,
+            to_user INTEGER,
+            amount INTEGER NOT NULL,
+            type TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -69,14 +125,16 @@ def init_db():
     conn.close()
 
 
-# =========================
-# USERS
-# =========================
+# ==================================================
+# USER
+# ==================================================
 
 def create_user(
     user_id: int,
-    username: str
+    username: str = "",
+    first_name: str = ""
 ):
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -84,15 +142,20 @@ def create_user(
         """
         INSERT INTO users (
             user_id,
-            username
+            username,
+            first_name
         )
-        VALUES (?, ?)
+        VALUES (?, ?, ?)
+
         ON CONFLICT(user_id)
-        DO UPDATE SET username = excluded.username
+        DO UPDATE SET
+            username = excluded.username,
+            first_name = excluded.first_name
         """,
         (
             user_id,
-            username or ""
+            username or "",
+            first_name or ""
         )
     )
 
@@ -101,6 +164,7 @@ def create_user(
 
 
 def get_user(user_id: int):
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -109,6 +173,7 @@ def get_user(user_id: int):
         SELECT
             user_id,
             username,
+            first_name,
             coins,
             xp,
             level,
@@ -126,19 +191,279 @@ def get_user(user_id: int):
     return result
 
 
-# =========================
+# ==================================================
+# XP / LEVEL
+# ==================================================
+
+def add_xp(user_id: int, amount: int):
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT xp, level
+        FROM users
+        WHERE user_id = ?
+        """,
+        (user_id,)
+    )
+
+    result = cur.fetchone()
+
+    if not result:
+        conn.close()
+        return None
+
+    xp, level = result
+
+    xp += amount
+
+    new_level = max(
+        1,
+        (xp // 100) + 1
+    )
+
+    cur.execute(
+        """
+        UPDATE users
+        SET
+            xp = ?,
+            level = ?
+        WHERE user_id = ?
+        """,
+        (
+            xp,
+            new_level,
+            user_id
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    return new_level
+
+
+# ==================================================
+# COINS
+# ==================================================
+
+def add_coins(
+    user_id: int,
+    amount: int
+):
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE users
+        SET coins = coins + ?
+        WHERE user_id = ?
+        """,
+        (
+            amount,
+            user_id
+        )
+    )
+
+    changed = cur.rowcount > 0
+
+    conn.commit()
+    conn.close()
+
+    return changed
+
+
+def transfer_coins(
+    from_user: int,
+    to_user: int,
+    amount: int
+):
+
+    if amount <= 0:
+        return False, "INVALID_AMOUNT"
+
+    if from_user == to_user:
+        return False, "SELF_TRANSFER"
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("BEGIN IMMEDIATE")
+
+        cur.execute(
+            """
+            SELECT coins
+            FROM users
+            WHERE user_id = ?
+            """,
+            (from_user,)
+        )
+
+        sender = cur.fetchone()
+
+        if not sender:
+            conn.rollback()
+            return False, "SENDER_NOT_FOUND"
+
+        cur.execute(
+            """
+            SELECT user_id
+            FROM users
+            WHERE user_id = ?
+            """,
+            (to_user,)
+        )
+
+        receiver = cur.fetchone()
+
+        if not receiver:
+            conn.rollback()
+            return False, "RECEIVER_NOT_FOUND"
+
+        if sender[0] < amount:
+            conn.rollback()
+            return False, "INSUFFICIENT"
+
+        cur.execute(
+            """
+            UPDATE users
+            SET coins = coins - ?
+            WHERE user_id = ?
+            """,
+            (
+                amount,
+                from_user
+            )
+        )
+
+        cur.execute(
+            """
+            UPDATE users
+            SET coins = coins + ?
+            WHERE user_id = ?
+            """,
+            (
+                amount,
+                to_user
+            )
+        )
+
+        cur.execute(
+            """
+            INSERT INTO transactions (
+                from_user,
+                to_user,
+                amount,
+                type
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                from_user,
+                to_user,
+                amount,
+                "TRANSFER"
+            )
+        )
+
+        conn.commit()
+
+        return True, "OK"
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        conn.close()
+
+
+# ==================================================
+# DAILY
+# ==================================================
+
+def claim_daily(user_id: int):
+
+    today = str(date.today())
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute("BEGIN IMMEDIATE")
+
+        cur.execute(
+            """
+            SELECT last_daily
+            FROM users
+            WHERE user_id = ?
+            """,
+            (user_id,)
+        )
+
+        result = cur.fetchone()
+
+        if not result:
+            conn.rollback()
+            return False
+
+        if result[0] == today:
+            conn.rollback()
+            return False
+
+        cur.execute(
+            """
+            UPDATE users
+            SET
+                coins = coins + 100,
+                xp = xp + 20,
+                last_daily = ?
+            WHERE user_id = ?
+            """,
+            (
+                today,
+                user_id
+            )
+        )
+
+        conn.commit()
+
+        return True
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        conn.close()
+
+
+# ==================================================
 # CARDS
-# =========================
+# ==================================================
 
 def create_card(
-    name: str,
-    edition: str,
-    price: int,
-    drop_rate: float,
-    description: str = "",
-    media_type: str = "",
-    file_id: str = ""
+    name,
+    edition,
+    price,
+    drop_rate,
+    description="",
+    media_type="",
+    file_id="",
+    limited=0
 ):
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -151,9 +476,10 @@ def create_card(
             drop_rate,
             description,
             media_type,
-            file_id
+            file_id,
+            limited
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             name,
@@ -162,7 +488,8 @@ def create_card(
             drop_rate,
             description,
             media_type,
-            file_id
+            file_id,
+            limited
         )
     )
 
@@ -175,6 +502,7 @@ def create_card(
 
 
 def get_card(card_id: int):
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -188,7 +516,8 @@ def get_card(card_id: int):
             drop_rate,
             description,
             media_type,
-            file_id
+            file_id,
+            limited
         FROM cards
         WHERE id = ?
         """,
@@ -203,6 +532,7 @@ def get_card(card_id: int):
 
 
 def get_all_cards():
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -216,7 +546,8 @@ def get_all_cards():
             drop_rate,
             description,
             media_type,
-            file_id
+            file_id,
+            limited
         FROM cards
         ORDER BY id DESC
         """
@@ -229,35 +560,83 @@ def get_all_cards():
     return result
 
 
+def get_drop_cards():
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT
+            id,
+            name,
+            edition,
+            price,
+            drop_rate,
+            description,
+            media_type,
+            file_id,
+            limited
+        FROM cards
+        WHERE drop_rate > 0
+        """
+    )
+
+    result = cur.fetchall()
+
+    conn.close()
+
+    return result
+
+
 def update_card(
-    card_id: int,
+    card_id,
     name=None,
     edition=None,
     price=None,
     drop_rate=None,
     description=None,
     media_type=None,
-    file_id=None
+    file_id=None,
+    limited=None
 ):
+
     conn = get_db()
     cur = conn.cursor()
 
-    current = get_card(card_id)
+    cur.execute(
+        """
+        SELECT
+            name,
+            edition,
+            price,
+            drop_rate,
+            description,
+            media_type,
+            file_id,
+            limited
+        FROM cards
+        WHERE id = ?
+        """,
+        (card_id,)
+    )
 
-    if not current:
+    old = cur.fetchone()
+
+    if not old:
         conn.close()
         return False
 
     (
-        _id,
         old_name,
         old_edition,
         old_price,
         old_rate,
         old_description,
         old_media_type,
-        old_file_id
-    ) = current
+        old_file_id,
+        old_limited
+    ) = old
 
     cur.execute(
         """
@@ -269,7 +648,8 @@ def update_card(
             drop_rate = ?,
             description = ?,
             media_type = ?,
-            file_id = ?
+            file_id = ?,
+            limited = ?
         WHERE id = ?
         """,
         (
@@ -280,6 +660,7 @@ def update_card(
             description if description is not None else old_description,
             media_type if media_type is not None else old_media_type,
             file_id if file_id is not None else old_file_id,
+            limited if limited is not None else old_limited,
             card_id
         )
     )
@@ -291,6 +672,7 @@ def update_card(
 
 
 def delete_card(card_id: int):
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -310,42 +692,15 @@ def delete_card(card_id: int):
     return deleted
 
 
-def get_random_card():
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT
-            id,
-            name,
-            edition,
-            price,
-            drop_rate,
-            description,
-            media_type,
-            file_id
-        FROM cards
-        ORDER BY RANDOM()
-        LIMIT 1
-        """
-    )
-
-    result = cur.fetchone()
-
-    conn.close()
-
-    return result
-
-
-# =========================
+# ==================================================
 # COLLECTION
-# =========================
+# ==================================================
 
 def add_card_to_collection(
     user_id: int,
     card_id: int
 ):
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -357,8 +712,10 @@ def add_card_to_collection(
             amount
         )
         VALUES (?, ?, 1)
+
         ON CONFLICT(user_id, card_id)
-        DO UPDATE SET amount = amount + 1
+        DO UPDATE SET
+            amount = amount + 1
         """,
         (
             user_id,
@@ -371,6 +728,7 @@ def add_card_to_collection(
 
 
 def get_collection(user_id: int):
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -381,11 +739,15 @@ def get_collection(user_id: int):
             cards.name,
             cards.edition,
             cards.price,
+            cards.media_type,
             collection.amount
         FROM collection
+
         JOIN cards
             ON cards.id = collection.card_id
+
         WHERE collection.user_id = ?
+
         ORDER BY cards.id DESC
         """,
         (user_id,)
@@ -398,11 +760,12 @@ def get_collection(user_id: int):
     return result
 
 
-# =========================
-# DROP
-# =========================
+# ==================================================
+# DROPS
+# ==================================================
 
 def create_drop(card_id: int):
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -429,10 +792,12 @@ def claim_drop(
     drop_id: int,
     user_id: int
 ):
+
     conn = get_db()
     cur = conn.cursor()
 
     try:
+
         cur.execute("BEGIN IMMEDIATE")
 
         cur.execute(
@@ -450,12 +815,14 @@ def claim_drop(
         drop = cur.fetchone()
 
         if not drop:
+
             conn.rollback()
             return None
 
         card_id, claimed_by, active = drop
 
         if not active or claimed_by is not None:
+
             conn.rollback()
             return None
 
@@ -476,6 +843,7 @@ def claim_drop(
         )
 
         if cur.rowcount != 1:
+
             conn.rollback()
             return None
 
@@ -487,8 +855,10 @@ def claim_drop(
                 amount
             )
             VALUES (?, ?, 1)
+
             ON CONFLICT(user_id, card_id)
-            DO UPDATE SET amount = amount + 1
+            DO UPDATE SET
+                amount = amount + 1
             """,
             (
                 user_id,
@@ -496,63 +866,25 @@ def claim_drop(
             )
         )
 
+        cur.execute(
+            """
+            UPDATE users
+            SET
+                xp = xp + 10
+            WHERE user_id = ?
+            """,
+            (user_id,)
+        )
+
         conn.commit()
 
         return card_id
 
     except Exception:
+
         conn.rollback()
         raise
 
     finally:
+
         conn.close()
-
-
-# =========================
-# DAILY
-# =========================
-
-def claim_daily(user_id: int):
-    today = str(date.today())
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT last_daily
-        FROM users
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
-
-    result = cur.fetchone()
-
-    if not result:
-        conn.close()
-        return False
-
-    if result[0] == today:
-        conn.close()
-        return False
-
-    cur.execute(
-        """
-        UPDATE users
-        SET
-            coins = coins + 100,
-            xp = xp + 20,
-            last_daily = ?
-        WHERE user_id = ?
-        """,
-        (
-            today,
-            user_id
-        )
-    )
-
-    conn.commit()
-    conn.close()
-
-    return True
