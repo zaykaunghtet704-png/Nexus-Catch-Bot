@@ -1,0 +1,356 @@
+import asyncio
+import random
+from datetime import datetime, timedelta
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command, CommandStart
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+
+# ─── Bot Token ───
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+
+# ─── Bot Init ───
+bot = Bot(token=BOT_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
+
+# ─── Emojis ───
+E = {
+    "sparkles": "✨", "fire": "🔥", "star": "⭐", "crown": "👑",
+    "gem": "💎", "coin": "🪙", "card": "🃏", "box": "📦",
+    "party": "🎉", "heart": "❤️", "cross": "❌", "check": "✅",
+    "clock": "⏳", "magic": "🔮", "treasure": "💰", "rainbow": "🌈",
+    "lightning": "⚡", "dragon": "🐉", "phoenix": "🔥"
+}
+
+BORDER = {"main": "✦══════════════════════════════✦", "thin": "─" * 38}
+
+# ─── Rarity 13 Levels ───
+RARITY = {
+    "Trash": {"emoji": "🗑️", "name": "ᴛʀᴀꜱʜ", "drop_weight": 5, "color": "#808080"},
+    "Common": {"emoji": "⬜", "name": "ᴄᴏᴍᴍᴏɴ", "drop_weight": 20, "color": "#FFFFFF"},
+    "Uncommon": {"emoji": "🟩", "name": "ᴜɴᴄᴏᴍᴍᴏɴ", "drop_weight": 25, "color": "#00FF00"},
+    "Rare": {"emoji": "🟦", "name": "ʀᴀʀᴇ", "drop_weight": 20, "color": "#0088FF"},
+    "Epic": {"emoji": "🟪", "name": "ᴇᴘɪᴄ", "drop_weight": 12, "color": "#8B00FF"},
+    "Legendary": {"emoji": "🟧", "name": "ʟᴇɢᴇɴᴅᴀʀʏ", "drop_weight": 7, "color": "#FF6A00"},
+    "Mythic": {"emoji": "🔴", "name": "ᴍʏᴛʜɪᴄ", "drop_weight": 4, "color": "#FF0040"},
+    "Exotic": {"emoji": "🟣", "name": "ᴇxᴏᴛɪᴄ", "drop_weight": 3, "color": "#FF00FF"},
+    "Ethereal": {"emoji": "🌌", "name": "ᴇᴛʜᴇʀᴇᴀʟ", "drop_weight": 2, "color": "#00FFFF"},
+    "Celestial": {"emoji": "☀️", "name": "ᴄᴇʟᴇꜱᴛɪᴀʟ", "drop_weight": 1, "color": "#FFD700"},
+    "Divine": {"emoji": "👼", "name": "ᴅɪᴠɪɴᴇ", "drop_weight": 0.5, "color": "#FF69B4"},
+    "Supreme": {"emoji": "💠", "name": "ꜱᴜᴘʀᴇᴍᴇ", "drop_weight": 0.3, "color": "#FF4500"},
+    "Premium": {"emoji": "👑", "name": "ᴘʀᴇᴍɪᴜᴍ", "drop_weight": 0.1, "color": "#FFD700"},
+}
+
+RARITY_ORDER = ["Trash", "Common", "Uncommon", "Rare", "Epic", "Legendary", 
+                "Mythic", "Exotic", "Ethereal", "Celestial", "Divine", "Supreme", "Premium"]
+
+# ─── Card Names by Rarity ───
+CARD_NAMES = {
+    "Trash": ["Rusty Coin", "Broken Sword", "Old Boot", "Torn Paper", "Dusty Ring"],
+    "Common": ["Dragon", "Phoenix", "Wolf", "Eagle", "Lion", "Tiger", "Bear", "Falcon"],
+    "Uncommon": ["Shadow", "Storm", "Flame", "Frost", "Thunder", "Venom", "Crystal", "Blade"],
+    "Rare": ["Titan", "Mystic", "Oracle", "Warden", "Sage", "Knight", "Phantom", "Guardian"],
+    "Epic": ["Celestial", "Eternal", "Void", "Prime", "Omega", "Nexus", "Apex", "Zenith"],
+    "Legendary": ["Godslayer", "Worldender", "Starforge", "Timelord", "Soulreaver", "Dragonborn"],
+    "Mythic": ["Creator", "Destroyer", "Infinite", "Ethereal", "Cosmic", "Eclipse"],
+    "Exotic": ["Alien", "Voidwalker", "Crystal Sage", "Dark Phantom", "Nebula", "Starwhisper"],
+    "Ethereal": ["Spirit King", "Ghost Emperor", "Moon Spirit", "Sun God", "Wind Walker"],
+    "Celestial": ["Star Lord", "Galaxy", "Supernova", "Aurora", "Comet"],
+    "Divine": ["Angel", "Archangel", "Seraph", "Cherub", "Throne"],
+    "Supreme": ["Omnipotent", "Supreme Being", "Universal", "Infinite One", "Absolute"],
+    "Premium": ["👑 Ultimate", "👑 Royal", "👑 Emperor", "👑 Supreme King", "👑 Divine Lord"]
+}
+
+# ─── User Data ───
+users = {}
+
+def get_user(user_id):
+    if user_id not in users:
+        users[user_id] = {
+            "coins": 1000,
+            "gems": 10,
+            "level": 1,
+            "xp": 0,
+            "cards": [],
+            "total_cards": 0,
+            "daily_claimed": None,
+            "premium_edition": False,
+            "total_premium_cards": 0
+        }
+    return users[user_id]
+
+def format_card(name, rarity, level=1, qty=1):
+    r = RARITY.get(rarity, RARITY["Common"])
+    border_style = "✦" if rarity == "Premium" else "═"
+    border_line = border_style * 38
+    
+    # Premium edition special border
+    if rarity == "Premium":
+        return (
+            f"👑══════════════════════════════👑\n"
+            f"  {r['emoji']} ★ {r['name']} ★ {r['emoji']}\n"
+            f"  ✦ {name} ✦\n"
+            f"  ʟᴠʟ {level} ✦ ǫᴛʏ {qty}\n"
+            f"  💎 ᴘʀᴇᴍɪᴜᴍ ᴇᴅɪᴛɪᴏɴ 💎\n"
+            f"👑══════════════════════════════👑"
+        )
+    
+    return (
+        f"{border_line}\n"
+        f"  {r['emoji']} {r['name']} {r['emoji']}\n"
+        f"  ✦ {name} ✦\n"
+        f"  ʟᴠʟ {level} ✦ ǫᴛʏ {qty}\n"
+        f"{border_line}"
+    )
+
+def main_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🃏 ᴄᴀʀᴅꜱ", callback_data="menu_cards"),
+         InlineKeyboardButton(text="📦 ᴄᴏʟʟᴇᴄᴛɪᴏɴ", callback_data="menu_collection")],
+        [InlineKeyboardButton(text="🪙 ʙᴀʟᴀɴᴄᴇ", callback_data="menu_balance"),
+         InlineKeyboardButton(text="👤 ᴘʀᴏꜰɪʟᴇ", callback_data="menu_profile")],
+        [InlineKeyboardButton(text="🏆 ʀᴀʀɪᴛʏ ʟɪꜱᴛ", callback_data="menu_rarity"),
+         InlineKeyboardButton(text="❓ ʜᴇʟᴘ", callback_data="menu_help")]
+    ])
+
+# ─── /start ───
+@dp.message(CommandStart())
+async def start_cmd(msg: types.Message):
+    user = get_user(msg.from_user.id)
+    await msg.answer(
+        f"{E['sparkles']} **ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴘʀᴇᴍɪᴜᴍ ᴄᴀʀᴅ ᴜɴɪᴠᴇʀꜱᴇ!** {E['sparkles']}\n\n"
+        f"{BORDER['main']}\n"
+        f"  ʟᴠʟ {user['level']} ✦ 🪙 {user['coins']}\n"
+        f"  ᴄᴀʀᴅꜱ {user['total_cards']} ✦ 💎 {user['gems']}\n"
+        f"  👑 ᴘʀᴇᴍɪᴜᴍ: {user['total_premium_cards']}\n"
+        f"{BORDER['main']}",
+        reply_markup=main_menu(),
+        parse_mode="Markdown"
+    )
+
+# ─── /profile ───
+@dp.message(Command("profile"))
+async def profile_cmd(msg: types.Message):
+    user = get_user(msg.from_user.id)
+    premium_badge = " 👑" if user['premium_edition'] else ""
+    await msg.answer(
+        f"{E['crown']} **ᴘʀᴏꜰɪʟᴇ** {E['crown']}\n"
+        f"{BORDER['main']}\n"
+        f"  ✦ {msg.from_user.first_name}{premium_badge}\n"
+        f"  ʟᴠʟ {user['level']} ✦ 🪙 {user['coins']}\n"
+        f"  ᴄᴀʀᴅꜱ {user['total_cards']} ✦ 💎 {user['gems']}\n"
+        f"  👑 ᴘʀᴇᴍɪᴜᴍ: {user['total_premium_cards']}\n"
+        f"{BORDER['main']}",
+        parse_mode="Markdown"
+    )
+
+# ─── /daily ───
+@dp.message(Command("daily"))
+async def daily_cmd(msg: types.Message):
+    user = get_user(msg.from_user.id)
+    now = datetime.now()
+    if user["daily_claimed"] and (now - user["daily_claimed"]) < timedelta(hours=24):
+        left = timedelta(hours=24) - (now - user["daily_claimed"])
+        h = int(left.total_seconds() // 3600)
+        m = int((left.total_seconds() % 3600) // 60)
+        await msg.answer(f"{E['clock']} **ᴀʟʀᴇᴀᴅʏ ᴄʟᴀɪᴍᴇᴅ!**\n  ɴᴇxᴛ: {h}ʜ {m}ᴍ", parse_mode="Markdown")
+        return
+    bonus = 500 + (user["level"] * 50)
+    user["coins"] += bonus
+    user["daily_claimed"] = now
+    await msg.answer(f"{E['party']} **ᴅᴀɪʟʏ ʀᴇᴡᴀʀᴅ!**\n  🪙 +{bonus}", parse_mode="Markdown")
+
+# ─── /drop ───
+@dp.message(Command("drop"))
+async def drop_cmd(msg: types.Message):
+    user = get_user(msg.from_user.id)
+    
+    # Build weighted drop list
+    drop_pool = []
+    for rarity, data in RARITY.items():
+        weight = int(data["drop_weight"] * 100) if rarity != "Premium" else 1
+        drop_pool.extend([rarity] * weight)
+    
+    rarity = random.choice(drop_pool)
+    name = random.choice(CARD_NAMES.get(rarity, ["Unknown"]))
+    
+    # Check if card already exists
+    found = False
+    for c in user["cards"]:
+        if c["name"] == name:
+            c["qty"] += 1
+            found = True
+            break
+    if not found:
+        user["cards"].append({
+            "id": f"c{random.randint(1000,9999)}", 
+            "name": name, 
+            "rarity": rarity, 
+            "level": 1, 
+            "qty": 1
+        })
+    
+    user["total_cards"] = sum(c["qty"] for c in user["cards"])
+    if rarity == "Premium":
+        user["total_premium_cards"] += 1
+        user["premium_edition"] = True
+    
+    await msg.answer(
+        f"{E['box']} **ᴄᴀʀᴅ ᴅʀᴏᴘᴘᴇᴅ!** {E['box']}\n"
+        f"{format_card(name, rarity)}",
+        parse_mode="Markdown"
+    )
+
+# ─── /collection ───
+@dp.message(Command("collection"))
+async def collection_cmd(msg: types.Message):
+    user = get_user(msg.from_user.id)
+    if not user["cards"]:
+        await msg.answer(f"{E['cross']} **ʏᴏᴜʀ ᴄᴏʟʟᴇᴄᴛɪᴏɴ ɪꜱ ᴇᴍᴘᴛʏ!**\nᴜꜱᴇ /drop ᴛᴏ ɢᴇᴛ ᴄᴀʀᴅꜱ", parse_mode="Markdown")
+        return
+    
+    # Sort by rarity (highest first)
+    sorted_cards = sorted(user["cards"], key=lambda x: RARITY_ORDER.index(x["rarity"]), reverse=True)
+    
+    text = f"{E['card']} **ʏᴏᴜʀ ᴄᴏʟʟᴇᴄᴛɪᴏɴ** {E['card']}\n"
+    text += f"👑 Premium: {user['total_premium_cards']}\n"
+    text += f"{BORDER['main']}\n"
+    
+    for i, c in enumerate(sorted_cards[:20]):
+        rarity_emoji = RARITY.get(c["rarity"], {}).get("emoji", "⬜")
+        is_premium = " 👑" if c["rarity"] == "Premium" else ""
+        text += f"  {i+1}. {rarity_emoji} {c['name']}{is_premium} [{c['qty']}] ʟᴠʟ{c['level']}\n"
+    
+    if len(user["cards"]) > 20:
+        text += f"\n*... ᴀɴᴅ {len(user['cards']) - 20} ᴍᴏʀᴇ*"
+    text += f"\n{BORDER['main']}"
+    await msg.answer(text, parse_mode="Markdown")
+
+# ─── /balance ───
+@dp.message(Command("balance"))
+async def balance_cmd(msg: types.Message):
+    user = get_user(msg.from_user.id)
+    await msg.answer(
+        f"{E['treasure']} **ʏᴏᴜʀ ʙᴀʟᴀɴᴄᴇ** {E['treasure']}\n"
+        f"{BORDER['main']}\n"
+        f"  🪙 {user['coins']}\n"
+        f"  💎 {user['gems']}\n"
+        f"  🃏 {user['total_cards']}\n"
+        f"  👑 {user['total_premium_cards']}\n"
+        f"{BORDER['main']}",
+        parse_mode="Markdown"
+    )
+
+# ─── /rarity ───
+@dp.message(Command("rarity"))
+async def rarity_cmd(msg: types.Message):
+    text = f"{E['crown']} **ʀᴀʀɪᴛʏ ʟᴇᴠᴇʟꜱ** {E['crown']}\n{BORDER['main']}\n"
+    for i, rarity in enumerate(RARITY_ORDER, 1):
+        r = RARITY.get(rarity, {})
+        emoji = r.get("emoji", "⬜")
+        weight = r.get("drop_weight", 0)
+        stars = "★" * min(5, int(weight / 2)) if weight >= 1 else "☆"
+        is_premium = " 👑 PREMIUM" if rarity == "Premium" else ""
+        text += f"  {i}. {emoji} **{rarity}**{is_premium}\n"
+        text += f"     drop: {stars}\n"
+    text += f"{BORDER['main']}"
+    text += f"\n*💎 Premium is the rarest & most powerful!*"
+    await msg.answer(text, parse_mode="Markdown")
+
+# ─── /help ───
+@dp.message(Command("help"))
+async def help_cmd(msg: types.Message):
+    await msg.answer(
+        f"{E['magic']} **ᴘʀᴇᴍɪᴜᴍ ᴄᴀʀᴅ ʜᴇʟᴘ** {E['magic']}\n"
+        f"{BORDER['main']}\n"
+        f"  🃏 /drop — ɢᴇᴛ ᴄᴀʀᴅ\n"
+        f"  📦 /collection — ᴠɪᴇᴡ ᴄᴀʀᴅꜱ\n"
+        f"  👤 /profile — ᴠɪᴇᴡ ᴘʀᴏꜰɪʟᴇ\n"
+        f"  🪙 /balance — ᴄʜᴇᴄᴋ ʙᴀʟᴀɴᴄᴇ\n"
+        f"  🎁 /daily — ᴄʟᴀɪᴍ ʀᴇᴡᴀʀᴅ\n"
+        f"  🏆 /rarity — ᴠɪᴇᴡ ʀᴀʀɪᴛʏ\n"
+        f"{BORDER['main']}\n"
+        f"👑 **Premium Edition** — rarest (0.1% drop!)",
+        parse_mode="Markdown"
+    )
+
+# ─── Callbacks ───
+@dp.callback_query(lambda c: c.data == "back_to_main")
+async def back_main(cb: types.CallbackQuery):
+    user = get_user(cb.from_user.id)
+    await cb.message.edit_text(
+        f"{E['sparkles']} **ᴍᴀɪɴ ᴍᴇɴᴜ**",
+        reply_markup=main_menu(),
+        parse_mode="Markdown"
+    )
+    await cb.answer()
+
+@dp.callback_query(lambda c: c.data == "menu_profile")
+async def menu_profile(cb: types.CallbackQuery):
+    await cb.answer("📖 ᴏᴘᴇɴɪɴɢ...")
+    user = get_user(cb.from_user.id)
+    premium_badge = " 👑" if user['premium_edition'] else ""
+    await cb.message.edit_text(
+        f"{E['crown']} **ᴘʀᴏꜰɪʟᴇ** {E['crown']}\n"
+        f"{BORDER['main']}\n"
+        f"  ✦ {cb.from_user.first_name}{premium_badge}\n"
+        f"  ʟᴠʟ {user['level']} ✦ 🪙 {user['coins']}\n"
+        f"  ᴄᴀʀᴅꜱ {user['total_cards']} ✦ 💎 {user['gems']}\n"
+        f"  👑 ᴘʀᴇᴍɪᴜᴍ: {user['total_premium_cards']}\n"
+        f"{BORDER['main']}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 ʙᴀᴄᴋ", callback_data="back_to_main")]
+        ]),
+        parse_mode="Markdown"
+    )
+
+@dp.callback_query(lambda c: c.data == "menu_balance")
+async def menu_balance(cb: types.CallbackQuery):
+    user = get_user(cb.from_user.id)
+    await cb.message.edit_text(
+        f"{E['treasure']} **ʙᴀʟᴀɴᴄᴇ** {E['treasure']}\n"
+        f"{BORDER['main']}\n"
+        f"  🪙 {user['coins']}\n"
+        f"  💎 {user['gems']}\n"
+        f"  🃏 {user['total_cards']}\n"
+        f"  👑 {user['total_premium_cards']}\n"
+        f"{BORDER['main']}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 ʙᴀᴄᴋ", callback_data="back_to_main")]
+        ]),
+        parse_mode="Markdown"
+    )
+    await cb.answer()
+
+@dp.callback_query(lambda c: c.data == "menu_collection")
+async def menu_collection(cb: types.CallbackQuery):
+    await cb.answer("📦 ᴏᴘᴇɴɪɴɢ...")
+    await collection_cmd(cb.message)
+
+@dp.callback_query(lambda c: c.data == "menu_rarity")
+async def menu_rarity(cb: types.CallbackQuery):
+    await cb.answer("🏆 ᴏᴘᴇɴɪɴɢ...")
+    await rarity_cmd(cb.message)
+
+@dp.callback_query(lambda c: c.data == "menu_help")
+async def menu_help(cb: types.CallbackQuery):
+    await cb.answer("❓ ᴏᴘᴇɴɪɴɢ...")
+    await help_cmd(cb.message)
+
+@dp.callback_query(lambda c: c.data == "menu_cards")
+async def menu_cards(cb: types.CallbackQuery):
+    await cb.answer("🃏 ᴏᴘᴇɴɪɴɢ...")
+    await help_cmd(cb.message)
+
+# ─── Run ───
+async def main():
+    print("🤖 Premium Card Bot is starting...")
+    print("👑 Rarity: 13 levels (Premium is rarest!)")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
