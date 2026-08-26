@@ -35,7 +35,7 @@ DEFAULT_PRICES = {
 }
 
 
-DROP_RATES = {
+DEFAULT_DROP_RATES = {
     "Common Edition": 35.00,
     "Uncommon Edition": 20.00,
     "Rare Edition": 13.00,
@@ -70,21 +70,7 @@ EDITION_EMOJIS = {
 
 
 def get_edition_emoji(edition: str) -> str:
-    return EDITION_EMOJIS.get(
-        edition,
-        "🎴"
-    )
-
-
-def choose_edition() -> str:
-    editions = list(DROP_RATES.keys())
-    weights = list(DROP_RATES.values())
-
-    return random.choices(
-        editions,
-        weights=weights,
-        k=1
-    )[0]
+    return EDITION_EMOJIS.get(edition, "🎴")
 
 
 def normalize_edition(value: str):
@@ -95,3 +81,47 @@ def normalize_edition(value: str):
             return edition
 
     return None
+
+
+def choose_weighted_card(cards):
+    """
+    cards:
+        [
+            (
+                id,
+                name,
+                edition,
+                price,
+                drop_rate,
+                description,
+                media_type,
+                file_id
+            ),
+            ...
+        ]
+    """
+
+    if not cards:
+        return None
+
+    valid_cards = []
+    weights = []
+
+    for card in cards:
+        try:
+            rate = float(card[4])
+        except (ValueError, TypeError):
+            rate = 0
+
+        if rate > 0:
+            valid_cards.append(card)
+            weights.append(rate)
+
+    if not valid_cards:
+        return random.choice(cards)
+
+    return random.choices(
+        valid_cards,
+        weights=weights,
+        k=1
+    )[0]
