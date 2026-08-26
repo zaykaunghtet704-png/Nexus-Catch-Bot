@@ -1,11 +1,4 @@
-import random
-
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
-
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -19,45 +12,79 @@ from database import (
     init_db,
     create_user,
     get_user,
-    get_random_card,
+    create_card,
     get_card,
+    get_all_cards,
+    update_card,
+    delete_card,
+    get_random_card,
     create_drop,
     claim_drop,
     get_collection,
-    daily_reward,
+    claim_daily,
+)
+
+from cards import (
+    EDITIONS,
+    DEFAULT_PRICES,
+    DROP_RATES,
+    normalize_edition,
+    choose_edition,
+    get_edition_emoji,
+)
+
+from drops import (
+    drop_keyboard,
+    drop_caption,
 )
 
 
-def owner_only(user_id):
+# =====================================
+# HELPERS
+# =====================================
+
+def is_owner(user_id: int):
     return user_id == OWNER_ID
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-
+def ensure_user(user):
     create_user(
         user.id,
         user.username
     )
+
+
+# =====================================
+# START
+# =====================================
+
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    user = update.effective_user
+
+    ensure_user(user)
 
     text = (
         "✨━━━━━━━━━━━━━━━━━━✨\n"
         "       🃏 *CARD WORLD* 🃏\n"
         "✨━━━━━━━━━━━━━━━━━━✨\n\n"
 
-        "🎴 Welcome to the Card World!\n\n"
+        "🎴 Welcome, Collector!\n\n"
 
-        "🔥 Collect rare cards\n"
-        "💎 Discover special editions\n"
+        "💎 Collect rare cards\n"
+        "🔥 Catch limited drops\n"
         "🏆 Build your collection\n\n"
 
-        "📌 *Commands*\n"
-        "🎴 /draw — Draw a card\n"
-        "📚 /collection — Your cards\n"
-        "👤 /profile — Your profile\n"
-        "🎁 /daily — Daily reward\n\n"
+        "📌 *Commands*\n\n"
+        "🎴 /draw — Draw Card\n"
+        "📚 /collection — Collection\n"
+        "👤 /profile — Profile\n"
+        "🎁 /daily — Daily Reward\n"
+        "ℹ️ /help — Help\n\n"
 
-        "✨ Good luck, Collector! ✨"
+        "✨ Good luck! ✨"
     )
 
     await update.message.reply_text(
@@ -66,20 +93,69 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =====================================
+# HELP
+# =====================================
+
+async def help_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    text = (
+        "📖 *CARD WORLD HELP*\n\n"
+
+        "🎴 /draw\n"
+        "Card တစ်ကဒ် ရယူရန်\n\n"
+
+        "📚 /collection\n"
+        "ကိုယ့် Card Collection ကြည့်ရန်\n\n"
+
+        "👤 /profile\n"
+        "Profile ကြည့်ရန်\n\n"
+
+        "🎁 /daily\n"
+        "Daily Reward ရယူရန်\n\n"
+
+        "👑 *OWNER COMMANDS*\n\n"
+
+        "➕ /addcard\n"
+        "📋 /cards\n"
+        "✏️ /editcard\n"
+        "🗑️ /deletecard\n"
+        "🎁 /drop\n"
+    )
+
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown"
+    )
+
+
+# =====================================
+# PROFILE
+# =====================================
+
+async def profile(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     user = update.effective_user
 
-    create_user(
-        user.id,
-        user.username
-    )
+    ensure_user(user)
 
     data = get_user(user.id)
 
     if not data:
         return
 
-    user_id, username, coins, xp, level = data
+    (
+        user_id,
+        username,
+        coins,
+        xp,
+        level,
+        last_daily
+    ) = data
 
     text = (
         "👤 *YOUR PROFILE*\n\n"
@@ -96,15 +172,19 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =====================================
+# DAILY
+# =====================================
+
+async def daily(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     user = update.effective_user
 
-    create_user(
-        user.id,
-        user.username
-    )
+    ensure_user(user)
 
-    if not daily_reward(user.id):
+    if not claim_daily(user.id):
         await update.message.reply_text(
             "⏳ *Daily Reward ရယူပြီးပါပြီ!*\n\n"
             "🌙 မနက်ဖြန် ပြန်လာခဲ့ပါ။",
@@ -116,26 +196,106 @@ async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎁✨ *DAILY REWARD!* ✨🎁\n\n"
         "🪙 +100 Coins\n"
         "⭐ +20 XP\n\n"
-        "🔥 See you tomorrow, Collector!",
+        "🔥 Congratulations, Collector!",
         parse_mode="Markdown"
     )
 
 
-async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =====================================
+# DRAW
+# =====================================
+
+async def draw(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     user = update.effective_user
 
-    create_user(
+    ensure_user(user)
+
+    card = get_random_card()
+
+    if not card:
+        await update.message.reply_text(
+            "⚠️ Card Database ထဲမှာ Card မရှိသေးပါ။"
+        )
+        return
+
+    (
+        card_id,
+        name,
+        edition,
+        price,
+        drop_rate,
+        description,
+        media_type,
+        file_id
+    ) = card
+
+    from database import add_card_to_collection
+
+    add_card_to_collection(
         user.id,
-        user.username
+        card_id
     )
 
-    cards = get_collection(user.id)
+    emoji = get_edition_emoji(
+        edition
+    )
+
+    text = (
+        "🎴✨ *CARD DRAW!* ✨🎴\n\n"
+        f"🃏 *{name}*\n"
+        f"{emoji} *{edition}*\n"
+        f"💰 Value: *{price:,} 🪙*\n\n"
+        "📚 Collection ထဲ ထည့်ပြီးပါပြီ!"
+    )
+
+    if media_type == "photo" and file_id:
+
+        await update.message.reply_photo(
+            photo=file_id,
+            caption=text,
+            parse_mode="Markdown"
+        )
+
+    elif media_type == "video" and file_id:
+
+        await update.message.reply_video(
+            video=file_id,
+            caption=text,
+            parse_mode="Markdown"
+        )
+
+    else:
+
+        await update.message.reply_text(
+            text,
+            parse_mode="Markdown"
+        )
+
+
+# =====================================
+# COLLECTION
+# =====================================
+
+async def collection(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    user = update.effective_user
+
+    ensure_user(user)
+
+    cards = get_collection(
+        user.id
+    )
 
     if not cards:
         await update.message.reply_text(
             "📚 *YOUR COLLECTION*\n\n"
             "🗃️ Collection အလွတ်ဖြစ်နေပါတယ်။\n\n"
-            "🎴 /draw ကိုနှိပ်ပြီး Card စုလိုက်ပါ!",
+            "🎴 /draw နဲ့ Card စုလိုက်ပါ!",
             parse_mode="Markdown"
         )
         return
@@ -146,9 +306,20 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ""
     ]
 
-    for name, edition, price, amount in cards:
+    for (
+        card_id,
+        name,
+        edition,
+        price,
+        amount
+    ) in cards:
+
+        emoji = get_edition_emoji(
+            edition
+        )
+
         lines.append(
-            f"🎴 *{name}*\n"
+            f"{emoji} *{name}*\n"
             f"💎 {edition}\n"
             f"💰 {price:,} 🪙\n"
             f"📦 ×{amount}\n"
@@ -160,66 +331,402 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def draw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =====================================
+# OWNER: ADD CARD
+# =====================================
+
+async def addcard(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     user = update.effective_user
 
-    create_user(
-        user.id,
-        user.username
-    )
-
-    card = get_random_card()
-
-    if not card:
+    if not is_owner(user.id):
         await update.message.reply_text(
-            "⚠️ Card Database ထဲမှာ Card မရှိသေးပါ။"
+            "⛔ Owner Only Command"
         )
         return
 
-    card_id, name, edition, price, image_type, file_id = card
-
-    from database import add_card
-
-    add_card(
-        user.id,
-        card_id
-    )
-
-    text = (
-        "🎴✨ *CARD DRAW!* ✨🎴\n\n"
-        f"🃏 *{name}*\n"
-        f"💎 Edition: *{edition}*\n"
-        f"💰 Value: *{price:,} 🪙*\n\n"
-        "📚 Collection ထဲ ထည့်ပြီးပါပြီ!"
-    )
-
-    if image_type == "photo" and file_id:
-        await update.message.reply_photo(
-            photo=file_id,
-            caption=text,
-            parse_mode="Markdown"
-        )
-
-    elif image_type == "video" and file_id:
-        await update.message.reply_video(
-            video=file_id,
-            caption=text,
-            parse_mode="Markdown"
-        )
-
-    else:
+    if not context.args:
         await update.message.reply_text(
-            text,
+            "❌ အသုံးပြုပုံ:\n\n"
+            "/addcard Card Name | Edition\n\n"
+            "ဥပမာ:\n"
+            "/addcard Naruto | Premium Edition"
+        )
+        return
+
+    raw = " ".join(
+        context.args
+    )
+
+    if "|" not in raw:
+        await update.message.reply_text(
+            "❌ `|` ထည့်ပေးပါ။\n\n"
+            "ဥပမာ:\n"
+            "/addcard Naruto | Premium Edition",
             parse_mode="Markdown"
         )
+        return
+
+    name, edition_raw = [
+        x.strip()
+        for x in raw.split(
+            "|",
+            1
+        )
+    ]
+
+    edition = normalize_edition(
+        edition_raw
+    )
+
+    if not edition:
+        await update.message.reply_text(
+            "❌ Edition မမှန်ပါ။"
+        )
+        return
+
+    price = DEFAULT_PRICES[
+        edition
+    ]
+
+    rate = DROP_RATES[
+        edition
+    ]
+
+    card_id = create_card(
+        name=name,
+        edition=edition,
+        price=price,
+        drop_rate=rate
+    )
+
+    emoji = get_edition_emoji(
+        edition
+    )
+
+    await update.message.reply_text(
+        "✅✨ *CARD CREATED!* ✨\n\n"
+        f"🆔 ID: `{card_id}`\n"
+        f"🃏 Name: *{name}*\n"
+        f"{emoji} Edition: *{edition}*\n"
+        f"💰 Price: *{price:,} 🪙*\n"
+        f"🎯 Drop Rate: *{rate}%*",
+        parse_mode="Markdown"
+    )
 
 
-async def drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =====================================
+# OWNER: CARDS
+# =====================================
+
+async def cards(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     user = update.effective_user
 
-    if not owner_only(user.id):
+    if not is_owner(user.id):
         await update.message.reply_text(
-            "⛔ ဒီ Command ကို Owner ပဲ အသုံးပြုနိုင်ပါတယ်။"
+            "⛔ Owner Only Command"
+        )
+        return
+
+    all_cards = get_all_cards()
+
+    if not all_cards:
+        await update.message.reply_text(
+            "🗃️ Card Database အလွတ်ပါ။"
+        )
+        return
+
+    lines = [
+        "🎴 *CARD DATABASE*",
+        "━━━━━━━━━━━━━━━━━━",
+        ""
+    ]
+
+    for card in all_cards:
+        (
+            card_id,
+            name,
+            edition,
+            price,
+            rate,
+            description,
+            media_type,
+            file_id
+        ) = card
+
+        emoji = get_edition_emoji(
+            edition
+        )
+
+        media = (
+            "🖼️ Photo"
+            if media_type == "photo"
+            else "🎬 Video"
+            if media_type == "video"
+            else "📭 None"
+        )
+
+        lines.append(
+            f"🆔 `{card_id}` — *{name}*\n"
+            f"{emoji} {edition}\n"
+            f"💰 {price:,} 🪙 | 🎯 {rate}%\n"
+            f"📎 {media}\n"
+        )
+
+    await update.message.reply_text(
+        "\n".join(lines),
+        parse_mode="Markdown"
+    )
+
+
+# =====================================
+# OWNER: DELETE CARD
+# =====================================
+
+async def deletecard(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    user = update.effective_user
+
+    if not is_owner(user.id):
+        await update.message.reply_text(
+            "⛔ Owner Only Command"
+        )
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "အသုံးပြုပုံ:\n"
+            "/deletecard CARD_ID"
+        )
+        return
+
+    try:
+        card_id = int(
+            context.args[0]
+        )
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Card ID မမှန်ပါ။"
+        )
+        return
+
+    if delete_card(card_id):
+        await update.message.reply_text(
+            "🗑️ Card ဖျက်ပြီးပါပြီ။"
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Card မတွေ့ပါ။"
+        )
+
+
+# =====================================
+# OWNER: SET PRICE
+# =====================================
+
+async def setprice(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    user = update.effective_user
+
+    if not is_owner(user.id):
+        await update.message.reply_text(
+            "⛔ Owner Only Command"
+        )
+        return
+
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "အသုံးပြုပုံ:\n"
+            "/setprice CARD_ID PRICE"
+        )
+        return
+
+    try:
+        card_id = int(
+            context.args[0]
+        )
+
+        price = int(
+            context.args[1]
+        )
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Number မမှန်ပါ။"
+        )
+        return
+
+    if price < 0:
+        await update.message.reply_text(
+            "❌ Price က 0 ထက်ငယ်လို့မရပါ။"
+        )
+        return
+
+    if not get_card(card_id):
+        await update.message.reply_text(
+            "❌ Card မတွေ့ပါ။"
+        )
+        return
+
+    update_card(
+        card_id,
+        price=price
+    )
+
+    await update.message.reply_text(
+        f"💰 Card `{card_id}` Price ကို\n"
+        f"*{price:,} 🪙* သို့ ပြောင်းပြီးပါပြီ။",
+        parse_mode="Markdown"
+    )
+
+
+# =====================================
+# OWNER: SET EDITION
+# =====================================
+
+async def setedition(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    user = update.effective_user
+
+    if not is_owner(user.id):
+        await update.message.reply_text(
+            "⛔ Owner Only Command"
+        )
+        return
+
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "/setedition CARD_ID EDITION"
+        )
+        return
+
+    try:
+        card_id = int(
+            context.args[0]
+        )
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Card ID မမှန်ပါ။"
+        )
+        return
+
+    edition_raw = " ".join(
+        context.args[1:]
+    )
+
+    edition = normalize_edition(
+        edition_raw
+    )
+
+    if not edition:
+        await update.message.reply_text(
+            "❌ Edition မမှန်ပါ။"
+        )
+        return
+
+    if not get_card(card_id):
+        await update.message.reply_text(
+            "❌ Card မတွေ့ပါ။"
+        )
+        return
+
+    update_card(
+        card_id,
+        edition=edition
+    )
+
+    await update.message.reply_text(
+        f"💎 Card `{card_id}` ကို\n"
+        f"*{edition}* သို့ ပြောင်းပြီးပါပြီ။",
+        parse_mode="Markdown"
+    )
+
+
+# =====================================
+# OWNER: SET DROP RATE
+# =====================================
+
+async def setdrop(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    user = update.effective_user
+
+    if not is_owner(user.id):
+        await update.message.reply_text(
+            "⛔ Owner Only Command"
+        )
+        return
+
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "/setdrop CARD_ID RATE"
+        )
+        return
+
+    try:
+        card_id = int(
+            context.args[0]
+        )
+
+        rate = float(
+            context.args[1]
+        )
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Number မမှန်ပါ။"
+        )
+        return
+
+    if rate < 0:
+        await update.message.reply_text(
+            "❌ Rate က 0 ထက်ငယ်လို့မရပါ။"
+        )
+        return
+
+    if not get_card(card_id):
+        await update.message.reply_text(
+            "❌ Card မတွေ့ပါ။"
+        )
+        return
+
+    update_card(
+        card_id,
+        drop_rate=rate
+    )
+
+    await update.message.reply_text(
+        f"🎯 Card `{card_id}` Drop Rate ကို\n"
+        f"*{rate}%* သို့ ပြောင်းပြီးပါပြီ။",
+        parse_mode="Markdown"
+    )
+
+
+# =====================================
+# OWNER: DROP
+# =====================================
+
+async def drop(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    user = update.effective_user
+
+    if not is_owner(user.id):
+        await update.message.reply_text(
+            "⛔ Owner Only Command"
         )
         return
 
@@ -231,122 +738,159 @@ async def drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    card_id, name, edition, price, image_type, file_id = card
+    (
+        card_id,
+        name,
+        edition,
+        price,
+        drop_rate,
+        description,
+        media_type,
+        file_id
+    ) = card
 
-    drop_id = create_drop(card_id)
-
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "🎴  GET CARD  🎴",
-                callback_data=f"drop:{drop_id}"
-            )
-        ]
-    ])
-
-    text = (
-        "✨━━━━━━━━━━━━━━━━━━✨\n"
-        "       🎴 *CARD DROP!* 🎴\n"
-        "✨━━━━━━━━━━━━━━━━━━✨\n\n"
-
-        f"🃏 *{name}*\n"
-        f"💎 *{edition}*\n"
-        f"💰 Value: *{price:,} 🪙*\n\n"
-
-        "🔥 *FIRST CLICK WINS!*\n"
-        "⚡ Button ကို အရင်နှိပ်တဲ့သူက\n"
-        "ဒီ Card ကို ရရှိမှာပါ!\n\n"
-
-        "✨━━━━━━━━━━━━━━━━━━✨"
+    drop_id = create_drop(
+        card_id
     )
 
-    if image_type == "photo" and file_id:
+    keyboard = drop_keyboard(
+        drop_id
+    )
+
+    caption = drop_caption(
+        card
+    )
+
+    if media_type == "photo" and file_id:
+
         await update.message.reply_photo(
             photo=file_id,
-            caption=text,
+            caption=caption,
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
 
-    elif image_type == "video" and file_id:
+    elif media_type == "video" and file_id:
+
         await update.message.reply_video(
             video=file_id,
-            caption=text,
+            caption=caption,
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
 
     else:
+
         await update.message.reply_text(
-            text,
+            caption,
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
 
 
-async def drop_button(
+# =====================================
+# DROP BUTTON
+# =====================================
+
+async def card_drop_button(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
     query = update.callback_query
 
-    await query.answer()
-
     user = query.from_user
 
-    create_user(
-        user.id,
-        user.username
-    )
+    ensure_user(user)
 
-    drop_id = int(
-        query.data.split(":")[1]
-    )
-
-    success = claim_drop(
-        drop_id,
-        user.id
-    )
-
-    if not success:
+    try:
+        drop_id = int(
+            query.data.split(":")[1]
+        )
+    except (IndexError, ValueError):
         await query.answer(
-            "❌ Too late! ဒီ Card ကို တစ်ယောက်က ယူပြီးပါပြီ!",
+            "❌ Invalid Drop",
             show_alert=True
         )
         return
 
-    card_id = __import__(
-        "database"
-    ).get_drop_card_id(drop_id)
+    card_id = claim_drop(
+        drop_id,
+        user.id
+    )
 
-    card = get_card(card_id)
+    if card_id is None:
 
-    if not card:
+        await query.answer(
+            "❌ Too Late!\n"
+            "ဒီ Card ကို တစ်ယောက်က ရယူပြီးပါပြီ။",
+            show_alert=True
+        )
+
         return
 
-    _, name, edition, price, _, _ = card
+    card = get_card(
+        card_id
+    )
+
+    if not card:
+        await query.answer(
+            "⚠️ Card data မတွေ့ပါ။",
+            show_alert=True
+        )
+        return
+
+    (
+        _id,
+        name,
+        edition,
+        price,
+        rate,
+        description,
+        media_type,
+        file_id
+    ) = card
+
+    emoji = get_edition_emoji(
+        edition
+    )
 
     await query.answer(
         "🎉 Card ရပါပြီ!",
         show_alert=True
     )
 
+    winner = user.mention_html()
+
+    text = (
+        "🎉✨ <b>CARD CLAIMED!</b> ✨🎉\n\n"
+        f"👑 Winner: {winner}\n"
+        f"🎴 Card: <b>{name}</b>\n"
+        f"{emoji} Edition: <b>{edition}</b>\n"
+        f"💰 Value: <b>{price:,} 🪙</b>\n\n"
+        "📚 Collection ထဲ ထည့်ပြီးပါပြီ!\n\n"
+        "🔥 Congratulations, Collector!"
+    )
+
     await query.message.reply_text(
-        "🎉✨ *CARD CLAIMED!* ✨🎉\n\n"
-        f"👑 Winner: {user.mention_markdown_v2()}\n"
-        f"🎴 Card: *{name}*\n"
-        f"💎 Edition: *{edition}*\n"
-        f"💰 Value: *{price:,} 🪙*\n\n"
-        "📚 Collection ထဲ ထည့်ပြီးပါပြီ!\n"
-        "🔥 Congratulations, Collector!",
-        parse_mode="Markdown"
+        text,
+        parse_mode="HTML"
     )
 
 
+# =====================================
+# MAIN
+# =====================================
+
 def main():
+
     if not BOT_TOKEN:
         raise RuntimeError(
             "BOT_TOKEN မတွေ့ပါ။ .env ကို စစ်ပါ။"
+        )
+
+    if OWNER_ID == 0:
+        raise RuntimeError(
+            "OWNER_ID မတွေ့ပါ။ .env ကို စစ်ပါ။"
         )
 
     init_db()
@@ -358,38 +902,110 @@ def main():
         .build()
     )
 
+    # User commands
     app.add_handler(
-        CommandHandler("start", start)
-    )
-
-    app.add_handler(
-        CommandHandler("profile", profile)
-    )
-
-    app.add_handler(
-        CommandHandler("collection", collection)
-    )
-
-    app.add_handler(
-        CommandHandler("daily", daily)
-    )
-
-    app.add_handler(
-        CommandHandler("draw", draw)
-    )
-
-    app.add_handler(
-        CommandHandler("drop", drop)
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            drop_button,
-            pattern=r"^drop:\d+$"
+        CommandHandler(
+            "start",
+            start
         )
     )
 
-    print("🃏 CARD BOT IS RUNNING...")
+    app.add_handler(
+        CommandHandler(
+            "help",
+            help_command
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "profile",
+            profile
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "daily",
+            daily
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "draw",
+            draw
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "collection",
+            collection
+        )
+    )
+
+    # Owner commands
+    app.add_handler(
+        CommandHandler(
+            "addcard",
+            addcard
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "cards",
+            cards
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "deletecard",
+            deletecard
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "setprice",
+            setprice
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "setedition",
+            setedition
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "setdrop",
+            setdrop
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "drop",
+            drop
+        )
+    )
+
+    # GET CARD button
+    app.add_handler(
+        CallbackQueryHandler(
+            card_drop_button,
+            pattern=r"^carddrop:\d+$"
+        )
+    )
+
+    print(
+        "🃏 CARD WORLD BOT IS RUNNING..."
+    )
 
     app.run_polling()
 
