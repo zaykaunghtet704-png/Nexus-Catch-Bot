@@ -1,890 +1,699 @@
 import sqlite3
-from datetime import date
+from contextlib import contextmanager
+from config import DATABASE_PATH
 
 
-DB_NAME = "cardbot.db"
-
-
+@contextmanager
 def get_db():
-    conn = sqlite3.connect(
-        DB_NAME,
-        timeout=15
-    )
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
 
-    conn.execute(
-        "PRAGMA journal_mode=WAL"
-    )
-
-    conn.execute(
-        "PRAGMA foreign_keys=ON"
-    )
-
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db():
+    with get_db() as db:
 
-    conn = get_db()
-    cur = conn.cursor()
+        # =========================
+        # Users
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT DEFAULT '',
+                first_name TEXT DEFAULT '',
+                language TEXT DEFAULT 'my',
+                coins INTEGER DEFAULT 0,
+                exp INTEGER DEFAULT 0,
+                level INTEGER DEFAULT 1,
+                daily_claim INTEGER DEFAULT 0,
+                claim_count_24h INTEGER DEFAULT 0,
+                last_claim REAL DEFAULT 0,
+                created_at REAL DEFAULT 0
+            )
+        """)
 
-    # =========================
-    # USERS
-    # =========================
+        # =========================
+        # Groups
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS groups (
+                group_id INTEGER PRIMARY KEY,
+                title TEXT DEFAULT '',
+                member_count INTEGER DEFAULT 0,
+                bot_is_admin INTEGER DEFAULT 0,
+                owner_approved INTEGER DEFAULT 0,
+                enabled INTEGER DEFAULT 0,
+                added_by INTEGER DEFAULT 0,
+                created_at REAL DEFAULT 0
+            )
+        """)
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT DEFAULT '',
-            first_name TEXT DEFAULT '',
-            coins INTEGER NOT NULL DEFAULT 100,
-            xp INTEGER NOT NULL DEFAULT 0,
-            level INTEGER NOT NULL DEFAULT 1,
-            last_daily TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+        # =========================
+        # Cards
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                char_id TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                edition TEXT DEFAULT 'Common',
+                rarity INTEGER DEFAULT 1,
+                price INTEGER DEFAULT 0,
+                image_file_id TEXT DEFAULT '',
+                video_file_id TEXT DEFAULT '',
+                media_type TEXT DEFAULT 'photo',
+                description TEXT DEFAULT '',
+                drop_weight REAL DEFAULT 1,
+                exp_reward INTEGER DEFAULT 0,
+                created_at REAL DEFAULT 0,
+                active INTEGER DEFAULT 1
+            )
+        """)
 
-    # =========================
-    # CARDS
-    # =========================
+        # =========================
+        # User Collection
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS user_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                char_id TEXT NOT NULL,
+                level INTEGER DEFAULT 1,
+                exp INTEGER DEFAULT 0,
+                favorite INTEGER DEFAULT 0,
+                obtained_at REAL DEFAULT 0
+            )
+        """)
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS cards (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            edition TEXT NOT NULL,
-            price INTEGER NOT NULL DEFAULT 0,
-            drop_rate REAL NOT NULL DEFAULT 0,
-            description TEXT DEFAULT '',
-            media_type TEXT DEFAULT '',
-            file_id TEXT DEFAULT '',
-            limited INTEGER NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+        # =========================
+        # Drop Events
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS drops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                char_id TEXT NOT NULL,
+                message_id INTEGER DEFAULT 0,
+                claimed_by INTEGER DEFAULT 0,
+                claimed INTEGER DEFAULT 0,
+                created_at REAL DEFAULT 0
+            )
+        """)
 
-    # =========================
-    # COLLECTION
-    # =========================
+        # =========================
+        # Market
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS market (
+                listing_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                seller_id INTEGER NOT NULL,
+                char_id TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                active INTEGER DEFAULT 1,
+                created_at REAL DEFAULT 0
+            )
+        """)
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS collection (
-            user_id INTEGER NOT NULL,
-            card_id INTEGER NOT NULL,
-            amount INTEGER NOT NULL DEFAULT 1,
+        # =========================
+        # Favorites
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS favorites (
+                user_id INTEGER NOT NULL,
+                char_id TEXT NOT NULL,
+                PRIMARY KEY (user_id, char_id)
+            )
+        """)
 
-            PRIMARY KEY (
-                user_id,
-                card_id
-            ),
+        # =========================
+        # Trades
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                receiver_id INTEGER NOT NULL,
+                sender_card TEXT NOT NULL,
+                receiver_card TEXT DEFAULT '',
+                status TEXT DEFAULT 'pending',
+                created_at REAL DEFAULT 0
+            )
+        """)
 
-            FOREIGN KEY(user_id)
-                REFERENCES users(user_id)
-                ON DELETE CASCADE,
+        # =========================
+        # Admins
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                user_id INTEGER PRIMARY KEY,
+                added_by INTEGER DEFAULT 0,
+                created_at REAL DEFAULT 0
+            )
+        """)
 
-            FOREIGN KEY(card_id)
-                REFERENCES cards(id)
-                ON DELETE CASCADE
-        )
-    """)
+        # =========================
+        # Duel
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS duels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                challenger_id INTEGER NOT NULL,
+                opponent_id INTEGER NOT NULL,
+                challenger_card TEXT DEFAULT '',
+                opponent_card TEXT DEFAULT '',
+                winner_id INTEGER DEFAULT 0,
+                reward_coins INTEGER DEFAULT 0,
+                reward_exp INTEGER DEFAULT 0,
+                created_at REAL DEFAULT 0
+            )
+        """)
 
-    # =========================
-    # DROPS
-    # =========================
+        # =========================
+        # Bot Settings
+        # =========================
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT DEFAULT ''
+            )
+        """)
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS drops (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            card_id INTEGER NOT NULL,
-            claimed_by INTEGER DEFAULT NULL,
-            active INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        # Default settings
+        defaults = {
+            "drop_count": "85",
+            "drop_enabled": "1",
+            "maintenance": "0",
+            "default_language": "my",
+        }
 
-            FOREIGN KEY(card_id)
-                REFERENCES cards(id)
-                ON DELETE CASCADE
-        )
-    """)
-
-    # =========================
-    # TRANSACTIONS
-    # =========================
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            from_user INTEGER,
-            to_user INTEGER,
-            amount INTEGER NOT NULL,
-            type TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    conn.commit()
-    conn.close()
+        for key, value in defaults.items():
+            db.execute("""
+                INSERT OR IGNORE INTO settings (key, value)
+                VALUES (?, ?)
+            """, (key, value))
 
 
-# ==================================================
-# USER
-# ==================================================
+# ============================================================
+# USER FUNCTIONS
+# ============================================================
 
-def create_user(
-    user_id: int,
-    username: str = "",
-    first_name: str = ""
+def add_or_update_user(
+    user_id,
+    username="",
+    first_name="",
+    language="my"
 ):
+    import time
 
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        INSERT INTO users (
-            user_id,
-            username,
-            first_name
-        )
-        VALUES (?, ?, ?)
-
-        ON CONFLICT(user_id)
-        DO UPDATE SET
-            username = excluded.username,
-            first_name = excluded.first_name
-        """,
-        (
+    with get_db() as db:
+        db.execute("""
+            INSERT INTO users (
+                user_id,
+                username,
+                first_name,
+                language,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                username = excluded.username,
+                first_name = excluded.first_name,
+                language = excluded.language
+        """, (
             user_id,
             username or "",
-            first_name or ""
-        )
-    )
-
-    conn.commit()
-    conn.close()
+            first_name or "",
+            language or "my",
+            time.time()
+        ))
 
 
-def get_user(user_id: int):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT
-            user_id,
-            username,
-            first_name,
-            coins,
-            xp,
-            level,
-            last_daily
-        FROM users
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
-
-    result = cur.fetchone()
-
-    conn.close()
-
-    return result
-
-
-# ==================================================
-# XP / LEVEL
-# ==================================================
-
-def add_xp(user_id: int, amount: int):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT xp, level
-        FROM users
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
-
-    result = cur.fetchone()
-
-    if not result:
-        conn.close()
-        return None
-
-    xp, level = result
-
-    xp += amount
-
-    new_level = max(
-        1,
-        (xp // 100) + 1
-    )
-
-    cur.execute(
-        """
-        UPDATE users
-        SET
-            xp = ?,
-            level = ?
-        WHERE user_id = ?
-        """,
-        (
-            xp,
-            new_level,
-            user_id
-        )
-    )
-
-    conn.commit()
-    conn.close()
-
-    return new_level
-
-
-# ==================================================
-# COINS
-# ==================================================
-
-def add_coins(
-    user_id: int,
-    amount: int
-):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        UPDATE users
-        SET coins = coins + ?
-        WHERE user_id = ?
-        """,
-        (
-            amount,
-            user_id
-        )
-    )
-
-    changed = cur.rowcount > 0
-
-    conn.commit()
-    conn.close()
-
-    return changed
-
-
-def transfer_coins(
-    from_user: int,
-    to_user: int,
-    amount: int
-):
-
-    if amount <= 0:
-        return False, "INVALID_AMOUNT"
-
-    if from_user == to_user:
-        return False, "SELF_TRANSFER"
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("BEGIN IMMEDIATE")
-
-        cur.execute(
-            """
-            SELECT coins
+def get_user(user_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT *
             FROM users
             WHERE user_id = ?
-            """,
-            (from_user,)
-        )
+        """, (user_id,)).fetchone()
 
-        sender = cur.fetchone()
 
-        if not sender:
-            conn.rollback()
-            return False, "SENDER_NOT_FOUND"
-
-        cur.execute(
-            """
-            SELECT user_id
-            FROM users
-            WHERE user_id = ?
-            """,
-            (to_user,)
-        )
-
-        receiver = cur.fetchone()
-
-        if not receiver:
-            conn.rollback()
-            return False, "RECEIVER_NOT_FOUND"
-
-        if sender[0] < amount:
-            conn.rollback()
-            return False, "INSUFFICIENT"
-
-        cur.execute(
-            """
-            UPDATE users
-            SET coins = coins - ?
-            WHERE user_id = ?
-            """,
-            (
-                amount,
-                from_user
-            )
-        )
-
-        cur.execute(
-            """
+def add_coins(user_id, amount):
+    with get_db() as db:
+        db.execute("""
             UPDATE users
             SET coins = coins + ?
             WHERE user_id = ?
-            """,
-            (
-                amount,
-                to_user
-            )
-        )
-
-        cur.execute(
-            """
-            INSERT INTO transactions (
-                from_user,
-                to_user,
-                amount,
-                type
-            )
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                from_user,
-                to_user,
-                amount,
-                "TRANSFER"
-            )
-        )
-
-        conn.commit()
-
-        return True, "OK"
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-
-        conn.close()
+        """, (amount, user_id))
 
 
-# ==================================================
-# DAILY
-# ==================================================
-
-def claim_daily(user_id: int):
-
-    today = str(date.today())
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("BEGIN IMMEDIATE")
-
-        cur.execute(
-            """
-            SELECT last_daily
-            FROM users
-            WHERE user_id = ?
-            """,
-            (user_id,)
-        )
-
-        result = cur.fetchone()
-
-        if not result:
-            conn.rollback()
-            return False
-
-        if result[0] == today:
-            conn.rollback()
-            return False
-
-        cur.execute(
-            """
+def remove_coins(user_id, amount):
+    with get_db() as db:
+        db.execute("""
             UPDATE users
-            SET
-                coins = coins + 100,
-                xp = xp + 20,
-                last_daily = ?
+            SET coins = MAX(0, coins - ?)
             WHERE user_id = ?
-            """,
-            (
-                today,
-                user_id
-            )
-        )
-
-        conn.commit()
-
-        return True
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-
-        conn.close()
+        """, (amount, user_id))
 
 
-# ==================================================
-# CARDS
-# ==================================================
+def get_balance(user_id):
+    user = get_user(user_id)
 
-def create_card(
+    if not user:
+        return 0
+
+    return user["coins"]
+
+
+# ============================================================
+# CARD FUNCTIONS
+# ============================================================
+
+def add_card(
+    char_id,
     name,
-    edition,
-    price,
-    drop_rate,
+    edition="Common",
+    rarity=1,
+    price=0,
+    image_file_id="",
+    video_file_id="",
+    media_type="photo",
     description="",
-    media_type="",
-    file_id="",
-    limited=0
+    drop_weight=1,
+    exp_reward=0
 ):
+    import time
 
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        INSERT INTO cards (
+    with get_db() as db:
+        db.execute("""
+            INSERT INTO cards (
+                char_id,
+                name,
+                edition,
+                rarity,
+                price,
+                image_file_id,
+                video_file_id,
+                media_type,
+                description,
+                drop_weight,
+                exp_reward,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            char_id,
             name,
             edition,
+            rarity,
             price,
-            drop_rate,
-            description,
+            image_file_id,
+            video_file_id,
             media_type,
-            file_id,
-            limited
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            name,
-            edition,
-            price,
-            drop_rate,
             description,
-            media_type,
-            file_id,
-            limited
-        )
-    )
-
-    card_id = cur.lastrowid
-
-    conn.commit()
-    conn.close()
-
-    return card_id
+            drop_weight,
+            exp_reward,
+            time.time()
+        ))
 
 
-def get_card(card_id: int):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT
-            id,
-            name,
-            edition,
-            price,
-            drop_rate,
-            description,
-            media_type,
-            file_id,
-            limited
-        FROM cards
-        WHERE id = ?
-        """,
-        (card_id,)
-    )
-
-    result = cur.fetchone()
-
-    conn.close()
-
-    return result
+def get_card(char_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT *
+            FROM cards
+            WHERE char_id = ?
+              AND active = 1
+        """, (str(char_id),)).fetchone()
 
 
 def get_all_cards():
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT
-            id,
-            name,
-            edition,
-            price,
-            drop_rate,
-            description,
-            media_type,
-            file_id,
-            limited
-        FROM cards
-        ORDER BY id DESC
-        """
-    )
-
-    result = cur.fetchall()
-
-    conn.close()
-
-    return result
+    with get_db() as db:
+        return db.execute("""
+            SELECT *
+            FROM cards
+            WHERE active = 1
+            ORDER BY id ASC
+        """).fetchall()
 
 
-def get_drop_cards():
+def search_cards(keyword):
+    keyword = f"%{keyword}%"
 
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT
-            id,
-            name,
-            edition,
-            price,
-            drop_rate,
-            description,
-            media_type,
-            file_id,
-            limited
-        FROM cards
-        WHERE drop_rate > 0
-        """
-    )
-
-    result = cur.fetchall()
-
-    conn.close()
-
-    return result
+    with get_db() as db:
+        return db.execute("""
+            SELECT *
+            FROM cards
+            WHERE active = 1
+              AND (
+                    char_id LIKE ?
+                    OR name LIKE ?
+                    OR edition LIKE ?
+                  )
+            ORDER BY id ASC
+        """, (
+            keyword,
+            keyword,
+            keyword
+        )).fetchall()
 
 
-def update_card(
-    card_id,
-    name=None,
-    edition=None,
-    price=None,
-    drop_rate=None,
-    description=None,
-    media_type=None,
-    file_id=None,
-    limited=None
+def update_card_price(char_id, price):
+    with get_db() as db:
+        db.execute("""
+            UPDATE cards
+            SET price = ?
+            WHERE char_id = ?
+        """, (price, str(char_id)))
+
+
+def delete_card(char_id):
+    with get_db() as db:
+        db.execute("""
+            UPDATE cards
+            SET active = 0
+            WHERE char_id = ?
+        """, (str(char_id),))
+
+
+# ============================================================
+# COLLECTION FUNCTIONS
+# ============================================================
+
+def add_user_card(
+    user_id,
+    char_id,
+    level=1,
+    exp=0
 ):
+    import time
 
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT
-            name,
-            edition,
-            price,
-            drop_rate,
-            description,
-            media_type,
-            file_id,
-            limited
-        FROM cards
-        WHERE id = ?
-        """,
-        (card_id,)
-    )
-
-    old = cur.fetchone()
-
-    if not old:
-        conn.close()
-        return False
-
-    (
-        old_name,
-        old_edition,
-        old_price,
-        old_rate,
-        old_description,
-        old_media_type,
-        old_file_id,
-        old_limited
-    ) = old
-
-    cur.execute(
-        """
-        UPDATE cards
-        SET
-            name = ?,
-            edition = ?,
-            price = ?,
-            drop_rate = ?,
-            description = ?,
-            media_type = ?,
-            file_id = ?,
-            limited = ?
-        WHERE id = ?
-        """,
-        (
-            name if name is not None else old_name,
-            edition if edition is not None else old_edition,
-            price if price is not None else old_price,
-            drop_rate if drop_rate is not None else old_rate,
-            description if description is not None else old_description,
-            media_type if media_type is not None else old_media_type,
-            file_id if file_id is not None else old_file_id,
-            limited if limited is not None else old_limited,
-            card_id
-        )
-    )
-
-    conn.commit()
-    conn.close()
-
-    return True
-
-
-def delete_card(card_id: int):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        DELETE FROM cards
-        WHERE id = ?
-        """,
-        (card_id,)
-    )
-
-    deleted = cur.rowcount > 0
-
-    conn.commit()
-    conn.close()
-
-    return deleted
-
-
-# ==================================================
-# COLLECTION
-# ==================================================
-
-def add_card_to_collection(
-    user_id: int,
-    card_id: int
-):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        INSERT INTO collection (
+    with get_db() as db:
+        db.execute("""
+            INSERT INTO user_cards (
+                user_id,
+                char_id,
+                level,
+                exp,
+                obtained_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+        """, (
             user_id,
-            card_id,
-            amount
-        )
-        VALUES (?, ?, 1)
-
-        ON CONFLICT(user_id, card_id)
-        DO UPDATE SET
-            amount = amount + 1
-        """,
-        (
-            user_id,
-            card_id
-        )
-    )
-
-    conn.commit()
-    conn.close()
+            str(char_id),
+            level,
+            exp,
+            time.time()
+        ))
 
 
-def get_collection(user_id: int):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT
-            cards.id,
-            cards.name,
-            cards.edition,
-            cards.price,
-            cards.media_type,
-            collection.amount
-        FROM collection
-
-        JOIN cards
-            ON cards.id = collection.card_id
-
-        WHERE collection.user_id = ?
-
-        ORDER BY cards.id DESC
-        """,
-        (user_id,)
-    )
-
-    result = cur.fetchall()
-
-    conn.close()
-
-    return result
-
-
-# ==================================================
-# DROPS
-# ==================================================
-
-def create_drop(card_id: int):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        INSERT INTO drops (
-            card_id,
-            active
-        )
-        VALUES (?, 1)
-        """,
-        (card_id,)
-    )
-
-    drop_id = cur.lastrowid
-
-    conn.commit()
-    conn.close()
-
-    return drop_id
-
-
-def claim_drop(
-    drop_id: int,
-    user_id: int
-):
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("BEGIN IMMEDIATE")
-
-        cur.execute(
-            """
+def get_user_cards(user_id):
+    with get_db() as db:
+        return db.execute("""
             SELECT
-                card_id,
-                claimed_by,
-                active
-            FROM drops
-            WHERE id = ?
-            """,
-            (drop_id,)
-        )
+                uc.*,
+                c.name,
+                c.edition,
+                c.rarity,
+                c.price,
+                c.image_file_id,
+                c.video_file_id,
+                c.media_type
+            FROM user_cards uc
+            JOIN cards c
+                ON c.char_id = uc.char_id
+            WHERE uc.user_id = ?
+            ORDER BY uc.obtained_at ASC
+        """, (user_id,)).fetchall()
 
-        drop = cur.fetchone()
 
-        if not drop:
-
-            conn.rollback()
-            return None
-
-        card_id, claimed_by, active = drop
-
-        if not active or claimed_by is not None:
-
-            conn.rollback()
-            return None
-
-        cur.execute(
-            """
-            UPDATE drops
-            SET
-                claimed_by = ?,
-                active = 0
-            WHERE id = ?
-              AND active = 1
-              AND claimed_by IS NULL
-            """,
-            (
-                user_id,
-                drop_id
-            )
-        )
-
-        if cur.rowcount != 1:
-
-            conn.rollback()
-            return None
-
-        cur.execute(
-            """
-            INSERT INTO collection (
-                user_id,
-                card_id,
-                amount
-            )
-            VALUES (?, ?, 1)
-
-            ON CONFLICT(user_id, card_id)
-            DO UPDATE SET
-                amount = amount + 1
-            """,
-            (
-                user_id,
-                card_id
-            )
-        )
-
-        cur.execute(
-            """
-            UPDATE users
-            SET
-                xp = xp + 10
+def count_user_cards(user_id):
+    with get_db() as db:
+        result = db.execute("""
+            SELECT COUNT(*) AS total
+            FROM user_cards
             WHERE user_id = ?
-            """,
-            (user_id,)
-        )
+        """, (user_id,)).fetchone()
 
-        conn.commit()
+        return result["total"]
 
-        return card_id
 
-    except Exception:
+def user_has_card(user_id, char_id):
+    with get_db() as db:
+        result = db.execute("""
+            SELECT id
+            FROM user_cards
+            WHERE user_id = ?
+              AND char_id = ?
+            LIMIT 1
+        """, (
+            user_id,
+            str(char_id)
+        )).fetchone()
 
-        conn.rollback()
-        raise
+        return result is not None
 
-    finally:
 
-        conn.close()
+# ============================================================
+# FAVORITE
+# ============================================================
+
+def add_favorite(user_id, char_id):
+    with get_db() as db:
+        db.execute("""
+            INSERT OR IGNORE INTO favorites (
+                user_id,
+                char_id
+            )
+            VALUES (?, ?)
+        """, (
+            user_id,
+            str(char_id)
+        ))
+
+
+def remove_favorite(user_id, char_id):
+    with get_db() as db:
+        db.execute("""
+            DELETE FROM favorites
+            WHERE user_id = ?
+              AND char_id = ?
+        """, (
+            user_id,
+            str(char_id)
+        ))
+
+
+def is_favorite(user_id, char_id):
+    with get_db() as db:
+        result = db.execute("""
+            SELECT 1
+            FROM favorites
+            WHERE user_id = ?
+              AND char_id = ?
+        """, (
+            user_id,
+            str(char_id)
+        )).fetchone()
+
+        return result is not None
+
+
+# ============================================================
+# GLOBAL TOP
+# ============================================================
+
+def get_global_top(limit=15):
+    with get_db() as db:
+        return db.execute("""
+            SELECT
+                u.user_id,
+                u.username,
+                u.first_name,
+                COUNT(uc.id) AS card_count
+            FROM users u
+            LEFT JOIN user_cards uc
+                ON uc.user_id = u.user_id
+            GROUP BY u.user_id
+            ORDER BY card_count DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+
+
+# ============================================================
+# GROUP TOP
+# ============================================================
+
+def get_group_top(group_user_ids, limit=15):
+    if not group_user_ids:
+        return []
+
+    placeholders = ",".join(
+        ["?"] * len(group_user_ids)
+    )
+
+    with get_db() as db:
+        return db.execute(f"""
+            SELECT
+                u.user_id,
+                u.username,
+                u.first_name,
+                COUNT(uc.id) AS card_count
+            FROM users u
+            LEFT JOIN user_cards uc
+                ON uc.user_id = u.user_id
+            WHERE u.user_id IN ({placeholders})
+            GROUP BY u.user_id
+            ORDER BY card_count DESC
+            LIMIT ?
+        """, (*group_user_ids, limit)).fetchall()
+
+
+# ============================================================
+# SETTINGS
+# ============================================================
+
+def get_setting(key, default=None):
+    with get_db() as db:
+        result = db.execute("""
+            SELECT value
+            FROM settings
+            WHERE key = ?
+        """, (key,)).fetchone()
+
+        if not result:
+            return default
+
+        return result["value"]
+
+
+def set_setting(key, value):
+    with get_db() as db:
+        db.execute("""
+            INSERT INTO settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key)
+            DO UPDATE SET value = excluded.value
+        """, (
+            key,
+            str(value)
+        ))
+
+
+# ============================================================
+# ADMIN
+# ============================================================
+
+def add_admin(user_id, added_by):
+    import time
+
+    with get_db() as db:
+        db.execute("""
+            INSERT OR REPLACE INTO admins (
+                user_id,
+                added_by,
+                created_at
+            )
+            VALUES (?, ?, ?)
+        """, (
+            user_id,
+            added_by,
+            time.time()
+        ))
+
+
+def remove_admin(user_id):
+    with get_db() as db:
+        db.execute("""
+            DELETE FROM admins
+            WHERE user_id = ?
+        """, (user_id,))
+
+
+def is_admin(user_id):
+    with get_db() as db:
+        result = db.execute("""
+            SELECT 1
+            FROM admins
+            WHERE user_id = ?
+        """, (user_id,)).fetchone()
+
+        return result is not None
+
+
+# ============================================================
+# GROUP APPROVAL
+# ============================================================
+
+def save_group(
+    group_id,
+    title,
+    member_count=0,
+    bot_is_admin=0,
+    added_by=0
+):
+    import time
+
+    with get_db() as db:
+        db.execute("""
+            INSERT INTO groups (
+                group_id,
+                title,
+                member_count,
+                bot_is_admin,
+                added_by,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(group_id)
+            DO UPDATE SET
+                title = excluded.title,
+                member_count = excluded.member_count,
+                bot_is_admin = excluded.bot_is_admin
+        """, (
+            group_id,
+            title,
+            member_count,
+            bot_is_admin,
+            added_by,
+            time.time()
+        ))
+
+
+def approve_group(group_id):
+    with get_db() as db:
+        db.execute("""
+            UPDATE groups
+            SET owner_approved = 1,
+                enabled = 1
+            WHERE group_id = ?
+        """, (group_id,))
+
+
+def reject_group(group_id):
+    with get_db() as db:
+        db.execute("""
+            UPDATE groups
+            SET owner_approved = 0,
+                enabled = 0
+            WHERE group_id = ?
+        """, (group_id,))
+
+
+def is_group_enabled(group_id):
+    with get_db() as db:
+        result = db.execute("""
+            SELECT enabled
+            FROM groups
+            WHERE group_id = ?
+        """, (group_id,)).fetchone()
+
+        return bool(result and result["enabled"])
