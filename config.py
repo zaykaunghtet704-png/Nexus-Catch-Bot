@@ -1,5 +1,5 @@
 # ============================================================
-# NEXUS CATCH BOT - CONFIGURATION
+# NEXUS CATCH BOT - CONFIG
 # Version 4
 # Myanmar 🇲🇲 / English 🇬🇧
 # ============================================================
@@ -8,30 +8,24 @@ import os
 
 
 # ============================================================
-# BOT BASIC
+# BOT
 # ============================================================
 
-BOT_TOKEN = os.getenv(
-    "BOT_TOKEN",
-    ""
-).strip()
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 
 OWNER_ID = int(
-    os.getenv(
-        "OWNER_ID",
-        "0"
-    )
+    os.getenv("OWNER_ID", "0")
 )
 
-# Additional admins
 ADMIN_IDS = {
     int(x.strip())
-    for x in os.getenv(
-        "ADMIN_IDS",
-        ""
-    ).split(",")
+    for x in os.getenv("ADMIN_IDS", "").split(",")
     if x.strip().isdigit()
 }
+
+
+BOT_NAME = "NEXUS CARD BOT"
+BOT_VERSION = "V4"
 
 
 # ============================================================
@@ -58,66 +52,79 @@ DATABASE_PATH = os.getenv(
     "nexus_catch.db"
 )
 
-# Compatibility name for older modules
 DB_PATH = DATABASE_PATH
 
 
 # ============================================================
-# REQUIRED GROUP / CHANNEL
+# GROUP / CHANNEL LINKS
 # ============================================================
 
-# Group link
-REQUIRED_GROUP_LINK = os.getenv(
-    "REQUIRED_GROUP_LINK",
+GROUP_LINK = os.getenv(
+    "GROUP_LINK",
     "https://t.me/+00J7JktW8bJlZTY1"
 ).strip()
 
-# Channel link
-REQUIRED_CHANNEL_LINK = os.getenv(
-    "REQUIRED_CHANNEL_LINK",
+CHANNEL_LINK = os.getenv(
+    "CHANNEL_LINK",
     "https://t.me/+E6BxfAj0gaI2Y2Zl"
 ).strip()
 
 
-# Telegram Chat IDs
+# Compatibility names
+REQUIRED_GROUP_LINK = GROUP_LINK
+REQUIRED_CHANNEL_LINK = CHANNEL_LINK
+
+START_GROUP_LINK = GROUP_LINK
+START_CHANNEL_LINK = CHANNEL_LINK
+
+
+# ============================================================
+# TELEGRAM CHAT IDs
+# ============================================================
+
+# Put the real Telegram IDs in Render Environment Variables.
 #
-# IMPORTANT:
-# Telegram join-check requires Chat ID,
-# not invite link.
-#
-# Put the real IDs in Render Environment Variables.
+# Example:
+# REQUIRED_GROUP_ID=-1001234567890
+# REQUIRED_CHANNEL_ID=-1009876543210
 #
 
 REQUIRED_GROUP_ID = int(
-    os.getenv(
-        "REQUIRED_GROUP_ID",
-        "0"
-    )
+    os.getenv("REQUIRED_GROUP_ID", "0")
 )
 
 REQUIRED_CHANNEL_ID = int(
-    os.getenv(
-        "REQUIRED_CHANNEL_ID",
-        "0"
-    )
+    os.getenv("REQUIRED_CHANNEL_ID", "0")
 )
 
 
-# ============================================================
-# COMPATIBILITY ALIASES
-# ============================================================
+# IMPORTANT:
+# bot.py imports these exact names.
 
 GROUP_ID = REQUIRED_GROUP_ID
-
 CHANNEL_ID = REQUIRED_CHANNEL_ID
-
-GROUP_LINK = REQUIRED_GROUP_LINK
-
-CHANNEL_LINK = REQUIRED_CHANNEL_LINK
 
 
 # ============================================================
-# GROUP ACCESS RULES
+# WAIFU BUTTON
+# ============================================================
+
+WAIFU_LINK = os.getenv(
+    "WAIFU_LINK",
+    "https://t.me/"
+).strip()
+
+# Compatibility
+I_AM_WAIFU_LINK = WAIFU_LINK
+
+
+START_BUTTON_WAIFU = "💗 I'm Waifu"
+START_BUTTON_GROUP = "👥 Group"
+START_BUTTON_CHANNEL = "📢 Channel"
+
+
+# ============================================================
+# GROUP ACCESS
 # ============================================================
 
 MIN_GROUP_MEMBERS = int(
@@ -127,9 +134,9 @@ MIN_GROUP_MEMBERS = int(
     )
 )
 
-BOT_MUST_BE_ADMIN = (
+REQUIRE_BOT_ADMIN = (
     os.getenv(
-        "BOT_MUST_BE_ADMIN",
+        "REQUIRE_BOT_ADMIN",
         "true"
     ).lower()
     in (
@@ -139,56 +146,34 @@ BOT_MUST_BE_ADMIN = (
         "on",
     )
 )
+
+REQUIRE_OWNER_APPROVAL = (
+    os.getenv(
+        "REQUIRE_OWNER_APPROVAL",
+        "true"
+    ).lower()
+    in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
+)
+
+
+# Compatibility names
+BOT_MUST_BE_ADMIN = REQUIRE_BOT_ADMIN
 
 GROUP_OWNER_APPROVAL_REQUIRED = (
-    os.getenv(
-        "GROUP_OWNER_APPROVAL_REQUIRED",
-        "true"
-    ).lower()
-    in (
-        "true",
-        "1",
-        "yes",
-        "on",
-    )
+    REQUIRE_OWNER_APPROVAL
 )
-
-
-# ============================================================
-# LOG CHANNELS
-# ============================================================
-
-GROUP_LOG_CHAT_ID = int(
-    os.getenv(
-        "GROUP_LOG_CHAT_ID",
-        "0"
-    )
-)
-
-OWNER_LOG_CHAT_ID = int(
-    os.getenv(
-        "OWNER_LOG_CHAT_ID",
-        "0"
-    )
-)
-
-
-# ============================================================
-# CARD SYSTEM
-# ============================================================
-
-CARD_TOTAL_EDITIONS = 13
-
-CARD_HIGHEST_EDITION = "Premium"
-
-CARD_DEFAULT_CURRENCY = "Coins"
 
 
 # ============================================================
 # CARD EDITIONS
 # ============================================================
 
-CARD_EDITIONS = [
+EDITIONS = [
     "Common",
     "Uncommon",
     "Rare",
@@ -205,18 +190,29 @@ CARD_EDITIONS = [
 ]
 
 
+# Compatibility names
+CARD_EDITIONS = EDITIONS
+
+CARD_TOTAL_EDITIONS = 13
+
+CARD_HIGHEST_EDITION = "Premium"
+
+CARD_DEFAULT_CURRENCY = "Coins"
+
+
 # ============================================================
-# CARD PRICES
+# CARD PRICE
 # ============================================================
 
-# Premium = maximum price
-PREMIUM_SELL_PRICE = 15000
+PREMIUM_PRICE = 15000
 
-# Compatibility
-PREMIUM_PRICE = PREMIUM_SELL_PRICE
+PREMIUM_SELL_PRICE = PREMIUM_PRICE
+
+MARKET_MIN_PRICE = 1
+
+MARKET_MAX_PRICE = 15000
 
 
-# Default selling prices
 CARD_SELL_PRICES = {
     "Common": 300,
     "Uncommon": 500,
@@ -235,12 +231,13 @@ CARD_SELL_PRICES = {
 
 
 # ============================================================
-# CARD DROP SYSTEM
+# DROP SYSTEM
 # ============================================================
 
 DROP_ENABLED = True
 
-# Owner can customize these later
+AUTO_DROP_ENABLED = True
+
 DROP_MIN_CARDS = 1
 
 DROP_MAX_CARDS = 3
@@ -252,8 +249,7 @@ DROP_COOLDOWN_SECONDS = int(
     )
 )
 
-# If True, bot can automatically drop cards
-AUTO_DROP_ENABLED = True
+DEFAULT_DROP_COUNT = 85
 
 
 # ============================================================
@@ -266,8 +262,11 @@ CLAIM_COOLDOWN_HOURS = 12
 
 CLAIM_CARDS_PER_CLAIM = 1
 
-# Maximum claim slots in 24 hours
-CLAIM_DAILY_LIMIT = 2
+# Exact name used by bot.py
+CLAIM_LIMIT_24H = 2
+
+# Compatibility
+CLAIM_DAILY_LIMIT = CLAIM_LIMIT_24H
 
 
 # ============================================================
@@ -296,7 +295,9 @@ MARKET_TAX_PERCENT = 0
 # HAREM
 # ============================================================
 
-HAREM_ITEMS_PER_PAGE = 10
+HAREM_PER_PAGE = 10
+
+HAREM_ITEMS_PER_PAGE = HAREM_PER_PAGE
 
 HAREM_BUTTONS_PER_PAGE = 10
 
@@ -304,27 +305,68 @@ HAREM_DEFAULT_MODE = "all"
 
 
 # ============================================================
-# SEARCH
+# HMODE
 # ============================================================
 
-SEARCH_RESULTS_PER_PAGE = 10
+HMODE_LIMIT = 10
 
-SEARCH_MAX_RESULTS = 100
+HMODE_CARD_COUNT = HMODE_LIMIT
+
+HMODE_ENABLED = True
 
 
 # ============================================================
 # MARKET
 # ============================================================
 
-MARKET_ITEMS_PER_PAGE = 10
+MARKET_PER_PAGE = 10
 
-MARKET_MIN_PRICE = 1
-
-MARKET_MAX_PRICE = 15000
+MARKET_ITEMS_PER_PAGE = MARKET_PER_PAGE
 
 
 # ============================================================
-# TRADE
+# SEARCH
+# ============================================================
+
+SEARCH_LIMIT = 10
+
+SEARCH_RESULTS_PER_PAGE = SEARCH_LIMIT
+
+SEARCH_MAX_RESULTS = 100
+
+
+# ============================================================
+# TOP / RANKINGS
+# ============================================================
+
+TOP_LIMIT = 15
+
+GLOBAL_RANKING_LIMIT = TOP_LIMIT
+
+GROUP_RANKING_LIMIT = 15
+
+TODAY_RANKING_LIMIT = 15
+
+
+# ============================================================
+# PROFILE
+# ============================================================
+
+PROFILE_SHOW_PHOTO = True
+
+PROFILE_SHOW_CARD_COUNT = True
+
+PROFILE_SHOW_COINS = True
+
+PROFILE_SHOW_GLOBAL_RANK = True
+
+PROFILE_SHOW_COLLECTION = True
+
+PROFILE_SHOW_STATS = True
+
+
+# ============================================================
+# TRADE / GIFT / DUEL
 # ============================================================
 
 TRADE_ENABLED = True
@@ -363,49 +405,12 @@ CARD_EXP_MULTIPLIER = 1.25
 
 
 # ============================================================
-# FAVOURITE
+# FAVORITE
 # ============================================================
 
 FAV_ENABLED = True
 
 MAX_FAVOURITES = 20
-
-
-# ============================================================
-# TODAY RANKING
-# ============================================================
-
-TODAY_RANKING_LIMIT = 15
-
-GLOBAL_RANKING_LIMIT = 15
-
-GROUP_RANKING_LIMIT = 15
-
-
-# ============================================================
-# PROFILE
-# ============================================================
-
-PROFILE_SHOW_PHOTO = True
-
-PROFILE_SHOW_CARD_COUNT = True
-
-PROFILE_SHOW_COINS = True
-
-PROFILE_SHOW_GLOBAL_RANK = True
-
-PROFILE_SHOW_COLLECTION = True
-
-PROFILE_SHOW_STATS = True
-
-
-# ============================================================
-# CARD HMODE
-# ============================================================
-
-HMODE_ENABLED = True
-
-HMODE_CARD_COUNT = 10
 
 
 # ============================================================
@@ -428,16 +433,14 @@ RESET_ENABLED = True
 
 CHANGE_TIME_ENABLED = True
 
-DEFAULT_DROP_COUNT = 85
-
-
-# ============================================================
-# OWNER DROP SETTINGS
-# ============================================================
-
 OWNER_CAN_CHANGE_DROP_COUNT = True
 
 OWNER_CAN_CHANGE_DROP_TIME = True
+
+
+# ============================================================
+# OWNER CARD MANAGEMENT
+# ============================================================
 
 OWNER_CAN_ADD_CARD = True
 
@@ -468,32 +471,33 @@ ADMIN_CAN_MANAGE_ECONOMY = True
 # ============================================================
 
 OWNER_ONLY_COMMANDS = {
+    "drop",
     "addcard",
+    "deletecard",
     "delcard",
     "editcard",
-    "addcoins",
-    "delcoins",
     "givecard",
     "takecard",
+    "givecoin",
     "givecoins",
     "takecoins",
-    "banuser",
-    "unbanuser",
-    "broadcast",
-    "stats",
-    "groups",
-    "approve",
-    "reject",
-    "disable",
-    "enable",
-    "changetime",
-    "setdrop",
+    "addcoins",
+    "delcoins",
     "setprice",
-    "resetuser",
-    "resetall",
-    "maintenance",
+    "setdrop",
     "setadmin",
     "deladmin",
+    "approve",
+    "reject",
+    "broadcast",
+    "stats",
+    "maintenance",
+    "changetime",
+    "groups",
+    "banuser",
+    "unbanuser",
+    "resetuser",
+    "resetall",
 }
 
 
@@ -502,18 +506,21 @@ OWNER_ONLY_COMMANDS = {
 # ============================================================
 
 ADMIN_COMMANDS = {
+    "drop",
     "addcard",
+    "deletecard",
     "delcard",
     "editcard",
     "givecard",
     "takecard",
+    "givecoin",
     "addcoins",
     "delcoins",
-    "groups",
+    "setprice",
+    "setdrop",
     "approve",
     "reject",
-    "disable",
-    "enable",
+    "groups",
 }
 
 
@@ -544,7 +551,6 @@ USER_COMMANDS = {
     "unfav",
     "todayNexusCatch",
     "check",
-    "changetime",
     "Nexus",
     "claim",
     "hmode",
@@ -554,123 +560,71 @@ USER_COMMANDS = {
 
 
 # ============================================================
-# CARD COMMAND ALIASES
+# COMMAND ALIASES
 # ============================================================
 
 COMMAND_ALIASES = {
 
-    "start": [
-        "/start"
-    ],
+    "start": ["/start"],
 
-    "help": [
-        "/help"
-    ],
+    "help": ["/help"],
 
-    "harem": [
-        "/harem"
-    ],
+    "harem": ["/harem"],
 
-    "search": [
-        "/search"
-    ],
+    "search": ["/search"],
 
-    "profile": [
-        "/profile"
-    ],
+    "profile": ["/profile"],
 
-    "top": [
-        "/top"
-    ],
+    "top": ["/top"],
 
-    "ctop": [
-        "/ctop"
-    ],
+    "ctop": ["/ctop"],
 
-    "rankings": [
-        "/rankings"
-    ],
+    "rankings": ["/rankings"],
 
-    "daily": [
-        "/daily"
-    ],
+    "daily": ["/daily"],
 
-    "balance": [
-        "/balance"
-    ],
+    "balance": ["/balance"],
 
-    "sellprice": [
-        "/sellprice"
-    ],
+    "sellprice": ["/sellprice"],
 
-    "market": [
-        "/market"
-    ],
+    "market": ["/market"],
 
-    "sell": [
-        "/sell"
-    ],
+    "sell": ["/sell"],
 
-    "buy": [
-        "/buy"
-    ],
+    "buy": ["/buy"],
 
-    "delist": [
-        "/delist"
-    ],
+    "delist": ["/delist"],
 
-    "trade": [
-        "/trade"
-    ],
+    "trade": ["/trade"],
 
-    "gift": [
-        "/gift"
-    ],
+    "gift": ["/gift"],
 
-    "duel": [
-        "/duel"
-    ],
+    "duel": ["/duel"],
 
-    "fav": [
-        "/fav"
-    ],
+    "fav": ["/fav"],
 
-    "unfav": [
-        "/unfav"
-    ],
+    "unfav": ["/unfav"],
 
     "todayNexusCatch": [
         "/todayNexusCatch"
     ],
 
-    "check": [
-        "/check"
-    ],
+    "check": ["/check"],
 
-    "Nexus": [
-        "/Nexus"
-    ],
+    "Nexus": ["/Nexus"],
 
-    "claim": [
-        "/claim"
-    ],
+    "claim": ["/claim"],
 
-    "hmode": [
-        "/hmode"
-    ],
+    "hmode": ["/hmode"],
 
-    "reset": [
-        "/reset"
-    ],
+    "reset": ["/reset"],
 
-    "upgrade": [
-        "/upgrade"
-    ],
+    "upgrade": ["/upgrade"],
 }
 
 
 # ============================================================
-# START MENU
+# START
 # ============================================================
 
 START_IMAGE_URL = os.getenv(
@@ -680,41 +634,7 @@ START_IMAGE_URL = os.getenv(
 
 
 # ============================================================
-# START BUTTON LINKS
-# ============================================================
-
-I_AM_WAIFU_LINK = os.getenv(
-    "I_AM_WAIFU_LINK",
-    "https://t.me/"
-).strip()
-
-START_GROUP_LINK = REQUIRED_GROUP_LINK
-
-START_CHANNEL_LINK = REQUIRED_CHANNEL_LINK
-
-
-# ============================================================
-# START BUTTON TEXT
-# ============================================================
-
-START_BUTTON_WAIFU = "💗 I'm Waifu"
-
-START_BUTTON_GROUP = "👥 Group"
-
-START_BUTTON_CHANNEL = "📢 Channel"
-
-
-# ============================================================
 # LANGUAGE TEXT
-# ============================================================
-
-BOT_NAME = "NEXUS CARD BOT"
-
-BOT_VERSION = "V4"
-
-
-# ============================================================
-# MYANMAR TEXT
 # ============================================================
 
 MY_TEXT = {
@@ -751,13 +671,8 @@ MY_TEXT = {
 
     "error":
         "⚠️ တစ်ခုခုမှားယွင်းနေပါတယ်။",
-
 }
 
-
-# ============================================================
-# ENGLISH TEXT
-# ============================================================
 
 EN_TEXT = {
 
@@ -793,22 +708,16 @@ EN_TEXT = {
 
     "error":
         "⚠️ Something went wrong.",
-
 }
 
 
 # ============================================================
-# COMMAND HELP
+# HELP / PAGINATION
 # ============================================================
 
 HELP_PAGES = 6
 
 HELP_ITEMS_PER_PAGE = 8
-
-
-# ============================================================
-# PAGINATION
-# ============================================================
 
 PAGINATION_ENABLED = True
 
@@ -833,6 +742,25 @@ LOG_GROUP_INSTALLS = True
 LOG_TRADES = True
 
 LOG_MARKET = True
+
+
+# ============================================================
+# LOG CHANNELS
+# ============================================================
+
+GROUP_LOG_CHAT_ID = int(
+    os.getenv(
+        "GROUP_LOG_CHAT_ID",
+        "0"
+    )
+)
+
+OWNER_LOG_CHAT_ID = int(
+    os.getenv(
+        "OWNER_LOG_CHAT_ID",
+        "0"
+    )
+)
 
 
 # ============================================================
@@ -863,7 +791,7 @@ MAINTENANCE_MODE = (
 
 
 # ============================================================
-# TELEGRAM SETTINGS
+# TELEGRAM
 # ============================================================
 
 PARSE_MODE = "HTML"
@@ -874,19 +802,19 @@ PROTECT_CONTENT = False
 
 
 # ============================================================
-# RENDER SETTINGS
+# RENDER
 # ============================================================
+
+HOST = os.getenv(
+    "HOST",
+    "0.0.0.0"
+)
 
 PORT = int(
     os.getenv(
         "PORT",
         "10000"
     )
-)
-
-HOST = os.getenv(
-    "HOST",
-    "0.0.0.0"
 )
 
 
@@ -924,18 +852,14 @@ DEBUG = (
 # ============================================================
 
 if not BOT_TOKEN:
-
     print(
         "⚠️ WARNING: BOT_TOKEN is not configured."
     )
 
-
 if not OWNER_ID:
-
     print(
         "⚠️ WARNING: OWNER_ID is not configured."
     )
-
 
 print(
     "✅ NEXUS CARD BOT configuration loaded."
