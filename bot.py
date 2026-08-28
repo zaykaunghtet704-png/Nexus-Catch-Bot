@@ -1,5 +1,4 @@
 import logging
-import os
 import random
 import time
 
@@ -8,10 +7,12 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
+
 from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    ChatMemberHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -45,9 +46,9 @@ from database import (
     init_db,
     add_or_update_user,
     get_user,
+    get_balance,
     add_coins,
     remove_coins,
-    get_balance,
     get_card,
     get_all_cards,
     search_cards,
@@ -56,16 +57,62 @@ from database import (
     count_user_cards,
     add_favorite,
     remove_favorite,
-    is_favorite,
     get_global_top,
     get_group_top,
     get_setting,
     set_setting,
     is_admin,
+    add_admin,
+    remove_admin,
     save_group,
     approve_group,
     reject_group,
     is_group_enabled,
+    add_card,
+    delete_card,
+    update_card_price,
+    get_db,
+)
+
+# ============================================================
+# MODULES
+# ============================================================
+
+from drops import (
+    create_drop,
+    claim_drop_callback,
+)
+
+from harem_system import (
+    harem_command,
+    harem_callback,
+    reset_command,
+)
+
+from profile_system import (
+    profile_command,
+    profile_callback,
+)
+
+from search import (
+    search_command,
+    search_callback,
+)
+
+from market import (
+    sell_command as market_sell_command,
+    market_command,
+    buy_command as market_buy_command,
+    delist_command,
+    market_callback,
+)
+
+from economy import (
+    daily_command,
+    balance_command,
+    sellprice_command,
+    gift_command,
+    trade_command,
 )
 
 
@@ -74,206 +121,26 @@ from database import (
 # ============================================================
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     level=logging.INFO,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("nexus-card-bot")
 
 
 # ============================================================
-# STARTUP
+# DATABASE
 # ============================================================
 
 init_db()
 
 
 # ============================================================
-# TEXT
-# ============================================================
-
-START_TEXT_MY = f"""
-🎴 <b>{BOT_NAME}</b>
-
-✨ Welcome to Nexus Card!
-
-🎴 Card Collection
-💰 Coin Economy
-🛒 Card Market
-⚔️ Duel System
-🏆 Global Rankings
-🎁 Daily Rewards
-⭐ Favorites
-
-<b>Version:</b> {BOT_VERSION}
-
-အောက်က Button တွေကနေ စတင်အသုံးပြုနိုင်ပါတယ်။
-"""
-
-START_TEXT_EN = f"""
-🎴 <b>{BOT_NAME}</b>
-
-✨ Welcome to Nexus Card!
-
-🎴 Card Collection
-💰 Coin Economy
-🛒 Card Market
-⚔️ Duel System
-🏆 Global Rankings
-🎁 Daily Rewards
-⭐ Favorites
-
-<b>Version:</b> {BOT_VERSION}
-
-Use the buttons below to get started.
-"""
-
-
-# ============================================================
-# HELP
-# ============================================================
-
-HELP_MY = """
-📚 <b>NEXUS CARD — COMMAND GUIDE</b>
-
-🎴 <b>Basic</b>
-
-/start — Bot စတင်ရန်
-/help — Command Guide
-/balance — Coin လက်ကျန်
-/daily — နေ့စဉ် 500 Coins
-/profile — Profile
-/harem — ကိုယ်ပိုင် Card Collection
-/search — Card ရှာရန်
-/check [id] — Card ကြည့်ရန်
-
-🏆 <b>Ranking</b>
-
-/top — Global Top 15
-/ctop — လက်ရှိ Group Top
-/rankings — Global Ranking
-
-🎴 <b>Card</b>
-
-/claim — Card ရယူရန်
-/Nexus [Card Name] — Card ရှာရန်
-/fav [id] — Favorite
-/unfav [id] — Favorite ဖြုတ်ရန်
-/hmode — Harem display mode
-/reset — Harem setting reset
-/upgrade — Card Level တင်ရန်
-
-🛒 <b>Market</b>
-
-/market — ရောင်းရန်တင်ထားသော Card များ
-/sell [char_id] [price] — Card ရောင်းရန်
-/buy [listing_id] — Card ဝယ်ရန်
-/delist [listing_id] — Listing ဖြုတ်ရန်
-/sellprice — Card စျေးနှုန်း
-
-🤝 <b>Social</b>
-
-/gift [char_id] — Card လက်ဆောင်ပေးရန်
-/trade YOUR_ID THEIR_ID — Trade
-/duel — Duel
-
-🎁 <b>Daily</b>
-
-/todayNexusCatch — ဒီနေ့ Card ရထားသူ Ranking
-
-👑 <b>Owner/Admin</b>
-
-/drop
-/addcard
-/deletecard
-/givecard
-/givecoin
-/setprice
-/setdrop
-/setadmin
-/deladmin
-/approve
-/reject
-/broadcast
-/stats
-/maintenance
-/changetime
-"""
-
-
-HELP_EN = """
-📚 <b>NEXUS CARD — COMMAND GUIDE</b>
-
-🎴 <b>Basic</b>
-
-/start — Start the bot
-/help — Command Guide
-/balance — Check coins
-/daily — Daily 500 Coins
-/profile — Profile
-/harem — Your collection
-/search — Search cards
-/check [id] — View card
-
-🏆 <b>Ranking</b>
-
-/top — Global Top 15
-/ctop — Current Group Top
-/rankings — Global Ranking
-
-🎴 <b>Cards</b>
-
-/claim — Claim a card
-/Nexus [Card Name] — Search card
-/fav [id] — Favorite
-/unfav [id] — Remove favorite
-/hmode — Harem display mode
-/reset — Reset harem mode
-/upgrade — Upgrade card
-
-🛒 <b>Market</b>
-
-/market — View marketplace
-/sell [char_id] [price] — Sell card
-/buy [listing_id] — Buy listing
-/delist [listing_id] — Remove listing
-/sellprice — Card prices
-
-🤝 <b>Social</b>
-
-/gift [char_id] — Gift a card
-/trade YOUR_ID THEIR_ID — Trade
-/duel — Duel
-
-🎁 <b>Daily</b>
-
-/todayNexusCatch — Today's catch ranking
-
-👑 <b>Owner/Admin</b>
-
-/drop
-/addcard
-/deletecard
-/givecard
-/givecoin
-/setprice
-/setdrop
-/setadmin
-/deladmin
-/approve
-/reject
-/broadcast
-/stats
-/maintenance
-/changetime
-"""
-
-
-# ============================================================
 # USER REGISTER
 # ============================================================
 
-def register_user(update: Update):
+def register_user(update):
+
     user = update.effective_user
 
     if not user:
@@ -288,15 +155,52 @@ def register_user(update: Update):
 
 
 # ============================================================
-# ADMIN CHECK
+# PERMISSION
 # ============================================================
 
-def is_owner(user_id: int) -> bool:
-    return user_id == OWNER_ID
+def is_owner(user_id):
+
+    return int(user_id) == int(OWNER_ID)
 
 
-def is_owner_or_admin(user_id: int) -> bool:
-    return is_owner(user_id) or is_admin(user_id)
+def is_staff(user_id):
+
+    return (
+        is_owner(user_id)
+        or is_admin(user_id)
+    )
+
+
+async def owner_guard(update):
+
+    user = update.effective_user
+
+    if user and is_owner(user.id):
+        return True
+
+    await update.effective_message.reply_text(
+        "👑 <b>Owner Only</b>\n\n"
+        "ဒီ Command ကို Bot Owner ပဲ အသုံးပြုနိုင်ပါတယ်။",
+        parse_mode="HTML",
+    )
+
+    return False
+
+
+async def admin_guard(update):
+
+    user = update.effective_user
+
+    if user and is_staff(user.id):
+        return True
+
+    await update.effective_message.reply_text(
+        "🛡️ <b>Admin Only</b>\n\n"
+        "ဒီ Command ကို Admin / Owner ပဲ အသုံးပြုနိုင်ပါတယ်။",
+        parse_mode="HTML",
+    )
+
+    return False
 
 
 # ============================================================
@@ -304,86 +208,123 @@ def is_owner_or_admin(user_id: int) -> bool:
 # ============================================================
 
 async def check_group_access(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> bool:
+    update,
+    context,
+):
 
     chat = update.effective_chat
+    user = update.effective_user
 
     if not chat:
         return True
 
-    # Private chat
     if chat.type == "private":
         return True
 
-    # Owner bypass
-    if update.effective_user and is_owner(
-        update.effective_user.id
-    ):
+    if user and is_owner(user.id):
         return True
 
-    # Get bot membership
+    # --------------------------------------------------------
+    # BOT ADMIN CHECK
+    # --------------------------------------------------------
+
+    bot_is_admin = False
+
     try:
-        bot_member = await context.bot.get_chat_member(
+
+        me = await context.bot.get_me()
+
+        member = await context.bot.get_chat_member(
             chat.id,
-            context.bot.id,
+            me.id,
         )
 
-        bot_is_admin = bot_member.status in (
+        bot_is_admin = member.status in (
             "administrator",
             "creator",
         )
 
     except Exception:
+
         bot_is_admin = False
 
-    # Get member count
+    # --------------------------------------------------------
+    # MEMBER COUNT
+    # --------------------------------------------------------
+
     try:
-        member_count = await context.bot.get_chat_member_count(
-            chat.id
+
+        member_count = (
+            await context.bot.get_chat_member_count(
+                chat.id
+            )
         )
+
     except Exception:
+
         member_count = 0
 
-    # Save group
+    # --------------------------------------------------------
+    # SAVE GROUP
+    # --------------------------------------------------------
+
     save_group(
         chat.id,
         chat.title or "",
         member_count,
         int(bot_is_admin),
-        update.effective_user.id
-        if update.effective_user
-        else 0,
+        user.id if user else 0,
     )
 
-    # Bot Admin required
-    if REQUIRE_BOT_ADMIN and not bot_is_admin:
+    # --------------------------------------------------------
+    # BOT ADMIN REQUIRED
+    # --------------------------------------------------------
+
+    if (
+        REQUIRE_BOT_ADMIN
+        and not bot_is_admin
+    ):
+
         await update.effective_message.reply_text(
-            "⚠️ <b>Bot Admin မဟုတ်သေးပါ။</b>\n\n"
-            "Bot ကို Group Admin ပေးပြီး ပြန်အသုံးပြုပါ။",
+            "🤖 <b>Bot Admin လိုအပ်ပါတယ်။</b>\n\n"
+            "Bot ကို Group Admin ပေးပြီး "
+            "ပြန်အသုံးပြုပါ။",
             parse_mode="HTML",
         )
+
         return False
 
-    # Minimum members
+    # --------------------------------------------------------
+    # MINIMUM MEMBERS
+    # --------------------------------------------------------
+
     if member_count < MIN_GROUP_MEMBERS:
+
         await update.effective_message.reply_text(
-            f"👥 ဒီ Group မှာ အနည်းဆုံး "
+            f"👥 Group မှာ Member အနည်းဆုံး "
             f"<b>{MIN_GROUP_MEMBERS}</b> ယောက်ရှိရပါမယ်။\n\n"
-            f"လက်ရှိ Members: <b>{member_count}</b>",
+            f"လက်ရှိ Member — <b>{member_count}</b>",
             parse_mode="HTML",
         )
+
         return False
 
-    # Owner approval
-    if REQUIRE_OWNER_APPROVAL and not is_group_enabled(chat.id):
+    # --------------------------------------------------------
+    # OWNER APPROVAL
+    # --------------------------------------------------------
+
+    if (
+        REQUIRE_OWNER_APPROVAL
+        and not is_group_enabled(chat.id)
+    ):
+
         await update.effective_message.reply_text(
             "🔐 <b>Owner Approval လိုအပ်ပါတယ်။</b>\n\n"
             "Bot Owner ကို အကြောင်းကြားပြီး "
             "Group ကို ဖွင့်ပေးမှ အသုံးပြုနိုင်ပါတယ်။",
             parse_mode="HTML",
         )
+
         return False
 
     return True
@@ -393,41 +334,86 @@ async def check_group_access(
 # START
 # ============================================================
 
+START_TEXT_MY = f"""
+🎴 <b>{BOT_NAME}</b>
+
+✨ Nexus Card Collection Bot
+
+🎴 Card Collection
+🪙 Coin Economy
+🛒 Card Market
+🏆 Global Rankings
+⚔️ Duel System
+🎁 Daily Rewards
+⭐ Favorites
+
+🧩 Version: <b>{BOT_VERSION}</b>
+
+အောက်က Button တွေကနေ စတင်အသုံးပြုနိုင်ပါတယ်။ 💎
+"""
+
+
+START_TEXT_EN = f"""
+🎴 <b>{BOT_NAME}</b>
+
+✨ Nexus Card Collection Bot
+
+🎴 Card Collection
+🪙 Coin Economy
+🛒 Card Market
+🏆 Global Rankings
+⚔️ Duel System
+🎁 Daily Rewards
+⭐ Favorites
+
+🧩 Version: <b>{BOT_VERSION}</b>
+
+Use the buttons below to get started.
+"""
+
+
 async def start_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     register_user(update)
 
     keyboard = [
+
         [
             InlineKeyboardButton(
                 "💗 I'm Waifu",
                 url=WAIFU_LINK,
             )
         ],
+
         [
             InlineKeyboardButton(
                 "👥 Group",
                 url=GROUP_LINK,
             ),
+
             InlineKeyboardButton(
                 "📢 Channel",
                 url=CHANNEL_LINK,
             ),
         ],
+
         [
             InlineKeyboardButton(
                 "📚 Help",
-                callback_data="help",
+                callback_data="help:0",
             )
         ],
+
     ]
 
     await update.effective_message.reply_text(
         START_TEXT_MY,
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
         parse_mode="HTML",
     )
 
@@ -436,439 +422,163 @@ async def start_command(
 # HELP
 # ============================================================
 
+HELP_PAGES = [
+
+"""
+📚 <b>NEXUS COMMAND GUIDE — 1/4</b>
+
+🎴 <b>Basic</b>
+
+/start — Bot စတင်ရန်
+/help — Command Guide
+/profile — User Profile
+/harem — Card Collection
+/search [name/id] — Card ရှာရန်
+/check [id] — Card ကြည့်ရန်
+/balance — Coin လက်ကျန်
+/daily — နေ့စဉ် 500 Coins
+
+🏆 <b>Ranking</b>
+
+/top — Global Top 15
+/ctop — Group Top
+/rankings — Global Ranking
+/todayNexusCatch — ဒီနေ့ Card ရထားသူများ
+""",
+
+"""
+📚 <b>NEXUS COMMAND GUIDE — 2/4</b>
+
+🎴 <b>Card</b>
+
+/claim — 12 Hours Cooldown
+/Nexus [Card Name] — Card Search
+/fav [id] — Favorite
+/unfav [id] — Favorite ဖြုတ်
+/hmode — Harem Mode
+/reset — Harem Reset
+/upgrade [id] — Card Upgrade
+
+🛒 <b>Market</b>
+
+/market
+/sell [char_id] [price]
+/buy [listing_id]
+/delist [listing_id]
+/sellprice
+""",
+
+"""
+📚 <b>NEXUS COMMAND GUIDE — 3/4</b>
+
+🤝 <b>Social</b>
+
+/gift [char_id]
+/trade YOUR_ID THEIR_ID
+/duel
+
+📌 Trade / Gift မှာ
+Target User ရဲ့ message ကို Reply လုပ်ပြီး
+Command သုံးပါ။
+
+🌐 <b>Group Rules</b>
+
+• Bot ကို Group Admin ပေးထားရမယ်
+• Member 50 ယောက် အနည်းဆုံးရှိရမယ်
+• Owner Approval လိုအပ်တယ်
+• Group / Channel Join Requirement ရှိတယ်
+""",
+
+"""
+📚 <b>NEXUS COMMAND GUIDE — 4/4</b>
+
+👑 <b>Owner / Admin</b>
+
+/drop
+/addcard
+/deletecard
+/givecard
+/takecard
+/givecoin
+/takecoin
+/setprice
+/setdrop
+/setadmin
+/deladmin
+/approve
+/reject
+/stats
+/maintenance
+/changetime
+/broadcast
+
+🎴 Card Edition — 13 Levels
+💎 Premium Edition = Highest
+🪙 Premium Sell Price = 15,000 Coins
+"""
+]
+
+
+def help_keyboard(page):
+
+    buttons = []
+
+    navigation = []
+
+    if page > 0:
+
+        navigation.append(
+            InlineKeyboardButton(
+                "⬅️",
+                callback_data=f"help:{page - 1}",
+            )
+        )
+
+    navigation.append(
+        InlineKeyboardButton(
+            f"📄 {page + 1}/{len(HELP_PAGES)}",
+            callback_data="help:no",
+        )
+    )
+
+    if page < len(HELP_PAGES) - 1:
+
+        navigation.append(
+            InlineKeyboardButton(
+                "➡️",
+                callback_data=f"help:{page + 1}",
+            )
+        )
+
+    buttons.append(navigation)
+
+    buttons.append([
+        InlineKeyboardButton(
+            "🇲🇲 Myanmar",
+            callback_data="lang:my",
+        ),
+
+        InlineKeyboardButton(
+            "🇬🇧 English",
+            callback_data="lang:en",
+        ),
+    ])
+
+    return InlineKeyboardMarkup(buttons)
+
+
 async def help_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     register_user(update)
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🇲🇲 Myanmar",
-                callback_data="help_my",
-            ),
-            InlineKeyboardButton(
-                "🇬🇧 English",
-                callback_data="help_en",
-            ),
-        ]
-    ]
 
     await update.effective_message.reply_text(
-        HELP_MY,
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        HELP_PAGES[0],
+        reply_markup=help_keyboard(0),
         parse_mode="HTML",
     )
-
-
-# ============================================================
-# HELP CALLBACK
-# ============================================================
-
-async def help_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "help_en":
-        text = HELP_EN
-    else:
-        text = HELP_MY
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🇲🇲 Myanmar",
-                callback_data="help_my",
-            ),
-            InlineKeyboardButton(
-                "🇬🇧 English",
-                callback_data="help_en",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 Start",
-                callback_data="start",
-            )
-        ],
-    ]
-
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-    )
-
-
-# ============================================================
-# BALANCE
-# ============================================================
-
-async def balance_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    register_user(update)
-
-    user_id = update.effective_user.id
-    coins = get_balance(user_id)
-
-    await update.effective_message.reply_text(
-        f"💰 <b>Your Balance</b>\n\n"
-        f"🪙 Coins: <b>{coins:,}</b>",
-        parse_mode="HTML",
-    )
-
-
-# ============================================================
-# DAILY
-# ============================================================
-
-async def daily_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    register_user(update)
-
-    user_id = update.effective_user.id
-    user = get_user(user_id)
-
-    now = time.time()
-
-    last_daily = 0
-
-    if user:
-        last_daily = user["daily_claim"] or 0
-
-    if now - last_daily < 86400:
-
-        remaining = int(
-            86400 - (now - last_daily)
-        )
-
-        hours = remaining // 3600
-        minutes = (remaining % 3600) // 60
-
-        await update.effective_message.reply_text(
-            f"⏳ Daily Reward ပြန်ရဖို့ "
-            f"<b>{hours}h {minutes}m</b> ကျန်ပါသေးတယ်။",
-            parse_mode="HTML",
-        )
-
-        return
-
-    add_coins(user_id, DAILY_COINS)
-
-    with __import__("database").get_db() as db:
-        db.execute(
-            """
-            UPDATE users
-            SET daily_claim = ?
-            WHERE user_id = ?
-            """,
-            (now, user_id),
-        )
-
-    await update.effective_message.reply_text(
-        f"🎁 <b>Daily Reward!</b>\n\n"
-        f"🪙 +{DAILY_COINS:,} Coins\n\n"
-        f"💰 Balance: <b>{get_balance(user_id):,}</b>",
-        parse_mode="HTML",
-    )
-
-
-# ============================================================
-# PROFILE
-# ============================================================
-
-async def profile_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    register_user(update)
-
-    user = update.effective_user
-    db_user = get_user(user.id)
-
-    cards = count_user_cards(user.id)
-    balance = get_balance(user.id)
-
-    caption = (
-        f"👤 <b>{user.first_name}</b>\n\n"
-        f"🆔 ID: <code>{user.id}</code>\n"
-        f"🎴 Cards: <b>{cards}</b>\n"
-        f"🪙 Coins: <b>{balance:,}</b>\n"
-        f"⭐ Level: <b>{db_user['level'] if db_user else 1}</b>\n"
-        f"✨ EXP: <b>{db_user['exp'] if db_user else 0}</b>\n"
-    )
-
-    photos = await context.bot.get_user_profile_photos(
-        user.id,
-        limit=1,
-    )
-
-    if photos.total_count > 0:
-
-        file_id = photos.photos[0][-1].file_id
-
-        await update.effective_message.reply_photo(
-            photo=file_id,
-            caption=caption,
-            parse_mode="HTML",
-        )
-
-    else:
-
-        await update.effective_message.reply_text(
-            caption,
-            parse_mode="HTML",
-        )
-
-
-# ============================================================
-# HAREM
-# ============================================================
-
-async def harem_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    register_user(update)
-
-    if not await check_group_access(
-        update,
-        context,
-    ):
-        return
-
-    user_id = update.effective_user.id
-    cards = get_user_cards(user_id)
-
-    if not cards:
-
-        await update.effective_message.reply_text(
-            "🎴 <b>Your Harem is Empty!</b>\n\n"
-            "Card ရဖို့ /claim ကိုအသုံးပြုပါ။",
-            parse_mode="HTML",
-        )
-
-        return
-
-    page = 0
-
-    await send_harem_page(
-        update.effective_message,
-        cards,
-        page,
-    )
-
-
-async def send_harem_page(
-    message,
-    cards,
-    page,
-):
-
-    start = page * HAREM_PER_PAGE
-    end = start + HAREM_PER_PAGE
-
-    page_cards = cards[start:end]
-
-    text = (
-        f"🎴 <b>HAREM</b>\n"
-        f"📄 Page {page + 1}/"
-        f"{max(1, (len(cards) + HAREM_PER_PAGE - 1) // HAREM_PER_PAGE)}\n\n"
-    )
-
-    for index, card in enumerate(
-        page_cards,
-        start=start + 1,
-    ):
-
-        fav = "⭐" if card["favorite"] else ""
-
-        text += (
-            f"<b>{index}.</b> "
-            f"{fav}{card['name']}\n"
-            f"🆔 {card['char_id']} • "
-            f"{card['edition']} • "
-            f"Lv.{card['level']}\n\n"
-        )
-
-    buttons = []
-
-    if page > 0:
-        buttons.append(
-            InlineKeyboardButton(
-                "⬅️",
-                callback_data=f"harem:{page - 1}",
-            )
-        )
-
-    if end < len(cards):
-        buttons.append(
-            InlineKeyboardButton(
-                "➡️",
-                callback_data=f"harem:{page + 1}",
-            )
-        )
-
-    keyboard = [buttons] if buttons else []
-
-    await message.reply_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-        if keyboard
-        else None,
-        parse_mode="HTML",
-    )
-
-
-# ============================================================
-# HAREM CALLBACK
-# ============================================================
-
-async def harem_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-    await query.answer()
-
-    if not query.data.startswith("harem:"):
-        return
-
-    page = int(
-        query.data.split(":")[1]
-    )
-
-    cards = get_user_cards(
-        query.from_user.id
-    )
-
-    if not cards:
-        await query.edit_message_text(
-            "🎴 Harem is empty."
-        )
-        return
-
-    start = page * HAREM_PER_PAGE
-    end = start + HAREM_PER_PAGE
-
-    page_cards = cards[start:end]
-
-    text = (
-        f"🎴 <b>HAREM</b>\n"
-        f"📄 Page {page + 1}/"
-        f"{max(1, (len(cards) + HAREM_PER_PAGE - 1) // HAREM_PER_PAGE)}\n\n"
-    )
-
-    for index, card in enumerate(
-        page_cards,
-        start=start + 1,
-    ):
-
-        fav = "⭐" if card["favorite"] else ""
-
-        text += (
-            f"<b>{index}.</b> "
-            f"{fav}{card['name']}\n"
-            f"🆔 {card['char_id']} • "
-            f"{card['edition']} • "
-            f"Lv.{card['level']}\n\n"
-        )
-
-    buttons = []
-
-    if page > 0:
-        buttons.append(
-            InlineKeyboardButton(
-                "⬅️",
-                callback_data=f"harem:{page - 1}",
-            )
-        )
-
-    if end < len(cards):
-        buttons.append(
-            InlineKeyboardButton(
-                "➡️",
-                callback_data=f"harem:{page + 1}",
-            )
-        )
-
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(
-            [buttons]
-        ) if buttons else None,
-        parse_mode="HTML",
-    )
-
-
-# ============================================================
-# SEARCH
-# ============================================================
-
-async def search_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    register_user(update)
-
-    if not context.args:
-
-        await update.effective_message.reply_text(
-            "🔎 Usage:\n"
-            "<code>/search Naruto</code>",
-            parse_mode="HTML",
-        )
-
-        return
-
-    keyword = " ".join(context.args)
-
-    cards = search_cards(keyword)
-
-    if not cards:
-
-        await update.effective_message.reply_text(
-            "❌ Card မတွေ့ပါ။"
-        )
-
-        return
-
-    text = (
-        f"🔎 <b>Search:</b> {keyword}\n\n"
-    )
-
-    for card in cards[:SEARCH_LIMIT]:
-
-        text += (
-            f"🎴 <b>{card['name']}</b>\n"
-            f"🆔 <code>{card['char_id']}</code>\n"
-            f"✨ {card['edition']}\n"
-            f"💰 {card['price']:,} Coins\n\n"
-        )
-
-    await update.effective_message.reply_text(
-        text,
-        parse_mode="HTML",
-    )
-
-
-SEARCH_LIMIT = 10
 
 
 # ============================================================
@@ -876,8 +586,8 @@ SEARCH_LIMIT = 10
 # ============================================================
 
 async def check_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     register_user(update)
@@ -885,7 +595,9 @@ async def check_command(
     if not context.args:
 
         await update.effective_message.reply_text(
-            "Usage: /check [card_id]"
+            "🎴 Usage:\n"
+            "<code>/check [card_id]</code>",
+            parse_mode="HTML",
         )
 
         return
@@ -907,11 +619,14 @@ async def check_command(
         f"🆔 ID: <code>{card['char_id']}</code>\n"
         f"✨ Edition: <b>{card['edition']}</b>\n"
         f"⭐ Rarity: <b>{card['rarity']}</b>\n"
-        f"💰 Price: <b>{card['price']:,}</b>\n"
+        f"💰 Price: <b>{int(card['price'] or 0):,}</b>\n"
         f"📝 {card['description'] or 'No description'}"
     )
 
-    if card["media_type"] == "video" and card["video_file_id"]:
+    if (
+        card["media_type"] == "video"
+        and card["video_file_id"]
+    ):
 
         await update.effective_message.reply_video(
             video=card["video_file_id"],
@@ -936,37 +651,57 @@ async def check_command(
 
 
 # ============================================================
-# TOP
+# NEXUS SEARCH ALIAS
+# ============================================================
+
+async def nexus_command(
+    update,
+    context,
+):
+
+    await search_command(
+        update,
+        context,
+    )
+
+
+# ============================================================
+# GLOBAL TOP
 # ============================================================
 
 async def top_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     register_user(update)
 
-    top = get_global_top(TOP_LIMIT)
+    rows = get_global_top(
+        TOP_LIMIT
+    )
 
-    if not top:
+    if not rows:
 
         await update.effective_message.reply_text(
-            "🏆 Ranking မရှိသေးပါ။"
+            "🏆 Ranking data မရှိသေးပါ။"
         )
 
         return
 
-    text = "🏆 <b>GLOBAL TOP 15</b>\n\n"
+    text = (
+        "🏆 <b>NEXUS GLOBAL TOP 15</b>\n\n"
+    )
 
-    medals = {
-        1: "🥇",
-        2: "🥈",
-        3: "🥉",
-    }
+    for index, row in enumerate(
+        rows[:TOP_LIMIT],
+        start=1,
+    ):
 
-    for index, row in enumerate(top, start=1):
-
-        medal = medals.get(
+        medal = {
+            1: "🥇",
+            2: "🥈",
+            3: "🥉",
+        }.get(
             index,
             f"{index}.",
         )
@@ -989,82 +724,59 @@ async def top_command(
 
 
 # ============================================================
-# RANKINGS
-# ============================================================
-
-async def rankings_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    await top_command(
-        update,
-        context,
-    )
-
-
-# ============================================================
 # GROUP TOP
 # ============================================================
 
 async def ctop_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     register_user(update)
-
-    chat = update.effective_chat
-
-    if not chat or chat.type == "private":
-
-        await update.effective_message.reply_text(
-            "👥 ဒီ command ကို Group ထဲမှာ အသုံးပြုပါ။"
-        )
-
-        return
 
     if not await check_group_access(
         update,
         context,
     ):
+
         return
+
+    chat = update.effective_chat
 
     try:
 
-        members = []
-
-        administrators = await context.bot.get_chat_administrators(
-            chat.id
+        administrators = (
+            await context.bot.get_chat_administrators(
+                chat.id
+            )
         )
 
-        for member in administrators:
-            members.append(
-                member.user.id
-            )
+        member_ids = [
+            x.user.id
+            for x in administrators
+        ]
 
-        top = get_group_top(
-            members,
+        rows = get_group_top(
+            member_ids,
             TOP_LIMIT,
         )
 
     except Exception:
 
-        top = []
+        rows = []
 
     text = (
-        f"🏆 <b>{chat.title}</b>\n"
-        f"👥 Group Top\n\n"
+        f"👥 <b>{chat.title or 'GROUP'} TOP</b>\n\n"
     )
 
-    if not top:
+    if not rows:
 
-        text += "Ranking data မရှိသေးပါ။"
+        text += "📭 Ranking data မရှိသေးပါ။"
 
     else:
 
         for index, row in enumerate(
-            top,
+            rows,
             start=1,
         ):
 
@@ -1087,12 +799,110 @@ async def ctop_command(
 
 
 # ============================================================
+# TODAY NEXUS CATCH
+# ============================================================
+
+async def today_nexus_catch_command(
+    update,
+    context,
+):
+
+    register_user(update)
+
+    cutoff = (
+        time.time()
+        - 86400
+    )
+
+    with get_db() as db:
+
+        rows = db.execute(
+            """
+            SELECT
+                user_id,
+                COUNT(*) AS total
+            FROM user_cards
+            WHERE obtained_at >= ?
+            GROUP BY user_id
+            ORDER BY total DESC
+            LIMIT ?
+            """,
+            (
+                cutoff,
+                TOP_LIMIT,
+            ),
+        ).fetchall()
+
+    text = (
+        "⚡ <b>TODAY NEXUS CATCH</b>\n\n"
+    )
+
+    if not rows:
+
+        text += (
+            "📭 ဒီနေ့ Card ရထားသူ "
+            "မရှိသေးပါ။"
+        )
+
+    else:
+
+        for index, row in enumerate(
+            rows,
+            start=1,
+        ):
+
+            user = get_user(
+                row["user_id"]
+            )
+
+            if user:
+
+                name = (
+                    f"@{user['username']}"
+                    if user["username"]
+                    else user["first_name"]
+                )
+
+            else:
+
+                name = str(
+                    row["user_id"]
+                )
+
+            text += (
+                f"<b>{index}.</b> "
+                f"{name} — "
+                f"🎴 {row['total']}\n"
+            )
+
+    await update.effective_message.reply_text(
+        text,
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# RANKINGS ALIAS
+# ============================================================
+
+async def rankings_command(
+    update,
+    context,
+):
+
+    await top_command(
+        update,
+        context,
+    )
+
+
+# ============================================================
 # FAVORITE
 # ============================================================
 
 async def fav_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     register_user(update)
@@ -1100,7 +910,8 @@ async def fav_command(
     if not context.args:
 
         await update.effective_message.reply_text(
-            "Usage: /fav [character_id]"
+            "Usage: <code>/fav [character_id]</code>",
+            parse_mode="HTML",
         )
 
         return
@@ -1121,14 +932,15 @@ async def fav_command(
     )
 
     await update.effective_message.reply_text(
-        f"⭐ <code>{char_id}</code> ကို Favorite လုပ်ပြီးပါပြီ။",
+        f"⭐ <code>{char_id}</code> ကို "
+        "Favorite လုပ်ပြီးပါပြီ။",
         parse_mode="HTML",
     )
 
 
 async def unfav_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     register_user(update)
@@ -1136,16 +948,15 @@ async def unfav_command(
     if not context.args:
 
         await update.effective_message.reply_text(
-            "Usage: /unfav [character_id]"
+            "Usage: <code>/unfav [character_id]</code>",
+            parse_mode="HTML",
         )
 
         return
 
-    char_id = context.args[0]
-
     remove_favorite(
         update.effective_user.id,
-        char_id,
+        context.args[0],
     )
 
     await update.effective_message.reply_text(
@@ -1158,8 +969,8 @@ async def unfav_command(
 # ============================================================
 
 async def claim_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     register_user(update)
@@ -1168,26 +979,49 @@ async def claim_command(
         update,
         context,
     ):
+
         return
 
-    user_id = update.effective_user.id
+    user_id = (
+        update.effective_user.id
+    )
 
-    user = get_user(user_id)
+    user = get_user(
+        user_id
+    )
 
     if not user:
-
-        await update.effective_message.reply_text(
-            "❌ User registration error."
-        )
-
         return
 
     now = time.time()
 
-    last_claim = user["last_claim"] or 0
+    last_claim = float(
+        user["last_claim"] or 0
+    )
 
-    # 12-hour cooldown
-    if now - last_claim < CLAIM_COOLDOWN_HOURS * 3600:
+    claim_count = int(
+        user["claim_count_24h"] or 0
+    )
+
+    # Reset 24h counter
+    if now - last_claim >= 86400:
+
+        claim_count = 0
+
+    if claim_count >= CLAIM_LIMIT_24H:
+
+        await update.effective_message.reply_text(
+            "🎴 24 နာရီအတွင်း Card "
+            "2 ကဒ် ရပြီးပါပြီ။\n\n"
+            "နောက်နေ့မှ ပြန် Claim လုပ်ပါ။"
+        )
+
+        return
+
+    if (
+        now - last_claim
+        < CLAIM_COOLDOWN_HOURS * 3600
+    ):
 
         remaining = int(
             CLAIM_COOLDOWN_HOURS * 3600
@@ -1195,25 +1029,17 @@ async def claim_command(
         )
 
         hours = remaining // 3600
-        minutes = (remaining % 3600) // 60
+
+        minutes = (
+            remaining % 3600
+        ) // 60
 
         await update.effective_message.reply_text(
-            f"⏳ Claim cooldown\n\n"
-            f"နောက်ထပ် <b>{hours}h {minutes}m</b> ကြာမှ "
-            f"ပြန် Claim လုပ်နိုင်ပါမယ်။",
+            f"⏳ Claim Cooldown\n\n"
+            f"နောက်ထပ် <b>{hours}h "
+            f"{minutes}m</b> ကြာမှ "
+            f"ပြန် Claim လုပ်နိုင်ပါတယ်။",
             parse_mode="HTML",
-        )
-
-        return
-
-    # 24h max 2 cards
-    count = user["claim_count_24h"] or 0
-
-    if count >= CLAIM_LIMIT_24H:
-
-        await update.effective_message.reply_text(
-            "🎴 24 နာရီအတွင်း Card 2 ကဒ် ရပြီးပါပြီ။\n\n"
-            "နောက်နေ့မှ ပြန် Claim လုပ်ပါ။"
         )
 
         return
@@ -1223,7 +1049,8 @@ async def claim_command(
     if not cards:
 
         await update.effective_message.reply_text(
-            "❌ Card database ထဲမှာ Card မရှိသေးပါ။"
+            "❌ Card database ထဲမှာ "
+            "Card မရှိသေးပါ။"
         )
 
         return
@@ -1231,7 +1058,12 @@ async def claim_command(
     card = random.choices(
         cards,
         weights=[
-            max(0.01, float(c["drop_weight"]))
+            max(
+                0.01,
+                float(
+                    c["drop_weight"] or 1
+                ),
+            )
             for c in cards
         ],
         k=1,
@@ -1242,9 +1074,7 @@ async def claim_command(
         card["char_id"],
     )
 
-    with __import__("database").get_db() as db:
-
-        new_count = count + 1
+    with get_db() as db:
 
         db.execute(
             """
@@ -1255,7 +1085,7 @@ async def claim_command(
             """,
             (
                 now,
-                new_count,
+                claim_count + 1,
                 user_id,
             ),
         )
@@ -1263,7 +1093,7 @@ async def claim_command(
     await send_card_message(
         update.effective_message,
         card,
-        prefix="🎉 <b>Card Claimed!</b>\n\n",
+        "🎉 <b>CARD CLAIMED!</b>\n\n",
     )
 
 
@@ -1278,15 +1108,16 @@ async def send_card_message(
 ):
 
     text = (
-        f"{prefix}"
-        f"🎴 <b>{card['name']}</b>\n"
-        f"🆔 <code>{card['char_id']}</code>\n"
-        f"✨ {card['edition']}\n"
-        f"⭐ Rarity: {card['rarity']}\n"
-        f"💰 Price: {card['price']:,} Coins\n"
+        prefix
+        + f"🎴 <b>{card['name']}</b>\n"
+        + f"🆔 <code>{card['char_id']}</code>\n"
+        + f"✨ {card['edition']}\n"
+        + f"⭐ Rarity: {card['rarity']}\n"
+        + f"💰 {int(card['price'] or 0):,} Coins\n"
     )
 
     if card["description"]:
+
         text += (
             f"\n📝 {card['description']}"
         )
@@ -1297,7 +1128,7 @@ async def send_card_message(
     ):
 
         await message.reply_video(
-            video=card["video_file_id"],
+            card["video_file_id"],
             caption=text,
             parse_mode="HTML",
         )
@@ -1305,7 +1136,7 @@ async def send_card_message(
     elif card["image_file_id"]:
 
         await message.reply_photo(
-            photo=card["image_file_id"],
+            card["image_file_id"],
             caption=text,
             parse_mode="HTML",
         )
@@ -1319,174 +1150,1322 @@ async def send_card_message(
 
 
 # ============================================================
+# DROP
+# ============================================================
+
+async def drop_command(
+    update,
+    context,
+):
+
+    register_user(update)
+
+    if not is_staff(
+        update.effective_user.id
+    ):
+
+        await update.effective_message.reply_text(
+            "👑 Owner/Admin ပဲ "
+            "/drop အသုံးပြုနိုင်ပါတယ်။"
+        )
+
+        return
+
+    if not await check_group_access(
+        update,
+        context,
+    ):
+
+        return
+
+    await create_drop(
+        update.effective_message,
+        context,
+    )
+
+
+# ============================================================
 # HMODE
 # ============================================================
 
 async def hmode_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
+):
+
+    from harem_system import (
+        hmode_command as real_hmode_command
+    )
+
+    await real_hmode_command(
+        update,
+        context,
+    )
+
+
+# ============================================================
+# UPGRADE
+# ============================================================
+
+async def upgrade_command(
+    update,
+    context,
 ):
 
     register_user(update)
 
-    cards = get_user_cards(
+    if not context.args:
+
+        await update.effective_message.reply_text(
+            "⬆️ Usage:\n"
+            "<code>/upgrade [card_id]</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    char_id = context.args[0]
+
+    user_id = (
         update.effective_user.id
     )
 
-    if not cards:
+    with get_db() as db:
+
+        row = db.execute(
+            """
+            SELECT *
+            FROM user_cards
+            WHERE user_id = ?
+              AND char_id = ?
+            LIMIT 1
+            """,
+            (
+                user_id,
+                char_id,
+            ),
+        ).fetchone()
+
+    if not row:
 
         await update.effective_message.reply_text(
-            "🎴 Harem မရှိသေးပါ။"
+            "❌ ဒီ Card ကို မင်းမပိုင်ပါ။"
         )
 
         return
 
-    text = "🎴 <b>HMODE</b>\n\n"
+    level = int(
+        row["level"] or 1
+    )
 
-    for index, card in enumerate(
-        cards[:HMODE_LIMIT],
-        start=1,
+    cost = (
+        level * 250
+    )
+
+    if (
+        get_balance(user_id)
+        < cost
     ):
 
-        text += (
-            f"{index}. {card['name']} "
-            f"— {card['edition']}\n"
+        await update.effective_message.reply_text(
+            f"🪙 Coin မလုံလောက်ပါ။\n\n"
+            f"Upgrade Cost: "
+            f"<b>{cost:,}</b>",
+            parse_mode="HTML",
         )
 
-    text += (
-        "\nအောက်က Card ကို ရွေးပါ။"
-    )
-
-    buttons = []
-
-    for card in cards[:HMODE_LIMIT]:
-
-        buttons.append([
-            InlineKeyboardButton(
-                card["name"][:30],
-                callback_data=(
-                    f"hmode:{card['char_id']}"
-                ),
-            )
-        ])
-
-    await update.effective_message.reply_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="HTML",
-    )
-
-
-# ============================================================
-# HMODE CALLBACK
-# ============================================================
-
-async def hmode_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    query = update.callback_query
-    await query.answer()
-
-    if not query.data.startswith("hmode:"):
         return
 
-    char_id = query.data.split(
-        ":",
-        1
-    )[1]
+    remove_coins(
+        user_id,
+        cost,
+    )
 
-    with __import__("database").get_db() as db:
+    with get_db() as db:
 
         db.execute(
             """
-            INSERT INTO settings(key, value)
-            VALUES (?, ?)
-            ON CONFLICT(key)
-            DO UPDATE SET value = excluded.value
+            UPDATE user_cards
+            SET level = ?,
+                exp = 0
+            WHERE id = ?
             """,
             (
-                f"hmode_{query.from_user.id}",
-                char_id,
+                level + 1,
+                row["id"],
             ),
         )
 
-    await query.edit_message_text(
-        f"✅ HMODE Card သတ်မှတ်ပြီးပါပြီ။\n\n"
-        f"🎴 <code>{char_id}</code>",
+    await update.effective_message.reply_text(
+        f"⬆️ <b>UPGRADE SUCCESS</b>\n\n"
+        f"🎴 Card: <code>{char_id}</code>\n"
+        f"⭐ Lv.{level} → Lv.{level + 1}\n"
+        f"🪙 Cost: {cost:,}",
         parse_mode="HTML",
     )
 
 
 # ============================================================
-# RESET
+# TARGET USER
 # ============================================================
 
-async def reset_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+def get_target_user_id(
+    update,
+    context,
 ):
 
-    register_user(update)
+    if context.args:
 
-    user_id = update.effective_user.id
+        try:
+
+            return int(
+                context.args[0]
+            )
+
+        except ValueError:
+
+            pass
+
+    message = (
+        update.effective_message
+    )
+
+    if message.reply_to_message:
+
+        user = (
+            message.reply_to_message
+            .from_user
+        )
+
+        if user:
+
+            return user.id
+
+    return None
+
+
+# ============================================================
+# GIVE COIN
+# ============================================================
+
+async def givecoin_command(
+    update,
+    context,
+):
+
+    if not await admin_guard(update):
+        return
+
+    target = get_target_user_id(
+        update,
+        context,
+    )
+
+    if (
+        not target
+        or len(context.args) < 2
+    ):
+
+        await update.effective_message.reply_text(
+            "Usage:\n"
+            "<code>/givecoin USER_ID AMOUNT</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    try:
+
+        amount = int(
+            context.args[1]
+        )
+
+    except ValueError:
+
+        await update.effective_message.reply_text(
+            "❌ Amount မှားနေပါတယ်။"
+        )
+
+        return
+
+    if amount <= 0:
+
+        await update.effective_message.reply_text(
+            "❌ Amount က 0 ထက်ကြီးရပါမယ်။"
+        )
+
+        return
+
+    add_or_update_user(
+        target
+    )
+
+    add_coins(
+        target,
+        amount,
+    )
+
+    await update.effective_message.reply_text(
+        f"🪙 <b>+{amount:,} Coins</b>\n\n"
+        f"👤 User ID: <code>{target}</code>",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# TAKE COIN
+# ============================================================
+
+async def takecoin_command(
+    update,
+    context,
+):
+
+    if not await admin_guard(update):
+        return
+
+    target = get_target_user_id(
+        update,
+        context,
+    )
+
+    if (
+        not target
+        or len(context.args) < 2
+    ):
+
+        await update.effective_message.reply_text(
+            "Usage:\n"
+            "<code>/takecoin USER_ID AMOUNT</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    try:
+
+        amount = int(
+            context.args[1]
+        )
+
+    except ValueError:
+
+        await update.effective_message.reply_text(
+            "❌ Amount မှားနေပါတယ်။"
+        )
+
+        return
+
+    remove_coins(
+        target,
+        max(0, amount),
+    )
+
+    await update.effective_message.reply_text(
+        "✅ Coins ဖြုတ်ပြီးပါပြီ။"
+    )
+
+
+# ============================================================
+# GIVE CARD
+# ============================================================
+
+async def givecard_command(
+    update,
+    context,
+):
+
+    if not await admin_guard(update):
+        return
+
+    target = get_target_user_id(
+        update,
+        context,
+    )
+
+    if (
+        not target
+        or len(context.args) < 2
+    ):
+
+        await update.effective_message.reply_text(
+            "Usage:\n"
+            "<code>/givecard USER_ID CARD_ID</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    char_id = context.args[1]
+
+    card = get_card(
+        char_id
+    )
+
+    if not card:
+
+        await update.effective_message.reply_text(
+            "❌ Card မတွေ့ပါ။"
+        )
+
+        return
+
+    add_or_update_user(
+        target
+    )
+
+    add_user_card(
+        target,
+        char_id,
+    )
+
+    await update.effective_message.reply_text(
+        f"🎁 Card ပေးပြီးပါပြီ။\n\n"
+        f"🎴 {card['name']}\n"
+        f"🆔 <code>{char_id}</code>\n"
+        f"👤 <code>{target}</code>",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# TAKE CARD
+# ============================================================
+
+async def takecard_command(
+    update,
+    context,
+):
+
+    if not await admin_guard(update):
+        return
+
+    target = get_target_user_id(
+        update,
+        context,
+    )
+
+    if (
+        not target
+        or len(context.args) < 2
+    ):
+
+        await update.effective_message.reply_text(
+            "Usage:\n"
+            "<code>/takecard USER_ID CARD_ID</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    char_id = context.args[1]
+
+    with get_db() as db:
+
+        row = db.execute(
+            """
+            SELECT id
+            FROM user_cards
+            WHERE user_id = ?
+              AND char_id = ?
+            LIMIT 1
+            """,
+            (
+                target,
+                char_id,
+            ),
+        ).fetchone()
+
+        if row:
+
+            db.execute(
+                """
+                DELETE FROM user_cards
+                WHERE id = ?
+                """,
+                (
+                    row["id"],
+                ),
+            )
+
+    await update.effective_message.reply_text(
+        "✅ User Card ဖြုတ်ပြီးပါပြီ။"
+    )
+
+
+# ============================================================
+# ADD CARD
+# ============================================================
+
+async def addcard_command(
+    update,
+    context,
+):
+
+    if not await admin_guard(update):
+        return
+
+    if len(context.args) < 2:
+
+        await update.effective_message.reply_text(
+            "🎴 <b>ADD CARD</b>\n\n"
+            "Usage:\n"
+            "<code>/addcard "
+            "CARD_ID | NAME | EDITION | "
+            "RARITY | PRICE | DROP_WEIGHT</code>\n\n"
+            "Photo/Video ကို Reply လုပ်ပြီး "
+            "ဒီ Command သုံးနိုင်ပါတယ်။",
+            parse_mode="HTML",
+        )
+
+        return
+
+    raw = " ".join(
+        context.args
+    )
+
+    parts = [
+        x.strip()
+        for x in raw.split("|")
+    ]
+
+    char_id = parts[0]
+
+    name = parts[1]
+
+    edition = (
+        parts[2]
+        if len(parts) > 2
+        and parts[2]
+        else "Common"
+    )
+
+    try:
+
+        rarity = int(
+            parts[3]
+        ) if len(parts) > 3 else 1
+
+    except ValueError:
+
+        rarity = 1
+
+    try:
+
+        price = int(
+            parts[4]
+        ) if len(parts) > 4 else 0
+
+    except ValueError:
+
+        price = 0
+
+    try:
+
+        drop_weight = float(
+            parts[5]
+        ) if len(parts) > 5 else 1
+
+    except ValueError:
+
+        drop_weight = 1
+
+    image_file_id = ""
+
+    video_file_id = ""
+
+    media_type = "photo"
+
+    reply = (
+        update.effective_message
+        .reply_to_message
+    )
+
+    if reply:
+
+        if reply.photo:
+
+            image_file_id = (
+                reply.photo[-1].file_id
+            )
+
+        elif reply.video:
+
+            video_file_id = (
+                reply.video.file_id
+            )
+
+            media_type = "video"
+
+    try:
+
+        add_card(
+            char_id,
+            name,
+            edition,
+            rarity,
+            price,
+            image_file_id,
+            video_file_id,
+            media_type,
+            "",
+            drop_weight,
+            0,
+        )
+
+    except Exception as exc:
+
+        await update.effective_message.reply_text(
+            "❌ Card ထည့်မရပါ။\n\n"
+            f"<code>{str(exc)[:300]}</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    await update.effective_message.reply_text(
+        f"✅ <b>CARD ADDED</b>\n\n"
+        f"🎴 {name}\n"
+        f"🆔 <code>{char_id}</code>\n"
+        f"✨ {edition}\n"
+        f"⭐ Rarity: {rarity}\n"
+        f"💰 Price: {price:,}",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# DELETE CARD
+# ============================================================
+
+async def deletecard_command(
+    update,
+    context,
+):
+
+    if not await admin_guard(update):
+        return
+
+    if not context.args:
+
+        await update.effective_message.reply_text(
+            "Usage: /deletecard CARD_ID"
+        )
+
+        return
+
+    delete_card(
+        context.args[0]
+    )
+
+    await update.effective_message.reply_text(
+        "🗑️ Card ဖျက်ပြီးပါပြီ။"
+    )
+
+
+# ============================================================
+# SET PRICE
+# ============================================================
+
+async def setprice_command(
+    update,
+    context,
+):
+
+    if not await admin_guard(update):
+        return
+
+    if len(context.args) != 2:
+
+        await update.effective_message.reply_text(
+            "Usage: /setprice CARD_ID PRICE"
+        )
+
+        return
+
+    try:
+
+        price = int(
+            context.args[1]
+        )
+
+    except ValueError:
+
+        await update.effective_message.reply_text(
+            "❌ Price မှားနေပါတယ်။"
+        )
+
+        return
+
+    update_card_price(
+        context.args[0],
+        price,
+    )
+
+    await update.effective_message.reply_text(
+        f"✅ Price = <b>{price:,}</b> Coins",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# SET DROP
+# ============================================================
+
+async def setdrop_command(
+    update,
+    context,
+):
+
+    if not await admin_guard(update):
+        return
+
+    if not context.args:
+
+        await update.effective_message.reply_text(
+            "Usage: /setdrop COUNT"
+        )
+
+        return
+
+    try:
+
+        count = int(
+            context.args[0]
+        )
+
+    except ValueError:
+
+        await update.effective_message.reply_text(
+            "❌ Count မှားနေပါတယ်။"
+        )
+
+        return
 
     set_setting(
-        f"hmode_{user_id}",
-        "",
+        "drop_count",
+        max(1, count),
     )
 
     await update.effective_message.reply_text(
-        "🔄 Harem display setting ကို Reset လုပ်ပြီးပါပြီ။"
+        f"🎴 Drop Count = <b>{count}</b>",
+        parse_mode="HTML",
     )
 
 
 # ============================================================
-# SELL PRICE
+# SET ADMIN
 # ============================================================
 
-async def sellprice_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+async def setadmin_command(
+    update,
+    context,
+):
+
+    if not await owner_guard(update):
+        return
+
+    target = get_target_user_id(
+        update,
+        context,
+    )
+
+    if not target:
+
+        await update.effective_message.reply_text(
+            "Usage: /setadmin USER_ID"
+        )
+
+        return
+
+    add_admin(
+        target,
+        update.effective_user.id,
+    )
+
+    await update.effective_message.reply_text(
+        f"🛡️ <code>{target}</code> ကို "
+        "Admin ခန့်ပြီးပါပြီ။",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# DELETE ADMIN
+# ============================================================
+
+async def deladmin_command(
+    update,
+    context,
+):
+
+    if not await owner_guard(update):
+        return
+
+    target = get_target_user_id(
+        update,
+        context,
+    )
+
+    if not target:
+
+        await update.effective_message.reply_text(
+            "Usage: /deladmin USER_ID"
+        )
+
+        return
+
+    remove_admin(
+        target
+    )
+
+    await update.effective_message.reply_text(
+        "✅ Admin ဖြုတ်ပြီးပါပြီ။"
+    )
+
+
+# ============================================================
+# APPROVE GROUP
+# ============================================================
+
+async def approve_command(
+    update,
+    context,
+):
+
+    if not await owner_guard(update):
+        return
+
+    if not context.args:
+
+        await update.effective_message.reply_text(
+            "Usage: /approve GROUP_ID"
+        )
+
+        return
+
+    try:
+
+        group_id = int(
+            context.args[0]
+        )
+
+    except ValueError:
+
+        await update.effective_message.reply_text(
+            "❌ Group ID မှားနေပါတယ်။"
+        )
+
+        return
+
+    approve_group(
+        group_id
+    )
+
+    await update.effective_message.reply_text(
+        f"✅ Group <code>{group_id}</code> "
+        "Approved.",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# REJECT GROUP
+# ============================================================
+
+async def reject_command(
+    update,
+    context,
+):
+
+    if not await owner_guard(update):
+        return
+
+    if not context.args:
+
+        await update.effective_message.reply_text(
+            "Usage: /reject GROUP_ID"
+        )
+
+        return
+
+    try:
+
+        group_id = int(
+            context.args[0]
+        )
+
+    except ValueError:
+
+        await update.effective_message.reply_text(
+            "❌ Group ID မှားနေပါတယ်။"
+        )
+
+        return
+
+    reject_group(
+        group_id
+    )
+
+    await update.effective_message.reply_text(
+        f"⛔ Group <code>{group_id}</code> "
+        "Disabled.",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# STATS
+# ============================================================
+
+async def stats_command(
+    update,
+    context,
+):
+
+    if not await owner_guard(update):
+        return
+
+    with get_db() as db:
+
+        users = db.execute(
+            "SELECT COUNT(*) c FROM users"
+        ).fetchone()["c"]
+
+        cards = db.execute(
+            """
+            SELECT COUNT(*) c
+            FROM cards
+            WHERE active = 1
+            """
+        ).fetchone()["c"]
+
+        owned = db.execute(
+            """
+            SELECT COUNT(*) c
+            FROM user_cards
+            """
+        ).fetchone()["c"]
+
+        groups = db.execute(
+            """
+            SELECT COUNT(*) c
+            FROM groups
+            """
+        ).fetchone()["c"]
+
+    await update.effective_message.reply_text(
+        f"📊 <b>NEXUS BOT STATS</b>\n\n"
+        f"👤 Users: <b>{users:,}</b>\n"
+        f"🎴 Cards: <b>{cards:,}</b>\n"
+        f"📦 Owned Cards: <b>{owned:,}</b>\n"
+        f"👥 Groups: <b>{groups:,}</b>",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# MAINTENANCE
+# ============================================================
+
+async def maintenance_command(
+    update,
+    context,
+):
+
+    if not await owner_guard(update):
+        return
+
+    current = (
+        get_setting(
+            "maintenance",
+            "0",
+        )
+        == "1"
+    )
+
+    new_value = (
+        "0"
+        if current
+        else "1"
+    )
+
+    set_setting(
+        "maintenance",
+        new_value,
+    )
+
+    await update.effective_message.reply_text(
+        "🔧 Maintenance: "
+        f"<b>{'ON' if new_value == '1' else 'OFF'}</b>",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# CHANGE TIME / DROP COUNT
+# ============================================================
+
+async def changetime_command(
+    update,
+    context,
+):
+
+    if not await owner_guard(update):
+        return
+
+    if not context.args:
+
+        current = get_setting(
+            "drop_count",
+            "85",
+        )
+
+        await update.effective_message.reply_text(
+            f"⚙️ Current Drop Count: "
+            f"<b>{current}</b>\n\n"
+            "Usage: /changetime COUNT",
+            parse_mode="HTML",
+        )
+
+        return
+
+    try:
+
+        count = int(
+            context.args[0]
+        )
+
+    except ValueError:
+
+        await update.effective_message.reply_text(
+            "❌ Count မှားနေပါတယ်။"
+        )
+
+        return
+
+    set_setting(
+        "drop_count",
+        max(1, count),
+    )
+
+    await update.effective_message.reply_text(
+        "✅ Drop setting updated."
+    )
+
+
+# ============================================================
+# BROADCAST
+# ============================================================
+
+async def broadcast_command(
+    update,
+    context,
+):
+
+    if not await owner_guard(update):
+        return
+
+    if not context.args:
+
+        await update.effective_message.reply_text(
+            "Usage: /broadcast MESSAGE"
+        )
+
+        return
+
+    text = " ".join(
+        context.args
+    )
+
+    with get_db() as db:
+
+        users = db.execute(
+            """
+            SELECT user_id
+            FROM users
+            """
+        ).fetchall()
+
+    success = 0
+
+    for row in users:
+
+        try:
+
+            await context.bot.send_message(
+                row["user_id"],
+                text,
+                parse_mode="HTML",
+            )
+
+            success += 1
+
+        except Exception:
+
+            pass
+
+    await update.effective_message.reply_text(
+        f"📢 Broadcast Complete\n\n"
+        f"✅ Sent: <b>{success}</b>",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# DUEL
+# ============================================================
+
+async def duel_command(
+    update,
+    context,
 ):
 
     register_user(update)
 
-    text = "💰 <b>CARD SELL PRICE</b>\n\n"
+    message = (
+        update.effective_message
+    )
 
-    price_map = {
-        "Common": 500,
-        "Uncommon": 1000,
-        "Rare": 2000,
-        "Super Rare": 3500,
-        "Epic": 5000,
-        "Legendary": 7000,
-        "Mythic": 8500,
-        "Divine": 10000,
-        "Celestial": 11500,
-        "Eternal": 12500,
-        "Ultimate": 13500,
-        "Exclusive": 14500,
-        "Premium": PREMIUM_PRICE,
-    }
+    user = (
+        update.effective_user
+    )
 
-    for edition in EDITIONS:
+    if not message.reply_to_message:
 
-        price = price_map.get(
-            edition,
-            500,
+        await message.reply_text(
+            "⚔️ Duel လုပ်မယ့် User ရဲ့ "
+            "message ကို Reply လုပ်ပြီး "
+            "/duel သုံးပါ။"
         )
 
-        text += (
-            f"✨ {edition} — "
-            f"<b>{price:,}</b> Coins\n"
+        return
+
+    target = (
+        message
+        .reply_to_message
+        .from_user
+    )
+
+    if (
+        not target
+        or target.id == user.id
+        or target.is_bot
+    ):
+
+        await message.reply_text(
+            "❌ Target User မမှန်ပါ။"
         )
 
-    await update.effective_message.reply_text(
-        text,
+        return
+
+    my_cards = get_user_cards(
+        user.id
+    )
+
+    their_cards = get_user_cards(
+        target.id
+    )
+
+    if (
+        not my_cards
+        or not their_cards
+    ):
+
+        await message.reply_text(
+            "🎴 နှစ်ဖက်လုံးမှာ Card "
+            "ရှိရပါမယ်။"
+        )
+
+        return
+
+    my_card = random.choice(
+        my_cards
+    )
+
+    their_card = random.choice(
+        their_cards
+    )
+
+    my_score = (
+        int(my_card["level"] or 1)
+        + int(my_card["exp"] or 0)
+    )
+
+    their_score = (
+        int(their_card["level"] or 1)
+        + int(their_card["exp"] or 0)
+    )
+
+    if my_score >= their_score:
+
+        winner = user
+
+    else:
+
+        winner = target
+
+    reward = random.randint(
+        50,
+        500,
+    )
+
+    add_coins(
+        winner.id,
+        reward,
+    )
+
+    await message.reply_text(
+        f"⚔️ <b>DUEL RESULT</b>\n\n"
+        f"🎴 {user.first_name}: "
+        f"{my_card['name']} "
+        f"(Lv.{my_card['level']})\n\n"
+        f"🎴 {target.first_name}: "
+        f"{their_card['name']} "
+        f"(Lv.{their_card['level']})\n\n"
+        f"🏆 Winner: "
+        f"<b>{winner.first_name}</b>\n"
+        f"🪙 Reward: "
+        f"<b>+{reward}</b> Coins",
         parse_mode="HTML",
     )
+
+
+# ============================================================
+# BOT ADDED TO GROUP
+# ============================================================
+
+async def bot_install_handler(
+    update,
+    context,
+):
+
+    change = (
+        update.my_chat_member
+    )
+
+    if not change:
+        return
+
+    chat = change.chat
+
+    new_status = (
+        change
+        .new_chat_member
+        .status
+    )
+
+    old_status = (
+        change
+        .old_chat_member
+        .status
+    )
+
+    if (
+        new_status
+        not in (
+            "member",
+            "administrator",
+        )
+    ):
+
+        return
+
+    if (
+        old_status
+        not in (
+            "left",
+            "kicked",
+        )
+    ):
+
+        return
+
+    added_by = change.from_user
+
+    try:
+
+        member_count = (
+            await context.bot
+            .get_chat_member_count(
+                chat.id
+            )
+        )
+
+    except Exception:
+
+        member_count = 0
+
+    try:
+
+        me = (
+            await context.bot.get_me()
+        )
+
+        bot_member = (
+            await context.bot
+            .get_chat_member(
+                chat.id,
+                me.id,
+            )
+        )
+
+        bot_admin = (
+            bot_member.status
+            in (
+                "administrator",
+                "creator",
+            )
+        )
+
+    except Exception:
+
+        bot_admin = False
+
+    save_group(
+        chat.id,
+        chat.title or "",
+        member_count,
+        int(bot_admin),
+        added_by.id if added_by else 0,
+    )
+
+    # --------------------------------------------------------
+    # SEND LOG TO CHANNEL
+    # --------------------------------------------------------
+
+    if CHANNEL_ID:
+
+        text = (
+            "🚀 <b>NEXUS BOT ADDED</b>\n\n"
+            f"👥 Group: <b>{chat.title or 'Unknown'}</b>\n"
+            f"🆔 Group ID: <code>{chat.id}</code>\n\n"
+            f"👤 Added By: "
+            f"<b>{added_by.first_name if added_by else 'Unknown'}</b>\n"
+            f"🆔 User ID: "
+            f"<code>{added_by.id if added_by else 0}</code>\n\n"
+            f"👥 Members: "
+            f"<b>{member_count}</b>\n"
+            f"🤖 Bot Admin: "
+            f"<b>{'YES' if bot_admin else 'NO'}</b>\n\n"
+            "🔐 Status: "
+            "<b>WAITING FOR OWNER APPROVAL</b>"
+        )
+
+        try:
+
+            await context.bot.send_message(
+                CHANNEL_ID,
+                text,
+                parse_mode="HTML",
+            )
+
+        except Exception as exc:
+
+            logger.warning(
+                "Channel log failed: %s",
+                exc,
+            )
 
 
 # ============================================================
@@ -1494,39 +2473,40 @@ async def sellprice_command(
 # ============================================================
 
 async def callback_router(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
-    query = update.callback_query
+    query = (
+        update.callback_query
+    )
 
-    data = query.data or ""
+    data = (
+        query.data or ""
+    )
 
-    if data in (
-        "help",
-        "help_my",
-        "help_en",
-    ):
+    # --------------------------------------------------------
+    # DROP
+    # --------------------------------------------------------
 
-        await help_callback(
+    if data.startswith("drop:"):
+
+        await claim_drop_callback(
             update,
             context,
         )
 
         return
 
-    if data == "start":
+    # --------------------------------------------------------
+    # HAREM
+    # --------------------------------------------------------
 
-        await query.answer()
-
-        await query.edit_message_text(
-            START_TEXT_MY,
-            parse_mode="HTML",
-        )
-
-        return
-
-    if data.startswith("harem:"):
+    if (
+        data.startswith("harem_")
+        or data.startswith("hmode_set:")
+        or data == "harem_noop"
+    ):
 
         await harem_callback(
             update,
@@ -1535,11 +2515,134 @@ async def callback_router(
 
         return
 
-    if data.startswith("hmode:"):
+    # --------------------------------------------------------
+    # PROFILE
+    # --------------------------------------------------------
 
-        await hmode_callback(
+    if data.startswith("profile_"):
+
+        await profile_callback(
             update,
             context,
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # SEARCH
+    # --------------------------------------------------------
+
+    if data.startswith("search_"):
+
+        await search_callback(
+            update,
+            context,
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # MARKET
+    # --------------------------------------------------------
+
+    if data.startswith("market"):
+
+        await market_callback(
+            update,
+            context,
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # HELP
+    # --------------------------------------------------------
+
+    if data.startswith("help:"):
+
+        await query.answer()
+
+        value = data.split(
+            ":",
+            1,
+        )[1]
+
+        if value == "no":
+            return
+
+        page = int(value)
+
+        await query.edit_message_text(
+            HELP_PAGES[page],
+            reply_markup=help_keyboard(
+                page
+            ),
+            parse_mode="HTML",
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # LANGUAGE
+    # --------------------------------------------------------
+
+    if data == "lang:my":
+
+        await query.answer()
+
+        await query.edit_message_text(
+            HELP_PAGES[0],
+            reply_markup=help_keyboard(0),
+            parse_mode="HTML",
+        )
+
+        return
+
+    if data == "lang:en":
+
+        await query.answer()
+
+        await query.edit_message_text(
+            """
+📚 <b>NEXUS CARD COMMAND GUIDE</b>
+
+🎴 <b>Basic</b>
+
+/start
+/help
+/profile
+/harem
+/search
+/check
+/balance
+/daily
+
+🏆 <b>Ranking</b>
+
+/top
+/ctop
+/rankings
+/todayNexusCatch
+
+🛒 <b>Market</b>
+
+/market
+/sell
+/buy
+/delist
+/sellprice
+
+🎁 <b>Card</b>
+
+/claim
+/fav
+/unfav
+/hmode
+/reset
+/upgrade
+""",
+            reply_markup=help_keyboard(0),
+            parse_mode="HTML",
         )
 
         return
@@ -1552,14 +2655,17 @@ async def callback_router(
 # ============================================================
 
 async def unknown_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
-    await update.effective_message.reply_text(
-        "❓ Unknown command.\n\n"
-        "/help ကို အသုံးပြုပြီး Commands ကြည့်ပါ။"
-    )
+    if update.effective_message:
+
+        await update.effective_message.reply_text(
+            "❓ Unknown Command\n\n"
+            "📚 အသုံးပြုနိုင်တဲ့ Command တွေကို "
+            "/help မှာကြည့်ပါ။"
+        )
 
 
 # ============================================================
@@ -1567,8 +2673,8 @@ async def unknown_command(
 # ============================================================
 
 async def error_handler(
-    update: object,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
 ):
 
     logger.exception(
@@ -1587,144 +2693,172 @@ def main():
 
         raise RuntimeError(
             "BOT_TOKEN မထည့်ရသေးပါ။ "
-            "Render Environment Variables ထဲမှာ "
-            "BOT_TOKEN ထည့်ပါ။"
+            "Render Environment Variables ကို စစ်ပါ။"
         )
 
     application = (
-        Application.builder()
+        Application
+        .builder()
         .token(BOT_TOKEN)
         .build()
     )
 
-    # Basic commands
-    application.add_handler(
-        CommandHandler(
-            "start",
-            start_command,
-        )
-    )
+    # ========================================================
+    # USER COMMANDS
+    # ========================================================
 
-    application.add_handler(
-        CommandHandler(
-            "help",
-            help_command,
-        )
-    )
+    commands = {
 
-    application.add_handler(
-        CommandHandler(
-            "balance",
-            balance_command,
-        )
-    )
+        "start": start_command,
 
-    application.add_handler(
-        CommandHandler(
-            "daily",
-            daily_command,
-        )
-    )
+        "help": help_command,
 
-    application.add_handler(
-        CommandHandler(
-            "profile",
-            profile_command,
-        )
-    )
+        "profile": profile_command,
 
-    application.add_handler(
-        CommandHandler(
-            "harem",
-            harem_command,
-        )
-    )
+        "harem": harem_command,
 
-    application.add_handler(
-        CommandHandler(
-            "search",
-            search_command,
-        )
-    )
+        "search": search_command,
 
-    application.add_handler(
-        CommandHandler(
-            "check",
-            check_command,
-        )
-    )
+        "Nexus": nexus_command,
 
-    application.add_handler(
-        CommandHandler(
-            "top",
-            top_command,
-        )
-    )
+        "check": check_command,
 
-    application.add_handler(
-        CommandHandler(
-            "rankings",
-            rankings_command,
-        )
-    )
+        "top": top_command,
 
-    application.add_handler(
-        CommandHandler(
-            "ctop",
-            ctop_command,
-        )
-    )
+        "ctop": ctop_command,
 
-    application.add_handler(
-        CommandHandler(
-            "fav",
-            fav_command,
-        )
-    )
+        "rankings": rankings_command,
 
-    application.add_handler(
-        CommandHandler(
-            "unfav",
-            unfav_command,
-        )
-    )
+        "todayNexusCatch":
+            today_nexus_catch_command,
 
-    application.add_handler(
-        CommandHandler(
-            "claim",
-            claim_command,
-        )
-    )
+        "balance": balance_command,
 
-    application.add_handler(
-        CommandHandler(
-            "hmode",
-            hmode_command,
-        )
-    )
+        "daily": daily_command,
 
-    application.add_handler(
-        CommandHandler(
-            "reset",
-            reset_command,
-        )
-    )
+        "sellprice": sellprice_command,
 
-    application.add_handler(
-        CommandHandler(
-            "sellprice",
-            sellprice_command,
-        )
-    )
+        "claim": claim_command,
 
-    # Callback buttons
+        "fav": fav_command,
+
+        "unfav": unfav_command,
+
+        "hmode": hmode_command,
+
+        "reset": reset_command,
+
+        "upgrade": upgrade_command,
+
+        "drop": drop_command,
+
+        "market": market_command,
+
+        "sell": market_sell_command,
+
+        "buy": market_buy_command,
+
+        "delist": delist_command,
+
+        "gift": gift_command,
+
+        "trade": trade_command,
+
+        "duel": duel_command,
+
+        # ----------------------------------------------------
+        # OWNER / ADMIN
+        # ----------------------------------------------------
+
+        "addcard":
+            addcard_command,
+
+        "deletecard":
+            deletecard_command,
+
+        "delcard":
+            deletecard_command,
+
+        "givecard":
+            givecard_command,
+
+        "takecard":
+            takecard_command,
+
+        "givecoin":
+            givecoin_command,
+
+        "givecoins":
+            givecoin_command,
+
+        "takecoin":
+            takecoin_command,
+
+        "setprice":
+            setprice_command,
+
+        "setdrop":
+            setdrop_command,
+
+        "setadmin":
+            setadmin_command,
+
+        "deladmin":
+            deladmin_command,
+
+        "approve":
+            approve_command,
+
+        "reject":
+            reject_command,
+
+        "stats":
+            stats_command,
+
+        "maintenance":
+            maintenance_command,
+
+        "changetime":
+            changetime_command,
+
+        "broadcast":
+            broadcast_command,
+    }
+
+    for command, handler in commands.items():
+
+        application.add_handler(
+            CommandHandler(
+                command,
+                handler,
+            )
+        )
+
+    # ========================================================
+    # CALLBACKS
+    # ========================================================
+
     application.add_handler(
         CallbackQueryHandler(
             callback_router
         )
     )
 
-    # Unknown commands
+    # ========================================================
+    # BOT ADDED / REMOVED FROM GROUP
+    # ========================================================
+
+    application.add_handler(
+        ChatMemberHandler(
+            bot_install_handler,
+            ChatMemberHandler.MY_CHAT_MEMBER,
+        )
+    )
+
+    # ========================================================
+    # UNKNOWN COMMAND
+    # ========================================================
+
     application.add_handler(
         MessageHandler(
             filters.COMMAND,
@@ -1732,7 +2866,10 @@ def main():
         )
     )
 
-    # Error handler
+    # ========================================================
+    # ERROR
+    # ========================================================
+
     application.add_error_handler(
         error_handler
     )
@@ -1748,5 +2885,10 @@ def main():
     )
 
 
+# ============================================================
+# RUN
+# ============================================================
+
 if __name__ == "__main__":
+
     main()
