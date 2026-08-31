@@ -1,0 +1,711 @@
+# market.py
+# Nexus Catch Bot
+# Card Marketplace Core
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from threading import RLock
+from typing import Optional
+
+
+# ============================================================
+# CONFIG
+# ============================================================
+
+MIN_LISTING_PRICE = 1
+MAX_LISTING_PRICE = 15_000
+
+DEFAULT_PAGE_SIZE = 6
+
+
+# ============================================================
+# DATA
+# ============================================================
+
+@dataclass
+class Listing:
+    listing_id: int
+    seller_id: int
+    card_id: str
+    price: int
+    quantity: int = 1
+
+    created_at: datetime = None
+
+    active: bool = True
+
+
+# ============================================================
+# STORAGE
+# ============================================================
+
+_LISTINGS: dict[int, Listing] = {}
+
+_NEXT_LISTING_ID = 1
+
+_LOCK = RLock()
+
+
+# ============================================================
+# TIME
+# ============================================================
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# ============================================================
+# ID
+# ============================================================
+
+def _next_listing_id() -> int:
+    global _NEXT_LISTING_ID
+
+    with _LOCK:
+        listing_id = _NEXT_LISTING_ID
+        _NEXT_LISTING_ID += 1
+
+    return listing_id
+
+
+# ============================================================
+# PRICE VALIDATION
+# ============================================================
+
+def validate_price(price: int) -> tuple[bool, str]:
+    try:
+        price = int(price)
+    except (TypeError, ValueError):
+        return False, "❌ Invalid price."
+
+    if price < MIN_LISTING_PRICE:
+        return (
+            False,
+            f"❌ Minimum price is {MIN_LISTING_PRICE:,} Coins.",
+        )
+
+    if price > MAX_LISTING_PRICE:
+        return (
+            False,
+            f"❌ Maximum price is {MAX_LISTING_PRICE:,} Coins.",
+        )
+
+    return True, "OK"
+
+
+# ============================================================
+# CREATE LISTING
+# ============================================================
+
+def create_listing(
+    seller_id: int,
+    card_id: str,
+    price: int,
+    quantity: int = 1,
+) -> tuple[bool, Optional[Listing], str]:
+
+    seller_id = int(seller_id)
+
+    try:
+        price = int(price)
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        return False, None, "❌ Invalid price or quantity."
+
+    valid, message = validate_price(price)
+
+    if not valid:
+        return False, None, message
+
+    if not card_id:
+        return False, None, "❌ Card ID is required."
+
+    if quantity <= 0:
+        return False, None, "❌ Quantity must be greater than 0."
+
+    listing = Listing(
+        listing_id=_next_listing_id(),
+        seller_id=seller_id,
+        card_id=str(card_id),
+        price=price,
+        quantity=quantity,
+        created_at=utc_now(),
+    )
+
+    with _LOCK:
+        _LISTINGS[listing.listing_id] = listing
+
+    return (
+        True,
+        listing,
+        (
+            "🏪 <b>Card Listed Successfully!</b>\n\n"
+            f"🆔 Listing ID: <code>{listing.listing_id}</code>\n"
+            f"🎴 Card ID: <code>{listing.card_id}</code>\n"
+            f"💰 Price: <b>{listing.price:,}</b> Coins\n"
+            f"📦 Quantity: <b>{listing.quantity}</b>"
+        ),
+    )
+
+
+# ============================================================
+# GET LISTING
+# ============================================================
+
+def get_listing(
+    listing_id: int,
+) -> Optional[Listing]:
+
+    try:
+        listing_id = int(listing_id)
+    except (TypeError, ValueError):
+        return None
+
+    with _LOCK:
+        return _LISTINGS.get(listing_id)
+
+
+# ============================================================
+# ACTIVE LISTINGS
+# ============================================================
+
+def get_active_listings() -> list[Listing]:
+
+    with _LOCK:
+        listings = [
+            listing
+            for listing in _LISTINGS.values()
+            if listing.active
+            and listing.quantity > 0
+        ]
+
+    return sorted(
+        listings,
+        key=lambda item: item.listing_id,
+    )
+
+
+# ============================================================
+# MARKET PAGINATION
+# ============================================================
+
+def get_market_page(
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+) -> tuple[list[Listing], int, int]:
+
+    page = max(1, int(page))
+    page_size = max(1, int(page_size))
+
+    listings = get_active_listings()
+
+    total = len(listings)
+
+    total_pages = max(
+        1,
+        (total + page_size - 1) // page_size,
+    )
+
+    page = min(
+        page,
+        total_pages,
+    )
+
+    start = (page - 1) * page_size
+    end = start + page_size
+
+    return (
+        listings[start:end],
+        page,
+        total_pages,
+    )
+
+
+# ============================================================
+# SELLER LISTINGS
+# ============================================================
+
+def get_user_listings(
+    seller_id: int,
+) -> list[Listing]:
+
+    seller_id = int(seller_id)
+
+    with _LOCK:
+        listings = [
+            listing
+            for listing in _LISTINGS.values()
+            if listing.seller_id == seller_id
+            and listing.active
+            and listing.quantity > 0
+        ]
+
+    return sorted(
+        listings,
+        key=lambda item: item.listing_id,
+    )
+
+
+# ============================================================
+# DELIST
+# ============================================================
+
+def delist_listing(
+    listing_id: int,
+    user_id: int,
+    is_admin: bool = False,
+) -> tuple[bool, str]:
+
+    listing = get_listing(listing_id)
+
+    if listing is None:
+        return (
+            False,
+            "❌ Listing not found.",
+        )
+
+    user_id = int(user_id)
+
+    if (
+        listing.seller_id != user_id
+        and not is_admin
+    ):
+        return (
+            False,
+            "❌ You can only remove your own listing.",
+        )
+
+    with _LOCK:
+
+        listing.active = False
+
+    return (
+        True,
+        (
+            "✅ <b>Listing Removed</b>\n\n"
+            f"🆔 Listing ID: "
+            f"<code>{listing.listing_id}</code>"
+        ),
+    )
+
+
+# ============================================================
+# BUY PREPARATION
+# ============================================================
+
+def prepare_purchase(
+    listing_id: int,
+    buyer_id: int,
+) -> tuple[bool, Optional[Listing], str]:
+
+    listing = get_listing(listing_id)
+
+    if listing is None:
+        return (
+            False,
+            None,
+            "❌ Listing not found.",
+        )
+
+    buyer_id = int(buyer_id)
+
+    if listing.seller_id == buyer_id:
+        return (
+            False,
+            listing,
+            "❌ You cannot buy your own listing.",
+        )
+
+    if not listing.active:
+        return (
+            False,
+            listing,
+            "❌ This listing is no longer active.",
+        )
+
+    if listing.quantity <= 0:
+        return (
+            False,
+            listing,
+            "❌ This listing is sold out.",
+        )
+
+    return (
+        True,
+        listing,
+        "OK",
+    )
+
+
+# ============================================================
+# COMPLETE PURCHASE
+# ============================================================
+
+def complete_purchase(
+    listing_id: int,
+    buyer_id: int,
+) -> tuple[bool, Optional[Listing], str]:
+
+    """
+    Finalize the marketplace transaction.
+
+    Economy and card ownership transfer should be performed
+    by the bot/database transaction layer.
+
+    This function only updates marketplace state.
+    """
+
+    with _LOCK:
+
+        listing = _LISTINGS.get(
+            int(listing_id)
+        )
+
+        if listing is None:
+            return (
+                False,
+                None,
+                "❌ Listing not found.",
+            )
+
+        if not listing.active:
+            return (
+                False,
+                listing,
+                "❌ Listing is no longer active.",
+            )
+
+        if listing.quantity <= 0:
+            return (
+                False,
+                listing,
+                "❌ Listing is sold out.",
+            )
+
+        if listing.seller_id == int(buyer_id):
+            return (
+                False,
+                listing,
+                "❌ You cannot buy your own card.",
+            )
+
+        listing.quantity -= 1
+
+        if listing.quantity <= 0:
+            listing.quantity = 0
+            listing.active = False
+
+        return (
+            True,
+            listing,
+            (
+                "🎉 <b>Purchase Successful!</b>\n\n"
+                f"🎴 Card ID: <code>{listing.card_id}</code>\n"
+                f"💰 Paid: <b>{listing.price:,}</b> Coins\n"
+                f"🆔 Listing: "
+                f"<code>{listing.listing_id}</code>"
+            ),
+        )
+
+
+# ============================================================
+# MARKET SEARCH
+# ============================================================
+
+def search_market(
+    query: str,
+) -> list[Listing]:
+
+    if not query:
+        return []
+
+    query = str(query).strip().lower()
+
+    results = []
+
+    for listing in get_active_listings():
+
+        if (
+            query in str(listing.card_id).lower()
+            or query in str(listing.listing_id).lower()
+        ):
+            results.append(listing)
+
+    return results
+
+
+# ============================================================
+# CARD MARKET LISTINGS
+# ============================================================
+
+def get_card_listings(
+    card_id: str,
+) -> list[Listing]:
+
+    card_id = str(card_id)
+
+    return [
+        listing
+        for listing in get_active_listings()
+        if listing.card_id == card_id
+    ]
+
+
+# ============================================================
+# CHEAPEST LISTING
+# ============================================================
+
+def get_cheapest_listing(
+    card_id: str,
+) -> Optional[Listing]:
+
+    listings = get_card_listings(
+        card_id
+    )
+
+    if not listings:
+        return None
+
+    return min(
+        listings,
+        key=lambda listing: listing.price,
+    )
+
+
+# ============================================================
+# MARKET STATISTICS
+# ============================================================
+
+def get_market_statistics() -> dict:
+
+    listings = get_active_listings()
+
+    total_value = sum(
+        listing.price * listing.quantity
+        for listing in listings
+    )
+
+    return {
+        "active_listings": len(listings),
+        "total_cards_for_sale": sum(
+            listing.quantity
+            for listing in listings
+        ),
+        "total_market_value": total_value,
+    }
+
+
+# ============================================================
+# FORMAT LISTING
+# ============================================================
+
+def format_listing(
+    listing: Listing,
+) -> str:
+
+    return (
+        "🏪 <b>MARKET LISTING</b>\n\n"
+        f"🆔 Listing ID: "
+        f"<code>{listing.listing_id}</code>\n"
+        f"🎴 Card ID: "
+        f"<code>{listing.card_id}</code>\n"
+        f"💰 Price: "
+        f"<b>{listing.price:,}</b> Coins\n"
+        f"📦 Available: "
+        f"<b>{listing.quantity}</b>\n"
+        f"👤 Seller ID: "
+        f"<code>{listing.seller_id}</code>"
+    )
+
+
+def format_market_page(
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+) -> str:
+
+    listings, current_page, total_pages = get_market_page(
+        page=page,
+        page_size=page_size,
+    )
+
+    if not listings:
+        return (
+            "🏪 <b>MARKET</b>\n\n"
+            "📭 No cards are currently listed."
+        )
+
+    lines = [
+        "🏪 <b>NEXUS MARKET</b>",
+        "",
+    ]
+
+    for listing in listings:
+
+        lines.append(
+            f"🆔 <code>{listing.listing_id}</code>  "
+            f"🎴 <code>{listing.card_id}</code>\n"
+            f"💰 <b>{listing.price:,}</b> Coins  "
+            f"📦 x{listing.quantity}"
+        )
+
+        lines.append("")
+
+    lines.append(
+        f"📄 Page <b>{current_page}</b>"
+        f" / <b>{total_pages}</b>"
+    )
+
+    return "\n".join(lines)
+
+
+# ============================================================
+# PAGINATION BUTTON DATA
+# ============================================================
+
+def market_previous_callback(
+    page: int,
+) -> str:
+
+    return f"market:page:{max(1, page - 1)}"
+
+
+def market_next_callback(
+    page: int,
+) -> str:
+
+    return f"market:page:{page + 1}"
+
+
+def build_market_keyboard(
+    page: int,
+    total_pages: int,
+) -> list[list[dict]]:
+
+    buttons = []
+
+    if page > 1:
+        buttons.append(
+            {
+                "text": "⬅️ Previous",
+                "callback_data": market_previous_callback(
+                    page
+                ),
+            }
+        )
+
+    if page < total_pages:
+        buttons.append(
+            {
+                "text": "Next ➡️",
+                "callback_data": market_next_callback(
+                    page
+                ),
+            }
+        )
+
+    if not buttons:
+        return []
+
+    return [buttons]
+
+
+# ============================================================
+# ADMIN
+# ============================================================
+
+def admin_remove_listing(
+    listing_id: int,
+) -> tuple[bool, str]:
+
+    listing = get_listing(listing_id)
+
+    if listing is None:
+        return (
+            False,
+            "❌ Listing not found.",
+        )
+
+    with _LOCK:
+        listing.active = False
+
+    return (
+        True,
+        "🛡️ Admin removed the listing.",
+    )
+
+
+def admin_clear_market() -> int:
+
+    removed = 0
+
+    with _LOCK:
+
+        for listing in _LISTINGS.values():
+
+            if listing.active:
+                listing.active = False
+                removed += 1
+
+    return removed
+
+
+# ============================================================
+# RESET
+# ============================================================
+
+def reset_market() -> None:
+
+    global _NEXT_LISTING_ID
+
+    with _LOCK:
+        _LISTINGS.clear()
+        _NEXT_LISTING_ID = 1
+
+
+# ============================================================
+# EXPORTS
+# ============================================================
+
+__all__ = [
+    "MIN_LISTING_PRICE",
+    "MAX_LISTING_PRICE",
+    "DEFAULT_PAGE_SIZE",
+
+    "Listing",
+
+    "utc_now",
+
+    "validate_price",
+
+    "create_listing",
+    "get_listing",
+
+    "get_active_listings",
+    "get_market_page",
+    "get_user_listings",
+
+    "delist_listing",
+
+    "prepare_purchase",
+    "complete_purchase",
+
+    "search_market",
+    "get_card_listings",
+    "get_cheapest_listing",
+
+    "get_market_statistics",
+
+    "format_listing",
+    "format_market_page",
+
+    "market_previous_callback",
+    "market_next_callback",
+    "build_market_keyboard",
+
+    "admin_remove_listing",
+    "admin_clear_market",
+
+    "reset_market",
+]
