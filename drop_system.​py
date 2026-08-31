@@ -1,0 +1,1272 @@
+# drop_system.py
+# Nexus Catch Bot
+# Auto Drop / Weighted Drop / First-Click Claim
+# Group Message Counter / Manual Drop / Expiry
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from threading import RLock
+from typing import Any, Optional
+import random
+
+
+# ============================================================
+# CONFIG
+# ============================================================
+
+DEFAULT_DROP_MESSAGE_COUNT = 85
+BETTER_DROP_MESSAGE_COUNT = 1000
+
+DEFAULT_DROP_EXPIRE_SECONDS = 120
+
+MAX_CLAIMS_PER_DROP = 1
+
+# Weight configuration.
+# Higher number = higher chance.
+RARITY_WEIGHTS = {
+    "Common": 6000,
+    "Uncommon": 2500,
+    "Rare": 1000,
+    "Epic": 350,
+    "Legendary": 120,
+    "Mythic": 25,
+    "Premium": 5,
+}
+
+BETTER_RARITY_WEIGHTS = {
+    "Common": 3000,
+    "Uncommon": 2500,
+    "Rare": 2000,
+    "Epic": 1200,
+    "Legendary": 800,
+    "Mythic": 400,
+    "Premium": 100,
+}
+
+
+# ============================================================
+# DATA CLASSES
+# ============================================================
+
+@dataclass
+class DropCard:
+    card_id: str
+    name: str
+    rarity: str = "Common"
+
+    image_url: Optional[str] = None
+    video_url: Optional[str] = None
+
+    edition: str = "Standard"
+
+    atk: int = 0
+    defense: int = 0
+    hp: int = 0
+    speed: int = 0
+
+    element: str = "Normal"
+
+    description: str = ""
+
+    weight: Optional[int] = None
+
+    metadata: dict[str, Any] = field(
+        default_factory=dict
+    )
+
+
+@dataclass
+class ActiveDrop:
+    drop_id: str
+    chat_id: int
+
+    card: DropCard
+
+    created_at: datetime
+    expires_at: datetime
+
+    source: str = "auto"
+
+    message_id: Optional[int] = None
+
+    claimed_by: Optional[int] = None
+    claimed_at: Optional[datetime] = None
+
+    claim_count: int = 0
+
+    expired: bool = False
+
+
+@dataclass
+class ClaimResult:
+    success: bool
+    message: str
+
+    drop_id: Optional[str] = None
+
+    user_id: Optional[int] = None
+    chat_id: Optional[int] = None
+
+    card_id: Optional[str] = None
+
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+
+# ============================================================
+# STORAGE
+# ============================================================
+
+_CARDS: dict[str, DropCard] = {}
+
+_ACTIVE_DROPS: dict[str, ActiveDrop] = {}
+
+_GROUP_COUNTERS: dict[int, int] = {}
+
+_LOCK = RLock()
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def normalize_card_id(card_id: Any) -> str:
+    if card_id is None:
+        raise ValueError("Card ID is required.")
+
+    value = str(card_id).strip()
+
+    if not value:
+        raise ValueError("Card ID is required.")
+
+    if value.isdigit():
+        return value.zfill(4)
+
+    return value
+
+
+def normalize_chat_id(chat_id: Any) -> int:
+    try:
+        return int(chat_id)
+    except (TypeError, ValueError):
+        raise ValueError("Invalid chat ID.")
+
+
+def normalize_user_id(user_id: Any) -> int:
+    try:
+        return int(user_id)
+    except (TypeError, ValueError):
+        raise ValueError("Invalid user ID.")
+
+
+def generate_drop_id(
+    chat_id: int,
+) -> str:
+
+    timestamp = int(
+        utc_now().timestamp() * 1000
+    )
+
+    random_part = random.randint(
+        1000,
+        9999,
+    )
+
+    return (
+        f"{chat_id}_"
+        f"{timestamp}_"
+        f"{random_part}"
+    )
+
+
+# ============================================================
+# CARD REGISTRATION
+# ============================================================
+
+def register_card(
+    card: DropCard,
+) -> DropCard:
+
+    card.card_id = normalize_card_id(
+        card.card_id
+    )
+
+    card.rarity = (
+        str(card.rarity)
+        .strip()
+        or "Common"
+    )
+
+    with _LOCK:
+        _CARDS[card.card_id] = card
+
+    return card
+
+
+def register_cards(
+    cards: list[DropCard],
+) -> int:
+
+    count = 0
+
+    for card in cards:
+        register_card(card)
+        count += 1
+
+    return count
+
+
+def remove_card(
+    card_id: str,
+) -> bool:
+
+    card_id = normalize_card_id(
+        card_id
+    )
+
+    with _LOCK:
+
+        if card_id not in _CARDS:
+            return False
+
+        del _CARDS[card_id]
+
+        return True
+
+
+def get_card(
+    card_id: str,
+) -> Optional[DropCard]:
+
+    card_id = normalize_card_id(
+        card_id
+    )
+
+    with _LOCK:
+        return _CARDS.get(card_id)
+
+
+def get_all_cards() -> list[DropCard]:
+
+    with _LOCK:
+        return list(
+            _CARDS.values()
+        )
+
+
+# ============================================================
+# CARD SELECTION
+# ============================================================
+
+def get_rarity_weight(
+    rarity: str,
+    better: bool = False,
+) -> int:
+
+    rarity = (
+        str(rarity)
+        .strip()
+        .title()
+    )
+
+    weights = (
+        BETTER_RARITY_WEIGHTS
+        if better
+        else RARITY_WEIGHTS
+    )
+
+    return max(
+        0,
+        int(
+            weights.get(
+                rarity,
+                1,
+            )
+        ),
+    )
+
+
+def choose_rarity(
+    better: bool = False,
+) -> str:
+
+    weights = (
+        BETTER_RARITY_WEIGHTS
+        if better
+        else RARITY_WEIGHTS
+    )
+
+    rarities = []
+    values = []
+
+    for rarity, weight in weights.items():
+
+        if weight <= 0:
+            continue
+
+        rarities.append(rarity)
+        values.append(weight)
+
+    if not rarities:
+        return "Common"
+
+    return random.choices(
+        rarities,
+        weights=values,
+        k=1,
+    )[0]
+
+
+def choose_random_card(
+    better: bool = False,
+) -> Optional[DropCard]:
+
+    cards = get_all_cards()
+
+    if not cards:
+        return None
+
+    # First choose rarity.
+    selected_rarity = choose_rarity(
+        better=better
+    )
+
+    matching = [
+        card
+        for card in cards
+        if (
+            card.rarity.lower()
+            == selected_rarity.lower()
+        )
+    ]
+
+    # If selected rarity has no card,
+    # fall back to all cards.
+    if not matching:
+        matching = cards
+
+    custom_weights = []
+
+    for card in matching:
+
+        if card.weight is not None:
+
+            weight = max(
+                1,
+                int(card.weight)
+            )
+
+        else:
+
+            weight = 1
+
+        custom_weights.append(
+            weight
+        )
+
+    return random.choices(
+        matching,
+        weights=custom_weights,
+        k=1,
+    )[0]
+
+
+# ============================================================
+# GROUP MESSAGE COUNTER
+# ============================================================
+
+def get_group_message_count(
+    chat_id: int,
+) -> int:
+
+    chat_id = normalize_chat_id(
+        chat_id
+    )
+
+    with _LOCK:
+        return _GROUP_COUNTERS.get(
+            chat_id,
+            0,
+        )
+
+
+def set_group_message_count(
+    chat_id: int,
+    count: int,
+) -> int:
+
+    chat_id = normalize_chat_id(
+        chat_id
+    )
+
+    count = max(
+        0,
+        int(count),
+    )
+
+    with _LOCK:
+
+        _GROUP_COUNTERS[
+            chat_id
+        ] = count
+
+    return count
+
+
+def increment_group_message_count(
+    chat_id: int,
+    amount: int = 1,
+) -> int:
+
+    chat_id = normalize_chat_id(
+        chat_id
+    )
+
+    amount = max(
+        1,
+        int(amount),
+    )
+
+    with _LOCK:
+
+        current = _GROUP_COUNTERS.get(
+            chat_id,
+            0,
+        )
+
+        current += amount
+
+        _GROUP_COUNTERS[
+            chat_id
+        ] = current
+
+        return current
+
+
+def reset_group_message_count(
+    chat_id: int,
+) -> None:
+
+    chat_id = normalize_chat_id(
+        chat_id
+    )
+
+    with _LOCK:
+        _GROUP_COUNTERS[
+            chat_id
+        ] = 0
+
+
+# ============================================================
+# DROP TRIGGER
+# ============================================================
+
+def should_auto_drop(
+    message_count: int,
+) -> bool:
+
+    return (
+        int(message_count)
+        >= DEFAULT_DROP_MESSAGE_COUNT
+    )
+
+
+def should_better_drop(
+    message_count: int,
+) -> bool:
+
+    return (
+        int(message_count)
+        >= BETTER_DROP_MESSAGE_COUNT
+    )
+
+
+def get_drop_type(
+    message_count: int,
+) -> Optional[str]:
+
+    message_count = int(
+        message_count
+    )
+
+    if (
+        message_count > 0
+        and message_count
+        % BETTER_DROP_MESSAGE_COUNT
+        == 0
+    ):
+        return "better"
+
+    if (
+        message_count > 0
+        and message_count
+        % DEFAULT_DROP_MESSAGE_COUNT
+        == 0
+    ):
+        return "normal"
+
+    return None
+
+
+# ============================================================
+# CREATE DROP
+# ============================================================
+
+def create_drop(
+    chat_id: int,
+    *,
+    better: bool = False,
+    source: str = "auto",
+    message_id: Optional[int] = None,
+    expire_seconds: int = DEFAULT_DROP_EXPIRE_SECONDS,
+    forced_card_id: Optional[str] = None,
+) -> Optional[ActiveDrop]:
+
+    chat_id = normalize_chat_id(
+        chat_id
+    )
+
+    if forced_card_id is not None:
+
+        card = get_card(
+            forced_card_id
+        )
+
+    else:
+
+        card = choose_random_card(
+            better=better
+        )
+
+    if card is None:
+        return None
+
+    now = utc_now()
+
+    expire_seconds = max(
+        10,
+        int(expire_seconds),
+    )
+
+    drop = ActiveDrop(
+        drop_id=generate_drop_id(
+            chat_id
+        ),
+        chat_id=chat_id,
+        card=card,
+        created_at=now,
+        expires_at=(
+            now
+            + timedelta(
+                seconds=expire_seconds
+            )
+        ),
+        source=source,
+        message_id=message_id,
+    )
+
+    with _LOCK:
+
+        _ACTIVE_DROPS[
+            drop.drop_id
+        ] = drop
+
+    return drop
+
+
+# ============================================================
+# AUTO DROP
+# ============================================================
+
+def process_group_message(
+    chat_id: int,
+) -> tuple[int, Optional[ActiveDrop]]:
+
+    count = increment_group_message_count(
+        chat_id
+    )
+
+    drop_type = get_drop_type(
+        count
+    )
+
+    if drop_type is None:
+
+        return (
+            count,
+            None,
+        )
+
+    better = (
+        drop_type == "better"
+    )
+
+    # At a better-drop threshold,
+    # reset the counter after creating it.
+    drop = create_drop(
+        chat_id,
+        better=better,
+        source=(
+            "better_auto"
+            if better
+            else "auto"
+        ),
+    )
+
+    if drop is not None:
+
+        reset_group_message_count(
+            chat_id
+        )
+
+    return (
+        count,
+        drop,
+    )
+
+
+# ============================================================
+# MANUAL DROP
+# ============================================================
+
+def manual_drop(
+    chat_id: int,
+    card_id: Optional[str] = None,
+    *,
+    better: bool = False,
+    message_id: Optional[int] = None,
+    expire_seconds: int = DEFAULT_DROP_EXPIRE_SECONDS,
+) -> Optional[ActiveDrop]:
+
+    return create_drop(
+        chat_id=chat_id,
+        better=better,
+        source="manual",
+        message_id=message_id,
+        expire_seconds=expire_seconds,
+        forced_card_id=card_id,
+    )
+
+
+# ============================================================
+# DROP LOOKUP
+# ============================================================
+
+def get_drop(
+    drop_id: str,
+) -> Optional[ActiveDrop]:
+
+    with _LOCK:
+        return _ACTIVE_DROPS.get(
+            str(drop_id)
+        )
+
+
+def get_active_drops(
+    chat_id: Optional[int] = None,
+) -> list[ActiveDrop]:
+
+    now = utc_now()
+
+    with _LOCK:
+
+        drops = []
+
+        for drop in _ACTIVE_DROPS.values():
+
+            if drop.claimed_by is not None:
+                continue
+
+            if drop.expired:
+                continue
+
+            if now >= drop.expires_at:
+                continue
+
+            if (
+                chat_id is not None
+                and drop.chat_id
+                != int(chat_id)
+            ):
+                continue
+
+            drops.append(drop)
+
+        return drops
+
+
+# ============================================================
+# EXPIRY
+# ============================================================
+
+def is_drop_expired(
+    drop: ActiveDrop,
+) -> bool:
+
+    if drop.expired:
+        return True
+
+    if drop.claimed_by is not None:
+        return False
+
+    return (
+        utc_now()
+        >= drop.expires_at
+    )
+
+
+def expire_drop(
+    drop_id: str,
+) -> bool:
+
+    with _LOCK:
+
+        drop = _ACTIVE_DROPS.get(
+            str(drop_id)
+        )
+
+        if drop is None:
+            return False
+
+        if drop.claimed_by is not None:
+            return False
+
+        drop.expired = True
+
+        return True
+
+
+def cleanup_expired_drops() -> int:
+
+    now = utc_now()
+
+    removed = 0
+
+    with _LOCK:
+
+        expired_ids = []
+
+        for drop_id, drop in _ACTIVE_DROPS.items():
+
+            if drop.claimed_by is not None:
+                continue
+
+            if (
+                drop.expired
+                or now >= drop.expires_at
+            ):
+                expired_ids.append(
+                    drop_id
+                )
+
+        for drop_id in expired_ids:
+
+            drop = _ACTIVE_DROPS.get(
+                drop_id
+            )
+
+            if drop is not None:
+                drop.expired = True
+
+            # Keep a small record long enough
+            # for handler validation.
+            # Remove immediately here to prevent memory growth.
+            del _ACTIVE_DROPS[
+                drop_id
+            ]
+
+            removed += 1
+
+    return removed
+
+
+# ============================================================
+# FIRST CLICK CLAIM
+# ============================================================
+
+def claim_drop(
+    drop_id: str,
+    user_id: int,
+    chat_id: Optional[int] = None,
+) -> ClaimResult:
+
+    user_id = normalize_user_id(
+        user_id
+    )
+
+    if chat_id is not None:
+        chat_id = normalize_chat_id(
+            chat_id
+        )
+
+    with _LOCK:
+
+        drop = _ACTIVE_DROPS.get(
+            str(drop_id)
+        )
+
+        if drop is None:
+
+            return ClaimResult(
+                success=False,
+                message=(
+                    "❌ This drop is no longer available."
+                ),
+                drop_id=str(drop_id),
+                user_id=user_id,
+                chat_id=chat_id,
+            )
+
+        # Make sure the button is used
+        # in the correct group.
+        if (
+            chat_id is not None
+            and drop.chat_id != chat_id
+        ):
+
+            return ClaimResult(
+                success=False,
+                message=(
+                    "❌ This card belongs to another group."
+                ),
+                drop_id=drop.drop_id,
+                user_id=user_id,
+                chat_id=chat_id,
+            )
+
+        # Expiry check.
+        if is_drop_expired(drop):
+
+            drop.expired = True
+
+            return ClaimResult(
+                success=False,
+                message=(
+                    "⏰ Too late!\n"
+                    "This card drop has expired."
+                ),
+                drop_id=drop.drop_id,
+                user_id=user_id,
+                chat_id=drop.chat_id,
+                card_id=drop.card.card_id,
+            )
+
+        # FIRST CLICK WINS.
+        if drop.claimed_by is not None:
+
+            return ClaimResult(
+                success=False,
+                message=(
+                    "❌ Card already claimed!\n"
+                    "🏆 Another user was faster."
+                ),
+                drop_id=drop.drop_id,
+                user_id=user_id,
+                chat_id=drop.chat_id,
+                card_id=drop.card.card_id,
+            )
+
+        # Lock is held here, so two simultaneous
+        # callback requests cannot both win.
+        drop.claimed_by = user_id
+        drop.claimed_at = utc_now()
+        drop.claim_count = 1
+
+        result = ClaimResult(
+            success=True,
+            message=(
+                "🎉 <b>CARD CLAIMED!</b>\n\n"
+                f"🎴 <b>{escape_html(drop.card.name)}</b>\n"
+                f"🆔 ID: <code>{escape_html(drop.card.card_id)}</code>\n"
+                f"💎 Rarity: <b>{escape_html(drop.card.rarity)}</b>\n"
+                f"📚 Edition: <b>{escape_html(drop.card.edition)}</b>\n\n"
+                f"🏆 Claimed by: <code>{user_id}</code>"
+            ),
+            drop_id=drop.drop_id,
+            user_id=user_id,
+            chat_id=drop.chat_id,
+            card_id=drop.card.card_id,
+        )
+
+        return result
+
+
+# ============================================================
+# CLAIM BUTTON DATA
+# ============================================================
+
+def build_claim_callback(
+    drop_id: str,
+) -> str:
+
+    return (
+        f"drop_claim:{drop_id}"
+    )
+
+
+def parse_claim_callback(
+    callback_data: str,
+) -> Optional[str]:
+
+    prefix = "drop_claim:"
+
+    if not callback_data.startswith(
+        prefix
+    ):
+        return None
+
+    drop_id = callback_data[
+        len(prefix):
+    ].strip()
+
+    if not drop_id:
+        return None
+
+    return drop_id
+
+
+# ============================================================
+# TELEGRAM MESSAGE TEXT
+# ============================================================
+
+def format_drop_message(
+    drop: ActiveDrop,
+) -> str:
+
+    card = drop.card
+
+    remaining = max(
+        0,
+        int(
+            (
+                drop.expires_at
+                - utc_now()
+            ).total_seconds()
+        ),
+    )
+
+    return (
+        "✨ <b>NEXUS CARD DROP!</b> ✨\n\n"
+        f"🎴 <b>{escape_html(card.name)}</b>\n"
+        f"🆔 ID: <code>{escape_html(card.card_id)}</code>\n"
+        f"💎 Rarity: <b>{escape_html(card.rarity)}</b>\n"
+        f"📚 Edition: <b>{escape_html(card.edition)}</b>\n\n"
+        f"⚔️ ATK: <b>{card.atk}</b>\n"
+        f"🛡️ DEF: <b>{card.defense}</b>\n"
+        f"❤️ HP: <b>{card.hp}</b>\n"
+        f"💨 Speed: <b>{card.speed}</b>\n"
+        f"🌟 Element: <b>{escape_html(card.element)}</b>\n\n"
+        "⚡ <b>Be the first to click GET CARD!</b>\n"
+        f"⏳ Expires in: <b>{remaining}s</b>"
+    )
+
+
+def format_claim_result(
+    result: ClaimResult,
+) -> str:
+
+    if result.success:
+
+        return (
+            "🎉 <b>YOU GOT THE CARD!</b>\n\n"
+            f"🎴 Card ID: "
+            f"<code>{escape_html(result.card_id or '')}</code>\n"
+            f"👤 User: "
+            f"<code>{result.user_id}</code>\n\n"
+            "✨ The card has been added to your collection."
+        )
+
+    return result.message
+
+
+# ============================================================
+# TELEGRAM BUTTON
+# ============================================================
+
+def get_claim_button_data(
+    drop: ActiveDrop,
+) -> dict[str, str]:
+
+    return {
+        "text": "🎴 GET CARD",
+        "callback_data": build_claim_callback(
+            drop.drop_id
+        ),
+    }
+
+
+# ============================================================
+# ADMIN / OWNER
+# ============================================================
+
+def admin_set_drop_threshold(
+    normal_threshold: int,
+    better_threshold: int,
+) -> tuple[int, int]:
+
+    global DEFAULT_DROP_MESSAGE_COUNT
+    global BETTER_DROP_MESSAGE_COUNT
+
+    normal_threshold = max(
+        1,
+        int(normal_threshold),
+    )
+
+    better_threshold = max(
+        normal_threshold,
+        int(better_threshold),
+    )
+
+    DEFAULT_DROP_MESSAGE_COUNT = (
+        normal_threshold
+    )
+
+    BETTER_DROP_MESSAGE_COUNT = (
+        better_threshold
+    )
+
+    return (
+        DEFAULT_DROP_MESSAGE_COUNT,
+        BETTER_DROP_MESSAGE_COUNT,
+    )
+
+
+def admin_force_drop(
+    chat_id: int,
+    card_id: str,
+    *,
+    message_id: Optional[int] = None,
+) -> Optional[ActiveDrop]:
+
+    return manual_drop(
+        chat_id=chat_id,
+        card_id=card_id,
+        message_id=message_id,
+    )
+
+
+def admin_clear_active_drops(
+    chat_id: Optional[int] = None,
+) -> int:
+
+    removed = 0
+
+    with _LOCK:
+
+        if chat_id is None:
+
+            removed = len(
+                _ACTIVE_DROPS
+            )
+
+            _ACTIVE_DROPS.clear()
+
+            return removed
+
+        chat_id = int(
+            chat_id
+        )
+
+        ids = [
+            drop_id
+            for drop_id, drop
+            in _ACTIVE_DROPS.items()
+            if drop.chat_id == chat_id
+        ]
+
+        for drop_id in ids:
+
+            del _ACTIVE_DROPS[
+                drop_id
+            ]
+
+            removed += 1
+
+    return removed
+
+
+# ============================================================
+# STATISTICS
+# ============================================================
+
+def get_drop_statistics() -> dict[str, int]:
+
+    with _LOCK:
+
+        total_cards = len(
+            _CARDS
+        )
+
+        active_drops = len(
+            [
+                drop
+                for drop in _ACTIVE_DROPS.values()
+                if (
+                    drop.claimed_by is None
+                    and not drop.expired
+                )
+            ]
+        )
+
+        claimed_drops = len(
+            [
+                drop
+                for drop in _ACTIVE_DROPS.values()
+                if drop.claimed_by is not None
+            ]
+        )
+
+        groups = len(
+            _GROUP_COUNTERS
+        )
+
+        return {
+            "cards": total_cards,
+            "active_drops": active_drops,
+            "claimed_drops": claimed_drops,
+            "groups": groups,
+        }
+
+
+# ============================================================
+# RESET
+# ============================================================
+
+def reset_group(
+    chat_id: int,
+) -> None:
+
+    chat_id = int(
+        chat_id
+    )
+
+    with _LOCK:
+
+        _GROUP_COUNTERS.pop(
+            chat_id,
+            None
+        )
+
+        drop_ids = [
+            drop_id
+            for drop_id, drop
+            in _ACTIVE_DROPS.items()
+            if drop.chat_id == chat_id
+        ]
+
+        for drop_id in drop_ids:
+
+            del _ACTIVE_DROPS[
+                drop_id
+            ]
+
+
+def reset_drop_system() -> None:
+
+    with _LOCK:
+
+        _CARDS.clear()
+        _ACTIVE_DROPS.clear()
+        _GROUP_COUNTERS.clear()
+
+
+# ============================================================
+# HTML ESCAPE
+# ============================================================
+
+def escape_html(
+    value: Any,
+) -> str:
+
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+# ============================================================
+# EXPORTS
+# ============================================================
+
+__all__ = [
+    # Config
+    "DEFAULT_DROP_MESSAGE_COUNT",
+    "BETTER_DROP_MESSAGE_COUNT",
+    "DEFAULT_DROP_EXPIRE_SECONDS",
+    "RARITY_WEIGHTS",
+    "BETTER_RARITY_WEIGHTS",
+
+    # Data
+    "DropCard",
+    "ActiveDrop",
+    "ClaimResult",
+
+    # Card registry
+    "register_card",
+    "register_cards",
+    "remove_card",
+    "get_card",
+    "get_all_cards",
+
+    # Selection
+    "get_rarity_weight",
+    "choose_rarity",
+    "choose_random_card",
+
+    # Group counter
+    "get_group_message_count",
+    "set_group_message_count",
+    "increment_group_message_count",
+    "reset_group_message_count",
+
+    # Trigger
+    "should_auto_drop",
+    "should_better_drop",
+    "get_drop_type",
+    "process_group_message",
+
+    # Drop
+    "create_drop",
+    "manual_drop",
+    "get_drop",
+    "get_active_drops",
+
+    # Expiry
+    "is_drop_expired",
+    "expire_drop",
+    "cleanup_expired_drops",
+
+    # Claim
+    "claim_drop",
+    "build_claim_callback",
+    "parse_claim_callback",
+
+    # Telegram UI
+    "format_drop_message",
+    "format_claim_result",
+    "get_claim_button_data",
+
+    # Admin
+    "admin_set_drop_threshold",
+    "admin_force_drop",
+    "admin_clear_active_drops",
+
+    # Stats
+    "get_drop_statistics",
+
+    # Reset
+    "reset_group",
+    "reset_drop_system",
+
+    # Utility
+    "escape_html",
+]
