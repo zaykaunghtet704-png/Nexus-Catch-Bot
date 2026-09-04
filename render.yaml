@@ -1,0 +1,19 @@
+services:
+  - type: worker
+    name: nexus-catch-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER_ID
+        sync: false
+      - key: CHANNEL_ID
+        sync: false
+      - key: WAIFU_LINK
+        sync: false
+      - key: GROUP_LINK
+        sync: false
+      - key: CHANNEL_LINK
+        sync: false
