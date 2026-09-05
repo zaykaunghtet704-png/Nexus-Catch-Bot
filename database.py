@@ -1,22 +1,106 @@
+import os
 import sqlite3
+import threading
+import time
 from contextlib import contextmanager
+
 from config import DATABASE_PATH
+
+
+# ============================================================
+# SQLITE CONFIGURATION
+# ============================================================
+
+# Make sure the database directory exists when DATABASE_PATH
+# contains a directory.
+_db_dir = os.path.dirname(os.path.abspath(DATABASE_PATH))
+if _db_dir:
+    os.makedirs(_db_dir, exist_ok=True)
+
+
+# One Render worker normally runs one bot process.
+# This lock prevents simultaneous SQLite transactions inside
+# the same bot process.
+_DB_LOCK = threading.RLock()
+
+
+def _connect():
+    """
+    Create a SQLite connection configured for concurrent bot use.
+    """
+    conn = sqlite3.connect(
+        DATABASE_PATH,
+        timeout=30.0,
+        check_same_thread=False,
+    )
+
+    conn.row_factory = sqlite3.Row
+
+    # Wait up to 30 seconds when another transaction has the DB locked.
+    conn.execute("PRAGMA busy_timeout = 30000")
+
+    # WAL allows readers while a writer is working and is much safer
+    # for a Telegram bot than the default rollback journal.
+    conn.execute("PRAGMA journal_mode = WAL")
+
+    # Good balance between speed and durability for this bot.
+    conn.execute("PRAGMA synchronous = NORMAL")
+
+    # Foreign-key enforcement.
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    return conn
 
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
+    """
+    Safe SQLite transaction context.
 
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    Every database operation gets its own connection and transaction.
+    The process-level lock prevents two bot handlers from writing
+    through SQLite at the exact same time.
+    """
+    with _DB_LOCK:
+        conn = None
 
+        try:
+            conn = _connect()
+            yield conn
+            conn.commit()
+
+        except sqlite3.OperationalError as exc:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+            # The connection timeout + busy_timeout normally handles
+            # locking. This message makes the Render log easier to read.
+            if "locked" in str(exc).lower():
+                raise sqlite3.OperationalError(
+                    "SQLite database remained locked after waiting 30 seconds."
+                ) from exc
+
+            raise
+
+        except Exception:
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            raise
+
+        finally:
+            if conn is not None:
+                conn.close()
+
+
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
 
 def init_db():
     with get_db() as db:
@@ -186,7 +270,9 @@ def init_db():
             )
         """)
 
-        # Default settings
+        # =========================
+        # Default Settings
+        # =========================
         defaults = {
             "drop_count": "85",
             "drop_enabled": "1",
@@ -200,6 +286,39 @@ def init_db():
                 VALUES (?, ?)
             """, (key, value))
 
+        # =========================
+        # Indexes
+        # =========================
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_cards_user
+            ON user_cards(user_id)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_cards_char
+            ON user_cards(char_id)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_drops_group
+            ON drops(group_id)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_drops_claimed
+            ON drops(claimed)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_cards_active
+            ON cards(active)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_active
+            ON market(active)
+        """)
+
 
 # ============================================================
 # USER FUNCTIONS
@@ -211,8 +330,6 @@ def add_or_update_user(
     first_name="",
     language="my"
 ):
-    import time
-
     with get_db() as db:
         db.execute("""
             INSERT INTO users (
@@ -290,8 +407,6 @@ def add_card(
     drop_weight=1,
     exp_reward=0
 ):
-    import time
-
     with get_db() as db:
         db.execute("""
             INSERT INTO cards (
@@ -310,15 +425,15 @@ def add_card(
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            char_id,
+            str(char_id),
             name,
             edition,
             rarity,
             price,
-            image_file_id,
-            video_file_id,
-            media_type,
-            description,
+            image_file_id or "",
+            video_file_id or "",
+            media_type or "photo",
+            description or "",
             drop_weight,
             exp_reward,
             time.time()
@@ -394,8 +509,6 @@ def add_user_card(
     level=1,
     exp=0
 ):
-    import time
-
     with get_db() as db:
         db.execute("""
             INSERT INTO user_cards (
@@ -523,7 +636,7 @@ def get_global_top(limit=15):
             LEFT JOIN user_cards uc
                 ON uc.user_id = u.user_id
             GROUP BY u.user_id
-            ORDER BY card_count DESC
+            ORDER BY card_count DESC, u.user_id ASC
             LIMIT ?
         """, (limit,)).fetchall()
 
@@ -536,9 +649,7 @@ def get_group_top(group_user_ids, limit=15):
     if not group_user_ids:
         return []
 
-    placeholders = ",".join(
-        ["?"] * len(group_user_ids)
-    )
+    placeholders = ",".join(["?"] * len(group_user_ids))
 
     with get_db() as db:
         return db.execute(f"""
@@ -552,7 +663,7 @@ def get_group_top(group_user_ids, limit=15):
                 ON uc.user_id = u.user_id
             WHERE u.user_id IN ({placeholders})
             GROUP BY u.user_id
-            ORDER BY card_count DESC
+            ORDER BY card_count DESC, u.user_id ASC
             LIMIT ?
         """, (*group_user_ids, limit)).fetchall()
 
@@ -593,8 +704,6 @@ def set_setting(key, value):
 # ============================================================
 
 def add_admin(user_id, added_by):
-    import time
-
     with get_db() as db:
         db.execute("""
             INSERT OR REPLACE INTO admins (
@@ -640,8 +749,6 @@ def save_group(
     bot_is_admin=0,
     added_by=0
 ):
-    import time
-
     with get_db() as db:
         db.execute("""
             INSERT INTO groups (
@@ -660,7 +767,7 @@ def save_group(
                 bot_is_admin = excluded.bot_is_admin
         """, (
             group_id,
-            title,
+            title or "",
             member_count,
             bot_is_admin,
             added_by,
@@ -694,6 +801,8 @@ def is_group_enabled(group_id):
             SELECT enabled
             FROM groups
             WHERE group_id = ?
-        """, (group_id,)).fetchone()
+        """, (group_id,))
 
-        return bool(result and result["enabled"])
+        row = result.fetchone()
+
+        return bool(row and row["enabled"])
