@@ -19,60 +19,95 @@ from database import (
 
 HAREM_PER_PAGE = 6
 
-DEFAULT_HMODE_LIMIT = 10
+# ============================================================
+# 13 EDITIONS
+# ============================================================
 
-# Edition priority
+EDITIONS = [
+    "Common",
+    "Uncommon",
+    "Rare",
+    "Super Rare",
+    "Epic",
+    "Ultra",
+    "Elite",
+    "Master",
+    "Grandmaster",
+    "Mythic",
+    "Legendary",
+    "Ultimate",
+    "Premium",
+]
+
+
+# ============================================================
+# EDITION ORDER
+# ============================================================
+
 EDITION_ORDER = {
-    "premium": 1,
-    "legendary": 2,
-    "mythic": 3,
-    "epic": 4,
-    "rare": 5,
-    "uncommon": 6,
-    "common": 7,
+    "common": 1,
+    "uncommon": 2,
+    "rare": 3,
+    "super rare": 4,
+    "epic": 5,
+    "ultra": 6,
+    "elite": 7,
+    "master": 8,
+    "grandmaster": 9,
+    "mythic": 10,
+    "legendary": 11,
+    "ultimate": 12,
+    "premium": 13,
 }
 
 
 # ============================================================
-# USER HMODE MEMORY
+# USER HMODE
 #
-# Temporary in-memory setting.
-# Later database.py မှာ persistent storage ထည့်နိုင်မယ်။
+# user_id -> selected edition
+#
+# None = All Editions
 # ============================================================
 
 USER_HMODE = {}
 
 
 # ============================================================
-# CARD SORT
+# EDITION EMOJI
 # ============================================================
 
-def sort_cards(cards):
+EDITION_EMOJI = {
+    "common": "⚪",
+    "uncommon": "🟢",
+    "rare": "🔵",
+    "super rare": "🟣",
+    "epic": "🟠",
+    "ultra": "🔴",
+    "elite": "💠",
+    "master": "🔷",
+    "grandmaster": "🔶",
+    "mythic": "🌌",
+    "legendary": "🌟",
+    "ultimate": "💫",
+    "premium": "💎",
+}
 
-    def sort_key(card):
 
-        edition = str(
-            card["edition"] or ""
-        ).lower()
+# ============================================================
+# NORMALIZE EDITION
+# ============================================================
 
-        try:
-            char_id = int(
-                str(card["char_id"])
-            )
-        except (ValueError, TypeError):
-            char_id = 999999999
+def normalize_edition(value):
 
-        return (
-            EDITION_ORDER.get(
-                edition,
-                99,
-            ),
-            char_id,
-        )
+    if value is None:
+        return ""
 
-    return sorted(
-        cards,
-        key=sort_key,
+    return (
+        str(value)
+        .strip()
+        .lower()
+        .replace("_", " ")
+        .replace("-", " ")
     )
 
 
@@ -84,16 +119,339 @@ def get_hmode(user_id):
 
     return USER_HMODE.get(
         user_id,
-        DEFAULT_HMODE_LIMIT,
+        None,
     )
 
 
+# ============================================================
+# SET HMODE
+# ============================================================
+
 def set_hmode(
     user_id,
-    limit,
+    edition,
 ):
 
-    USER_HMODE[user_id] = limit
+    if edition is None:
+
+        USER_HMODE.pop(
+            user_id,
+            None,
+        )
+
+        return
+
+    edition_normalized = normalize_edition(
+        edition
+    )
+
+    for valid_edition in EDITIONS:
+
+        if normalize_edition(
+            valid_edition
+        ) == edition_normalized:
+
+            USER_HMODE[user_id] = valid_edition
+
+            return
+
+
+# ============================================================
+# FILTER CARDS BY EDITION
+# ============================================================
+
+def filter_cards_by_hmode(
+    cards,
+    user_id,
+):
+
+    selected = get_hmode(
+        user_id
+    )
+
+    # --------------------------------------------------------
+    # All Editions
+    # --------------------------------------------------------
+
+    if not selected:
+
+        return list(cards)
+
+    selected_normalized = normalize_edition(
+        selected
+    )
+
+    filtered = []
+
+    for card in cards:
+
+        card_edition = normalize_edition(
+            card["edition"]
+        )
+
+        if card_edition == selected_normalized:
+
+            filtered.append(card)
+
+    return filtered
+
+
+# ============================================================
+# CARD SORT
+# ============================================================
+
+def sort_cards(cards):
+
+    def sort_key(card):
+
+        edition = normalize_edition(
+            card["edition"]
+        )
+
+        try:
+
+            char_id = int(
+                str(card["char_id"])
+            )
+
+        except (
+            ValueError,
+            TypeError,
+        ):
+
+            char_id = 999999999
+
+        return (
+            EDITION_ORDER.get(
+                edition,
+                999,
+            ),
+            char_id,
+        )
+
+    return sorted(
+        cards,
+        key=sort_key,
+    )
+
+
+# ============================================================
+# EDITION BUTTON
+# ============================================================
+
+def edition_button_text(
+    edition,
+    selected,
+):
+
+    emoji = EDITION_EMOJI.get(
+        normalize_edition(edition),
+        "🎴",
+    )
+
+    if selected and (
+        normalize_edition(selected)
+        == normalize_edition(edition)
+    ):
+
+        return (
+            f"✅ {emoji} {edition}"
+        )
+
+    return (
+        f"{emoji} {edition}"
+    )
+
+
+# ============================================================
+# HMODE KEYBOARD
+# ============================================================
+
+def build_hmode_keyboard(
+    user_id,
+):
+
+    selected = get_hmode(
+        user_id
+    )
+
+    keyboard = []
+
+    # --------------------------------------------------------
+    # 13 EDITIONS
+    # --------------------------------------------------------
+
+    # Row 1
+    keyboard.append([
+        InlineKeyboardButton(
+            edition_button_text(
+                "Common",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Common",
+        ),
+        InlineKeyboardButton(
+            edition_button_text(
+                "Uncommon",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Uncommon",
+        ),
+    ])
+
+    # Row 2
+    keyboard.append([
+        InlineKeyboardButton(
+            edition_button_text(
+                "Rare",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Rare",
+        ),
+        InlineKeyboardButton(
+            edition_button_text(
+                "Super Rare",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Super Rare",
+        ),
+    ])
+
+    # Row 3
+    keyboard.append([
+        InlineKeyboardButton(
+            edition_button_text(
+                "Epic",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Epic",
+        ),
+        InlineKeyboardButton(
+            edition_button_text(
+                "Ultra",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Ultra",
+        ),
+    ])
+
+    # Row 4
+    keyboard.append([
+        InlineKeyboardButton(
+            edition_button_text(
+                "Elite",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Elite",
+        ),
+        InlineKeyboardButton(
+            edition_button_text(
+                "Master",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Master",
+        ),
+    ])
+
+    # Row 5
+    keyboard.append([
+        InlineKeyboardButton(
+            edition_button_text(
+                "Grandmaster",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Grandmaster",
+        ),
+        InlineKeyboardButton(
+            edition_button_text(
+                "Mythic",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Mythic",
+        ),
+    ])
+
+    # Row 6
+    keyboard.append([
+        InlineKeyboardButton(
+            edition_button_text(
+                "Legendary",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Legendary",
+        ),
+        InlineKeyboardButton(
+            edition_button_text(
+                "Ultimate",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Ultimate",
+        ),
+    ])
+
+    # Row 7
+    keyboard.append([
+        InlineKeyboardButton(
+            edition_button_text(
+                "Premium",
+                selected,
+            ),
+            callback_data=f"hmode_set:{user_id}:Premium",
+        ),
+        InlineKeyboardButton(
+            "♾️ All Editions",
+            callback_data=f"hmode_set:{user_id}:ALL",
+        ),
+    ])
+
+    # Close
+    keyboard.append([
+        InlineKeyboardButton(
+            "❌ Close",
+            callback_data=f"hmode_close:{user_id}",
+        )
+    ])
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+# ============================================================
+# HMODE TEXT
+# ============================================================
+
+def hmode_text(user_id):
+
+    selected = get_hmode(
+        user_id
+    )
+
+    if selected:
+
+        emoji = EDITION_EMOJI.get(
+            normalize_edition(selected),
+            "🎴",
+        )
+
+        current_text = (
+            f"{emoji} <b>{selected}</b>"
+        )
+
+    else:
+
+        current_text = (
+            "♾️ <b>All Editions</b>"
+        )
+
+    return (
+        "🎛 <b>NEXUS HMODE</b>\n\n"
+        f"📌 Current Mode: {current_text}\n\n"
+        "🎴 Harem မှာ ကြည့်ချင်တဲ့ "
+        "Card Edition ကို ရွေးပါ။\n\n"
+        "ရွေးထားတဲ့ Edition ရဲ့ Card တွေကိုပဲ "
+        "<code>/harem</code> မှာ ပြပေးပါမယ်။"
+    )
 
 
 # ============================================================
@@ -116,102 +474,22 @@ def format_card(
 
 
 # ============================================================
-# HAREM COMMAND
+# HAREM TEXT + KEYBOARD
 # ============================================================
 
-async def harem_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    user = update.effective_user
-
-    if not message or not user:
-        return
-
-    target_user_id = user.id
-
-    # --------------------------------------------------------
-    # Reply user → view their Harem
-    # --------------------------------------------------------
-
-    if message.reply_to_message:
-
-        replied_user = (
-            message.reply_to_message.from_user
-        )
-
-        if replied_user:
-            target_user_id = replied_user.id
-
-    cards = get_user_cards(
-        target_user_id
-    )
-
-    cards = sort_cards(
-        cards
-    )
-
-    if not cards:
-
-        await message.reply_text(
-            "🎴 <b>NEXUS HAREM</b>\n\n"
-            "📭 ဒီ User မှာ Card မရှိသေးပါ။\n\n"
-            "✨ Card ရလာတဲ့အခါ "
-            "<code>/harem</code> နဲ့ ပြန်ကြည့်နိုင်ပါတယ်။",
-            parse_mode="HTML",
-        )
-
-        return
-
-    # HMODE
-    hmode_limit = get_hmode(
-        target_user_id
-    )
-
-    # Only selected number of cards
-    visible_cards = cards[
-        :hmode_limit
-    ]
-
-    await send_harem_page(
-        message,
-        target_user_id,
-        visible_cards,
-        1,
-        total_cards=len(cards),
-    )
-
-
-# ============================================================
-# SEND HAREM PAGE
-# ============================================================
-
-async def send_harem_page(
-    message,
+def build_harem_view(
     user_id,
     cards,
     page,
-    total_cards=None,
+    total_collection,
 ):
 
-    if not cards:
-
-        await message.reply_text(
-            "📭 Harem empty.",
-            parse_mode="HTML",
-        )
-
-        return
-
-    if total_cards is None:
-        total_cards = len(cards)
+    total_cards = len(cards)
 
     total_pages = max(
         1,
         math.ceil(
-            len(cards)
+            total_cards
             / HAREM_PER_PAGE
         ),
     )
@@ -238,25 +516,57 @@ async def send_harem_page(
         start:end
     ]
 
+    selected = get_hmode(
+        user_id
+    )
+
+    if selected:
+
+        emoji = EDITION_EMOJI.get(
+            normalize_edition(selected),
+            "🎴",
+        )
+
+        mode_text = (
+            f"{emoji} {selected}"
+        )
+
+    else:
+
+        mode_text = (
+            "♾️ All Editions"
+        )
+
     text = (
         "🎴 <b>NEXUS HAREM</b>\n\n"
-        f"📦 Collection: <b>{total_cards}</b> Cards\n"
-        f"🎛 HMode: <b>{len(cards)}</b> Cards\n"
+        f"📦 Total Collection: "
+        f"<b>{total_collection}</b>\n"
+        f"🎛 HMode: <b>{mode_text}</b>\n"
+        f"🎴 Showing: <b>{total_cards}</b> Cards\n"
         f"📄 Page: <b>{page}/{total_pages}</b>\n\n"
     )
 
-    for index, card in enumerate(
-        page_cards,
-        start=start + 1,
-    ):
+    if not page_cards:
 
         text += (
-            format_card(
-                card,
-                index,
-            )
-            + "\n"
+            "📭 ဒီ Edition မှာ "
+            "Card မရှိသေးပါ။\n"
         )
+
+    else:
+
+        for index, card in enumerate(
+            page_cards,
+            start=start + 1,
+        ):
+
+            text += (
+                format_card(
+                    card,
+                    index,
+                )
+                + "\n"
+            )
 
     keyboard = []
 
@@ -341,19 +651,147 @@ async def send_harem_page(
         ),
     ])
 
+    return (
+        text,
+        InlineKeyboardMarkup(
+            keyboard
+        ),
+    )
+
+
+# ============================================================
+# HAREM COMMAND
+# ============================================================
+
+async def harem_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    message = update.effective_message
+    user = update.effective_user
+
+    if not message or not user:
+        return
+
+    target_user_id = user.id
+
+    # --------------------------------------------------------
+    # Reply User → View Their Harem
+    # --------------------------------------------------------
+
+    if message.reply_to_message:
+
+        replied_user = (
+            message.reply_to_message.from_user
+        )
+
+        if replied_user:
+
+            target_user_id = (
+                replied_user.id
+            )
+
+    all_cards = get_user_cards(
+        target_user_id
+    )
+
+    all_cards = sort_cards(
+        all_cards
+    )
+
+    total_collection = len(
+        all_cards
+    )
+
+    if not all_cards:
+
+        await message.reply_text(
+            "🎴 <b>NEXUS HAREM</b>\n\n"
+            "📭 ဒီ User မှာ Card မရှိသေးပါ။\n\n"
+            "✨ Card ရလာတဲ့အခါ "
+            "<code>/harem</code> နဲ့ "
+            "ပြန်ကြည့်နိုင်ပါတယ်။",
+            parse_mode="HTML",
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # APPLY HMODE
+    # --------------------------------------------------------
+
+    cards = filter_cards_by_hmode(
+        all_cards,
+        target_user_id,
+    )
+
+    # --------------------------------------------------------
+    # Selected Edition Has No Cards
+    # --------------------------------------------------------
+
+    if not cards:
+
+        selected = get_hmode(
+            target_user_id
+        )
+
+        emoji = EDITION_EMOJI.get(
+            normalize_edition(selected),
+            "🎴",
+        )
+
+        await message.reply_text(
+            "🎴 <b>NEXUS HAREM</b>\n\n"
+            f"{emoji} Selected Edition: "
+            f"<b>{selected}</b>\n\n"
+            "📭 ဒီ Edition မှာ "
+            "Card မရှိသေးပါ။\n\n"
+            "🎛 HMode ကနေ "
+            "တခြား Edition ကို ရွေးနိုင်ပါတယ်။",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🎛 Change HMode",
+                        callback_data=(
+                            f"harem_hmode:"
+                            f"{target_user_id}"
+                        ),
+                    ),
+                    InlineKeyboardButton(
+                        "🔄 Reset",
+                        callback_data=(
+                            f"harem_reset:"
+                            f"{target_user_id}"
+                        ),
+                    ),
+                ]
+            ]),
+            parse_mode="HTML",
+        )
+
+        return
+
+    text, keyboard = build_harem_view(
+        target_user_id,
+        cards,
+        1,
+        total_collection,
+    )
+
     try:
 
         await message.reply_text(
             text,
-            reply_markup=InlineKeyboardMarkup(
-                keyboard
-            ),
+            reply_markup=keyboard,
             parse_mode="HTML",
         )
 
-    except Exception:
+    except Exception as e:
 
-        pass
+        print(
+            f"[HAREM ERROR] {e}"
+        )
 
 
 # ============================================================
@@ -371,43 +809,11 @@ async def hmode_command(
     if not message or not user:
         return
 
-    current = get_hmode(
-        user.id
-    )
-
     await message.reply_text(
-        "🎛 <b>NEXUS HMODE</b>\n\n"
-        f"📌 လက်ရှိ Mode: <b>{current}</b> Cards\n\n"
-        "Harem မှာ အရင်ဆုံးပြချင်တဲ့ "
-        "Card အရေအတွက်ကို ရွေးပါ။",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "5️⃣ 5 Cards",
-                    callback_data=f"hmode_set:{user.id}:5",
-                ),
-                InlineKeyboardButton(
-                    "🔟 10 Cards",
-                    callback_data=f"hmode_set:{user.id}:10",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "1️⃣5️⃣ 15 Cards",
-                    callback_data=f"hmode_set:{user.id}:15",
-                ),
-                InlineKeyboardButton(
-                    "2️⃣0️⃣ 20 Cards",
-                    callback_data=f"hmode_set:{user.id}:20",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "♾️ All Cards",
-                    callback_data=f"hmode_set:{user.id}:999999",
-                ),
-            ],
-        ]),
+        hmode_text(user.id),
+        reply_markup=build_hmode_keyboard(
+            user.id
+        ),
         parse_mode="HTML",
     )
 
@@ -434,8 +840,8 @@ async def reset_command(
 
     await message.reply_text(
         "🔄 <b>HAREM RESET</b>\n\n"
-        "✅ Harem filter ပြန်ရှင်းပြီးပါပြီ။\n"
-        "🎴 Card အားလုံးကို ပြန်ကြည့်နိုင်ပါပြီ။\n\n"
+        "✅ HMode filter ပြန်ရှင်းပြီးပါပြီ။\n"
+        "🎴 Edition အားလုံးကို ပြန်ကြည့်နိုင်ပါပြီ။\n\n"
         "📌 <code>/harem</code> ကို ပြန်သုံးပါ။",
         parse_mode="HTML",
     )
@@ -451,6 +857,10 @@ async def harem_callback(
 ):
 
     query = update.callback_query
+
+    if not query:
+        return
+
     data = query.data or ""
 
     # ========================================================
@@ -472,7 +882,8 @@ async def harem_callback(
     ):
 
         parts = data.split(
-            ":"
+            ":",
+            2,
         )
 
         if len(parts) != 3:
@@ -504,8 +915,7 @@ async def harem_callback(
             return
 
         # ----------------------------------------------------
-        # Security:
-        # Only owner can navigate his own Harem buttons
+        # Security
         # ----------------------------------------------------
 
         if query.from_user.id != owner_id:
@@ -517,157 +927,38 @@ async def harem_callback(
 
             return
 
-        cards = get_user_cards(
+        all_cards = get_user_cards(
             owner_id
         )
 
-        cards = sort_cards(
-            cards
+        all_cards = sort_cards(
+            all_cards
         )
 
-        hmode_limit = get_hmode(
-            owner_id
+        total_collection = len(
+            all_cards
         )
 
-        cards = cards[
-            :hmode_limit
-        ]
+        cards = filter_cards_by_hmode(
+            all_cards,
+            owner_id,
+        )
 
         if not cards:
 
             await query.answer(
-                "📭 Harem empty.",
+                "📭 ဒီ Edition မှာ Card မရှိပါ။",
                 show_alert=True,
             )
 
             return
 
-        total_cards = len(
-            get_user_cards(
-                owner_id
-            )
+        text, keyboard = build_harem_view(
+            owner_id,
+            cards,
+            page,
+            total_collection,
         )
-
-        total_pages = max(
-            1,
-            math.ceil(
-                len(cards)
-                / HAREM_PER_PAGE
-            ),
-        )
-
-        page = max(
-            1,
-            min(
-                page,
-                total_pages,
-            ),
-        )
-
-        start = (
-            (page - 1)
-            * HAREM_PER_PAGE
-        )
-
-        end = (
-            start
-            + HAREM_PER_PAGE
-        )
-
-        page_cards = cards[
-            start:end
-        ]
-
-        text = (
-            "🎴 <b>NEXUS HAREM</b>\n\n"
-            f"📦 Collection: <b>{total_cards}</b> Cards\n"
-            f"🎛 HMode: <b>{len(cards)}</b> Cards\n"
-            f"📄 Page: <b>{page}/{total_pages}</b>\n\n"
-        )
-
-        for index, card in enumerate(
-            page_cards,
-            start=start + 1,
-        ):
-
-            text += (
-                format_card(
-                    card,
-                    index,
-                )
-                + "\n"
-            )
-
-        keyboard = []
-
-        for card in page_cards:
-
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"🎴 {card['name']}",
-                    callback_data=(
-                        f"harem_card:"
-                        f"{owner_id}:"
-                        f"{card['char_id']}"
-                    ),
-                )
-            ])
-
-        navigation = []
-
-        if page > 1:
-
-            navigation.append(
-                InlineKeyboardButton(
-                    "⬅️",
-                    callback_data=(
-                        f"harem_page:"
-                        f"{owner_id}:"
-                        f"{page - 1}"
-                    ),
-                )
-            )
-
-        navigation.append(
-            InlineKeyboardButton(
-                f"📄 {page}/{total_pages}",
-                callback_data="harem_noop",
-            )
-        )
-
-        if page < total_pages:
-
-            navigation.append(
-                InlineKeyboardButton(
-                    "➡️",
-                    callback_data=(
-                        f"harem_page:"
-                        f"{owner_id}:"
-                        f"{page + 1}"
-                    ),
-                )
-            )
-
-        keyboard.append(
-            navigation
-        )
-
-        keyboard.append([
-            InlineKeyboardButton(
-                "🎛 HMode",
-                callback_data=(
-                    f"harem_hmode:"
-                    f"{owner_id}"
-                ),
-            ),
-            InlineKeyboardButton(
-                "🔄 Reset",
-                callback_data=(
-                    f"harem_reset:"
-                    f"{owner_id}"
-                ),
-            ),
-        ])
 
         await query.answer()
 
@@ -675,14 +966,15 @@ async def harem_callback(
 
             await query.edit_message_text(
                 text,
-                reply_markup=InlineKeyboardMarkup(
-                    keyboard
-                ),
+                reply_markup=keyboard,
                 parse_mode="HTML",
             )
 
-        except Exception:
-            pass
+        except Exception as e:
+
+            print(
+                f"[HAREM PAGE ERROR] {e}"
+            )
 
         return
 
@@ -735,6 +1027,35 @@ async def harem_callback(
 
             return
 
+        # ----------------------------------------------------
+        # Make sure card is actually in owner's harem
+        # ----------------------------------------------------
+
+        owned_cards = get_user_cards(
+            owner_id
+        )
+
+        owned = False
+
+        for owned_card in owned_cards:
+
+            if str(
+                owned_card["char_id"]
+            ) == str(char_id):
+
+                owned = True
+
+                break
+
+        if not owned:
+
+            await query.answer(
+                "❌ ဒီ Card ကို မင်းမပိုင်ပါ။",
+                show_alert=True,
+            )
+
+            return
+
         card = get_card(
             char_id
         )
@@ -754,7 +1075,8 @@ async def harem_callback(
             f"🆔 ID: <code>{card['char_id']}</code>\n\n"
             f"✨ Edition: <b>{card['edition']}</b>\n"
             f"⭐ Rarity: <b>{card['rarity']}</b>\n"
-            f"💰 Price: <b>{int(card['price'] or 0):,}</b> Coins\n"
+            f"💰 Price: "
+            f"<b>{int(card['price'] or 0):,}</b> Coins\n"
         )
 
         keyboard = [
@@ -765,7 +1087,14 @@ async def harem_callback(
                         f"harem_page:"
                         f"{owner_id}:1"
                     ),
-                )
+                ),
+                InlineKeyboardButton(
+                    "🎛 HMode",
+                    callback_data=(
+                        f"harem_hmode:"
+                        f"{owner_id}"
+                    ),
+                ),
             ]
         ]
 
@@ -781,8 +1110,11 @@ async def harem_callback(
                 parse_mode="HTML",
             )
 
-        except Exception:
-            pass
+        except Exception as e:
+
+            print(
+                f"[CARD DETAIL ERROR] {e}"
+            )
 
         return
 
@@ -821,51 +1153,23 @@ async def harem_callback(
 
             return
 
-        current = get_hmode(
-            owner_id
-        )
-
         await query.answer()
 
         try:
 
             await query.edit_message_text(
-                "🎛 <b>NEXUS HMODE</b>\n\n"
-                f"📌 Current: <b>{current}</b>\n\n"
-                "Harem မှာ ပြချင်တဲ့ Card အရေအတွက် ရွေးပါ။",
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            "5️⃣ 5",
-                            callback_data=f"hmode_set:{owner_id}:5",
-                        ),
-                        InlineKeyboardButton(
-                            "🔟 10",
-                            callback_data=f"hmode_set:{owner_id}:10",
-                        ),
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "1️⃣5️⃣ 15",
-                            callback_data=f"hmode_set:{owner_id}:15",
-                        ),
-                        InlineKeyboardButton(
-                            "2️⃣0️⃣ 20",
-                            callback_data=f"hmode_set:{owner_id}:20",
-                        ),
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "♾️ All",
-                            callback_data=f"hmode_set:{owner_id}:999999",
-                        ),
-                    ],
-                ]),
+                hmode_text(owner_id),
+                reply_markup=build_hmode_keyboard(
+                    owner_id
+                ),
                 parse_mode="HTML",
             )
 
-        except Exception:
-            pass
+        except Exception as e:
+
+            print(
+                f"[HMODE MENU ERROR] {e}"
+            )
 
         return
 
@@ -878,7 +1182,8 @@ async def harem_callback(
     ):
 
         parts = data.split(
-            ":"
+            ":",
+            2,
         )
 
         if len(parts) != 3:
@@ -896,14 +1201,10 @@ async def harem_callback(
                 parts[1]
             )
 
-            limit = int(
-                parts[2]
-            )
-
         except ValueError:
 
             await query.answer(
-                "Invalid setting.",
+                "Invalid user.",
                 show_alert=True,
             )
 
@@ -918,144 +1219,217 @@ async def harem_callback(
 
             return
 
-        set_hmode(
-            owner_id,
-            limit,
-        )
+        selected = parts[2]
 
-        await query.answer(
-            "✅ HMode updated!",
-            show_alert=False,
-        )
+        # ----------------------------------------------------
+        # ALL
+        # ----------------------------------------------------
 
-        # Show first page again
-        cards = get_user_cards(
+        if normalize_edition(selected) == "all":
+
+            set_hmode(
+                owner_id,
+                None,
+            )
+
+            await query.answer(
+                "✅ All Editions selected!",
+                show_alert=False,
+            )
+
+        else:
+
+            valid = False
+
+            for edition in EDITIONS:
+
+                if (
+                    normalize_edition(edition)
+                    == normalize_edition(selected)
+                ):
+
+                    selected = edition
+                    valid = True
+                    break
+
+            if not valid:
+
+                await query.answer(
+                    "❌ Invalid Edition.",
+                    show_alert=True,
+                )
+
+                return
+
+            set_hmode(
+                owner_id,
+                selected,
+            )
+
+            await query.answer(
+                f"✅ {selected} selected!",
+                show_alert=False,
+            )
+
+        # ----------------------------------------------------
+        # Refresh Harem
+        # ----------------------------------------------------
+
+        all_cards = get_user_cards(
             owner_id
         )
 
-        cards = sort_cards(
-            cards
+        all_cards = sort_cards(
+            all_cards
         )
 
-        cards = cards[
-            :limit
-        ]
+        total_collection = len(
+            all_cards
+        )
+
+        cards = filter_cards_by_hmode(
+            all_cards,
+            owner_id,
+        )
 
         if not cards:
 
-            await query.edit_message_text(
-                "📭 Harem empty.",
-                parse_mode="HTML",
+            current = get_hmode(
+                owner_id
             )
+
+            if current:
+
+                emoji = EDITION_EMOJI.get(
+                    normalize_edition(current),
+                    "🎴",
+                )
+
+                text = (
+                    "🎴 <b>NEXUS HAREM</b>\n\n"
+                    f"{emoji} Selected: "
+                    f"<b>{current}</b>\n\n"
+                    "📭 ဒီ Edition မှာ "
+                    "Card မရှိသေးပါ။"
+                )
+
+            else:
+
+                text = (
+                    "🎴 <b>NEXUS HAREM</b>\n\n"
+                    "📭 Harem မှာ Card မရှိသေးပါ။"
+                )
+
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🎛 HMode",
+                        callback_data=(
+                            f"harem_hmode:"
+                            f"{owner_id}"
+                        ),
+                    ),
+                    InlineKeyboardButton(
+                        "🔄 Reset",
+                        callback_data=(
+                            f"harem_reset:"
+                            f"{owner_id}"
+                        ),
+                    ),
+                ]
+            ])
+
+            try:
+
+                await query.edit_message_text(
+                    text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                )
+
+            except Exception as e:
+
+                print(
+                    f"[HMODE EMPTY ERROR] {e}"
+                )
 
             return
 
-        total_cards = len(
-            get_user_cards(
-                owner_id
-            )
-        )
-
-        total_pages = max(
+        text, keyboard = build_harem_view(
+            owner_id,
+            cards,
             1,
-            math.ceil(
-                len(cards)
-                / HAREM_PER_PAGE
-            ),
+            total_collection,
         )
-
-        page_cards = cards[
-            :HAREM_PER_PAGE
-        ]
-
-        text = (
-            "🎴 <b>NEXUS HAREM</b>\n\n"
-            f"📦 Collection: <b>{total_cards}</b> Cards\n"
-            f"🎛 HMode: <b>{len(cards)}</b> Cards\n"
-            f"📄 Page: <b>1/{total_pages}</b>\n\n"
-        )
-
-        for index, card in enumerate(
-            page_cards,
-            start=1,
-        ):
-
-            text += (
-                format_card(
-                    card,
-                    index,
-                )
-                + "\n"
-            )
-
-        keyboard = []
-
-        for card in page_cards:
-
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"🎴 {card['name']}",
-                    callback_data=(
-                        f"harem_card:"
-                        f"{owner_id}:"
-                        f"{card['char_id']}"
-                    ),
-                )
-            ])
-
-        navigation = [
-            InlineKeyboardButton(
-                "📄 1/"
-                f"{total_pages}",
-                callback_data="harem_noop",
-            )
-        ]
-
-        if total_pages > 1:
-
-            navigation.append(
-                InlineKeyboardButton(
-                    "➡️",
-                    callback_data=(
-                        f"harem_page:"
-                        f"{owner_id}:2"
-                    ),
-                )
-            )
-
-        keyboard.append(
-            navigation
-        )
-
-        keyboard.append([
-            InlineKeyboardButton(
-                "🎛 HMode",
-                callback_data=(
-                    f"harem_hmode:"
-                    f"{owner_id}"
-                ),
-            ),
-            InlineKeyboardButton(
-                "🔄 Reset",
-                callback_data=(
-                    f"harem_reset:"
-                    f"{owner_id}"
-                ),
-            ),
-        ])
 
         try:
 
             await query.edit_message_text(
                 text,
-                reply_markup=InlineKeyboardMarkup(
-                    keyboard
-                ),
+                reply_markup=keyboard,
                 parse_mode="HTML",
             )
 
-        except Exception:
-            pass
+        except Exception as e:
+
+            print(
+                f"[HMODE SET ERROR] {e}"
+            )
+
+        return
+
+    # ========================================================
+    # HMODE CLOSE
+    # ========================================================
+
+    if data.startswith(
+        "hmode_close:"
+    ):
+
+        try:
+
+            owner_id = int(
+                data.split(
+                    ":",
+                    1,
+                )[1]
+            )
+
+        except ValueError:
+
+            await query.answer(
+                "Invalid user.",
+                show_alert=True,
+            )
+
+            return
+
+        if query.from_user.id != owner_id:
+
+            await query.answer(
+                "🚫 ဒီ Menu ကို မင်းပိတ်လို့မရပါ။",
+                show_alert=True,
+            )
+
+            return
+
+        await query.answer()
+
+        try:
+
+            await query.edit_message_text(
+                "🎛 <b>HMODE</b>\n\n"
+                "Menu ပိတ်လိုက်ပါပြီ။\n\n"
+                "📌 <code>/harem</code> "
+                "သို့မဟုတ် <code>/hmode</code> ကို ပြန်သုံးနိုင်ပါတယ်။",
+                parse_mode="HTML",
+            )
+
+        except Exception as e:
+
+            print(
+                f"[HMODE CLOSE ERROR] {e}"
+            )
 
         return
 
@@ -1101,21 +1475,29 @@ async def harem_callback(
 
         await query.answer(
             "✅ Harem reset!",
+            show_alert=False,
         )
 
         try:
 
             await query.edit_message_text(
                 "🔄 <b>HAREM RESET</b>\n\n"
-                "✅ Filter အားလုံး ပြန်ရှင်းပြီးပါပြီ။\n"
-                "🎴 Card အားလုံး ပြန်ကြည့်နိုင်ပါပြီ။\n\n"
-                "📌 <code>/harem</code> ကို ပြန်ခေါ်ပါ။",
+                "✅ HMode filter ပြန်ရှင်းပြီးပါပြီ။\n"
+                "🎴 Edition အားလုံးကို ပြန်ကြည့်နိုင်ပါပြီ။\n\n"
+                "📌 <code>/harem</code> ကို ပြန်သုံးပါ။",
                 parse_mode="HTML",
             )
 
-        except Exception:
-            pass
+        except Exception as e:
+
+            print(
+                f"[HAREM RESET ERROR] {e}"
+            )
 
         return
+
+    # ========================================================
+    # UNKNOWN CALLBACK
+    # ========================================================
 
     await query.answer()
