@@ -1,5 +1,4 @@
 import time
-from datetime import datetime, timezone
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -28,6 +27,9 @@ MIN_MARKET_PRICE = 1
 # ============================================================
 
 def init_economy_db():
+    """
+    Create economy-related tables if they do not exist.
+    """
 
     with get_db() as db:
 
@@ -54,17 +56,23 @@ def init_economy_db():
         )
 
 
+# Initialize safely when module loads.
 init_economy_db()
 
 
 # ============================================================
-# HELPERS
+# COIN HELPERS
 # ============================================================
 
-def add_coins(
-    user_id,
-    amount,
-):
+def add_coins(user_id, amount):
+    """
+    Add coins to a user.
+    """
+
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
 
     with get_db() as db:
 
@@ -78,7 +86,7 @@ def add_coins(
 
             ON CONFLICT(user_id)
             DO UPDATE SET
-                coins = coins + excluded.coins
+                coins = COALESCE(users.coins, 0) + excluded.coins
             """,
             (
                 user_id,
@@ -86,11 +94,18 @@ def add_coins(
             ),
         )
 
+    return True
 
-def remove_coins(
-    user_id,
-    amount,
-):
+
+def remove_coins(user_id, amount):
+    """
+    Remove coins if user has enough.
+    """
+
+    amount = int(amount)
+
+    if amount <= 0:
+        return False
 
     with get_db() as db:
 
@@ -106,9 +121,7 @@ def remove_coins(
         if not row:
             return False
 
-        current = int(
-            row["coins"] or 0
-        )
+        current = int(row["coins"] or 0)
 
         if current < amount:
             return False
@@ -125,30 +138,37 @@ def remove_coins(
             ),
         )
 
-        return True
+    return True
 
+
+# ============================================================
+# CARD HELPERS
+# ============================================================
 
 def card_owned_by_user(
     user_id,
     char_id,
 ):
+    """
+    Check whether a user owns a card.
+    """
 
-    cards = get_user_cards(
-        user_id
-    )
+    cards = get_user_cards(user_id)
 
     for card in cards:
 
         if str(card["char_id"]) == str(char_id):
-
             return True
 
     return False
 
 
-def get_card_sale_price(
-    card,
-):
+def get_card_sale_price(card):
+    """
+    Get default card selling price.
+
+    Premium = 15,000 Coins
+    """
 
     edition = str(
         card["edition"]
@@ -158,51 +178,53 @@ def get_card_sale_price(
         card["rarity"]
     ).lower()
 
-    # Premium = highest price
-    if "premium" in edition:
+    # ========================================================
+    # PREMIUM
+    # ========================================================
 
+    if "premium" in edition:
         return 15_000
 
-    # Higher editions
-    if "legend" in edition:
+    # ========================================================
+    # HIGHER EDITIONS
+    # ========================================================
 
+    if "legend" in edition:
         return 12_000
 
     if "mythic" in edition:
-
         return 10_000
 
     if "epic" in edition:
-
         return 8_000
 
     if "rare" in edition:
-
         return 5_000
 
-    # Rarity fallback
-    if "legend" in rarity:
+    # ========================================================
+    # RARITY FALLBACK
+    # ========================================================
 
+    if "legend" in rarity:
         return 12_000
 
     if "mythic" in rarity:
-
         return 10_000
 
     if "epic" in rarity:
-
         return 8_000
 
     if "rare" in rarity:
-
         return 5_000
 
     return 1_000
 
 
-def get_listing(
-    listing_id,
-):
+# ============================================================
+# MARKET HELPERS
+# ============================================================
+
+def get_listing(listing_id):
 
     with get_db() as db:
 
@@ -234,80 +256,172 @@ async def daily_command(
 
     now = time.time()
 
-    with get_db() as db:
+    try:
 
-        row = db.execute(
-            """
-            SELECT last_claim
-            FROM daily_claims
-            WHERE user_id = ?
-            """,
-            (user.id,),
-        ).fetchone()
+        # ====================================================
+        # IMPORTANT:
+        # Keep the daily claim and coin reward
+        # inside ONE database transaction.
+        #
+        # Do NOT call add_coins() here because that would
+        # open another SQLite connection while this one
+        # is already active.
+        # ====================================================
 
-        last_claim = (
-            float(row["last_claim"])
-            if row
-            else 0
-        )
+        with get_db() as db:
 
-        elapsed = now - last_claim
+            row = db.execute(
+                """
+                SELECT last_claim
+                FROM daily_claims
+                WHERE user_id = ?
+                """,
+                (user.id,),
+            ).fetchone()
 
-        if elapsed < DAILY_COOLDOWN:
-
-            remaining = int(
-                DAILY_COOLDOWN - elapsed
+            last_claim = (
+                float(row["last_claim"])
+                if row
+                else 0
             )
 
-            hours = remaining // 3600
-            minutes = (
-                remaining % 3600
-            ) // 60
+            elapsed = now - last_claim
 
-            await message.reply_text(
-                "⏳ <b>DAILY COOLDOWN</b>\n\n"
-                "ဒီနေ့ Reward ယူပြီးပါပြီ။\n\n"
-                f"🕐 ပြန်ယူနိုင်ရန် "
-                f"<b>{hours}h {minutes}m</b> ကျန်ပါသေးတယ်။",
-                parse_mode="HTML",
+            # =================================================
+            # COOLDOWN
+            # =================================================
+
+            if elapsed < DAILY_COOLDOWN:
+
+                remaining = int(
+                    DAILY_COOLDOWN - elapsed
+                )
+
+                hours = remaining // 3600
+
+                minutes = (
+                    remaining % 3600
+                ) // 60
+
+                await message.reply_text(
+                    "⏳ <b>DAILY COOLDOWN</b>\n\n"
+                    "ဒီနေ့ Reward ယူပြီးပါပြီ။\n\n"
+                    f"🕐 ပြန်ယူနိုင်ရန် "
+                    f"<b>{hours}h {minutes}m</b> "
+                    "ကျန်ပါသေးတယ်။",
+                    parse_mode="HTML",
+                )
+
+                return
+
+            # =================================================
+            # MAKE SURE USER EXISTS
+            # =================================================
+
+            user_row = db.execute(
+                """
+                SELECT user_id
+                FROM users
+                WHERE user_id = ?
+                """,
+                (user.id,),
+            ).fetchone()
+
+            if not user_row:
+
+                db.execute(
+                    """
+                    INSERT INTO users (
+                        user_id,
+                        coins
+                    )
+                    VALUES (?, ?)
+                    """,
+                    (
+                        user.id,
+                        DAILY_REWARD,
+                    ),
+                )
+
+            else:
+
+                db.execute(
+                    """
+                    UPDATE users
+                    SET coins = COALESCE(coins, 0) + ?
+                    WHERE user_id = ?
+                    """,
+                    (
+                        DAILY_REWARD,
+                        user.id,
+                    ),
+                )
+
+            # =================================================
+            # SAVE DAILY CLAIM
+            # =================================================
+
+            db.execute(
+                """
+                INSERT INTO daily_claims (
+                    user_id,
+                    last_claim
+                )
+                VALUES (?, ?)
+
+                ON CONFLICT(user_id)
+                DO UPDATE SET
+                    last_claim = excluded.last_claim
+                """,
+                (
+                    user.id,
+                    now,
+                ),
             )
 
-            return
+            # =================================================
+            # GET NEW BALANCE FROM SAME DB
+            # =================================================
 
-        db.execute(
-            """
-            INSERT INTO daily_claims (
-                user_id,
-                last_claim
+            balance_row = db.execute(
+                """
+                SELECT coins
+                FROM users
+                WHERE user_id = ?
+                """,
+                (user.id,),
+            ).fetchone()
+
+            balance = int(
+                balance_row["coins"] or 0
             )
-            VALUES (?, ?)
 
-            ON CONFLICT(user_id)
-            DO UPDATE SET
-                last_claim = excluded.last_claim
-            """,
-            (
-                user.id,
-                now,
-            ),
+        # ====================================================
+        # SUCCESS
+        # ====================================================
+
+        await message.reply_text(
+            "🎁 <b>DAILY REWARD</b>\n\n"
+            f"🪙 +{DAILY_REWARD:,} Coins ရရှိပါပြီ!\n\n"
+            f"💰 Balance: <b>{balance:,}</b> Coins\n\n"
+            "⏳ နောက်တစ်ကြိမ် "
+            "24 နာရီအကြာမှာ ပြန်ယူနိုင်ပါတယ်။",
+            parse_mode="HTML",
         )
 
-        add_coins(
-            user.id,
-            DAILY_REWARD,
+    except Exception as e:
+
+        print(
+            f"[DAILY ERROR] "
+            f"user={user.id} "
+            f"error={e}"
         )
 
-    balance = get_balance(
-        user.id
-    )
-
-    await message.reply_text(
-        "🎁 <b>DAILY REWARD</b>\n\n"
-        f"🪙 +{DAILY_REWARD:,} Coins ရရှိပါပြီ!\n\n"
-        f"💰 Balance: <b>{balance:,}</b> Coins\n\n"
-        "⏳ နောက်တစ်ကြိမ် 24 နာရီအကြာမှာ ပြန်ယူနိုင်ပါတယ်။",
-        parse_mode="HTML",
-    )
+        await message.reply_text(
+            "❌ Daily Reward ယူရာမှာ "
+            "အမှားတစ်ခု ဖြစ်သွားပါတယ်။\n"
+            "ခဏနေပြီး ပြန်စမ်းပါ။"
+        )
 
 
 # ============================================================
@@ -390,9 +504,7 @@ async def sellprice_command(
         if edition not in editions:
 
             editions[edition] = (
-                get_card_sale_price(
-                    card
-                )
+                get_card_sale_price(card)
             )
 
     for edition, price in editions.items():
@@ -444,16 +556,11 @@ async def sell_command(
     char_id = context.args[0]
 
     try:
-
-        price = int(
-            context.args[1]
-        )
-
+        price = int(context.args[1])
     except ValueError:
 
         await message.reply_text(
-            "❌ Price က နံပါတ်ဖြစ်ရပါမယ်။",
-            parse_mode="HTML",
+            "❌ Price က နံပါတ်ဖြစ်ရပါမယ်။"
         )
 
         return
@@ -475,9 +582,7 @@ async def sell_command(
 
         return
 
-    card = get_card(
-        char_id
-    )
+    card = get_card(char_id)
 
     if not card:
 
@@ -498,7 +603,6 @@ async def sell_command(
 
         return
 
-    # Prevent duplicate active listing
     with get_db() as db:
 
         existing = db.execute(
@@ -551,7 +655,7 @@ async def sell_command(
         f"🆔 <code>{char_id}</code>\n"
         f"💰 Price: <b>{price:,}</b> Coins\n"
         f"🔖 Listing ID: <code>{listing_id}</code>\n\n"
-        f"🛍 ဝယ်ချင်ရင်:\n"
+        "🛍 ဝယ်ချင်ရင်:\n"
         f"<code>/buy {listing_id}</code>",
         parse_mode="HTML",
     )
@@ -593,9 +697,7 @@ async def market_command(
 
         return
 
-    text = (
-        "🛒 <b>NEXUS MARKET</b>\n\n"
-    )
+    text = "🛒 <b>NEXUS MARKET</b>\n\n"
 
     for listing in listings:
 
@@ -608,10 +710,14 @@ async def market_command(
 
         text += (
             f"🎴 <b>{card['name']}</b>\n"
-            f"🆔 Card ID: <code>{card['char_id']}</code>\n"
-            f"💰 Price: <b>{listing['price']:,}</b> Coins\n"
-            f"🔖 Listing ID: <code>{listing['listing_id']}</code>\n"
-            f"👤 Seller: <code>{listing['seller_id']}</code>\n\n"
+            f"🆔 Card ID: "
+            f"<code>{card['char_id']}</code>\n"
+            f"💰 Price: "
+            f"<b>{listing['price']:,}</b> Coins\n"
+            f"🔖 Listing ID: "
+            f"<code>{listing['listing_id']}</code>\n"
+            f"👤 Seller: "
+            f"<code>{listing['seller_id']}</code>\n\n"
         )
 
     text += (
@@ -654,11 +760,7 @@ async def buy_command(
         return
 
     try:
-
-        listing_id = int(
-            context.args[0]
-        )
-
+        listing_id = int(context.args[0])
     except ValueError:
 
         await message.reply_text(
@@ -689,9 +791,7 @@ async def buy_command(
 
         seller_id = listing["seller_id"]
         char_id = listing["char_id"]
-        price = int(
-            listing["price"]
-        )
+        price = int(listing["price"])
 
         if seller_id == buyer.id:
 
@@ -702,9 +802,7 @@ async def buy_command(
 
             return
 
-        card = get_card(
-            char_id
-        )
+        card = get_card(char_id)
 
         if not card:
 
@@ -714,9 +812,7 @@ async def buy_command(
 
             return
 
-        balance = get_balance(
-            buyer.id
-        )
+        balance = get_balance(buyer.id)
 
         if balance < price:
 
@@ -748,7 +844,10 @@ async def buy_command(
 
             return
 
-        # Money transfer
+        # ====================================================
+        # MONEY TRANSFER
+        # ====================================================
+
         db.execute(
             """
             UPDATE users
@@ -773,7 +872,10 @@ async def buy_command(
             ),
         )
 
-        # Transfer card ownership
+        # ====================================================
+        # CARD TRANSFER
+        # ====================================================
+
         db.execute(
             """
             UPDATE user_cards
@@ -787,6 +889,10 @@ async def buy_command(
                 char_id,
             ),
         )
+
+        # ====================================================
+        # MARK SOLD
+        # ====================================================
 
         db.execute(
             """
@@ -807,7 +913,8 @@ async def buy_command(
         f"🆔 <code>{char_id}</code>\n"
         f"💰 Paid: <b>{price:,}</b> Coins\n"
         f"💳 Balance: <b>{new_balance:,}</b> Coins\n\n"
-        "🎴 Card ကို မင်းရဲ့ Harem ထဲ ထည့်ပြီးပါပြီ။",
+        "🎴 Card ကို မင်းရဲ့ Harem ထဲ "
+        "ထည့်ပြီးပါပြီ။",
         parse_mode="HTML",
     )
 
@@ -838,11 +945,7 @@ async def delist_command(
         return
 
     try:
-
-        listing_id = int(
-            context.args[0]
-        )
-
+        listing_id = int(context.args[0])
     except ValueError:
 
         await message.reply_text(
@@ -927,16 +1030,15 @@ async def gift_command(
 
         await message.reply_text(
             "🎁 Card ပေးမယ့် User ကို "
-            "Reply လုပ်ပြီး <code>/gift CHAR_ID</code> "
+            "Reply လုပ်ပြီး "
+            "<code>/gift CHAR_ID</code> "
             "သုံးပါ။",
             parse_mode="HTML",
         )
 
         return
 
-    receiver = (
-        message.reply_to_message.from_user
-    )
+    receiver = message.reply_to_message.from_user
 
     if not receiver:
 
@@ -956,9 +1058,7 @@ async def gift_command(
 
     char_id = context.args[0]
 
-    card = get_card(
-        char_id
-    )
+    card = get_card(char_id)
 
     if not card:
 
