@@ -93,10 +93,16 @@ RARITIES = [
     "Common",
     "Uncommon",
     "Rare",
-    "SR",
-    "SSR",
-    "UR",
-    "Legendary",
+    "Legends",
+    "Mythical",
+    "Divine",
+    "Crossverse",
+    "Cataphract",
+    "Supreme",
+    "Celestial",
+    "Immortal",
+    "Eternal",
+    "Premium",
 ]
 
 
@@ -410,19 +416,26 @@ def _row_to_card(row) -> Optional[Card]:
     # Database currently stores rarity as INTEGER.
     # Convert safely to a readable rarity.
     if isinstance(rarity, int):
-        rarity_names = {
-            1: "Common",
-            2: "Uncommon",
-            3: "Rare",
-            4: "SR",
-            5: "SSR",
-            6: "UR",
-            7: "Legendary",
-        }
-        rarity = rarity_names.get(
-            rarity,
-            "Common",
-        )
+    rarity_names = {
+        1: "Common",
+        2: "Uncommon",
+        3: "Rare",
+        4: "Legends",
+        5: "Mythical",
+        6: "Divine",
+        7: "Crossverse",
+        8: "Cataphract",
+        9: "Supreme",
+        10: "Celestial",
+        11: "Immortal",
+        12: "Eternal",
+        13: "Premium",
+    }
+
+    rarity = rarity_names.get(
+        rarity,
+        "Common",
+    )
 
     return Card(
         card_id=normalize_card_id(card_id),
