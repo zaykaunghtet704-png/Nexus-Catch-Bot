@@ -81,6 +81,7 @@ from database import (
 from drops import (
     create_drop,
     claim_drop_callback,
+    get_active_drop,
 )
 
 from harem_system import (
@@ -115,7 +116,6 @@ from economy import (
     trade_command,
 )
 
-
 # ============================================================
 # LOGGING
 # ============================================================
@@ -126,7 +126,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("nexus-card-bot")
-
 
 # ============================================================
 # DATABASE
@@ -146,12 +145,18 @@ def register_user(update):
     if not user:
         return
 
-    add_or_update_user(
-        user.id,
-        user.username or "",
-        user.first_name or "",
-        DEFAULT_LANGUAGE,
-    )
+    try:
+        add_or_update_user(
+            user.id,
+            user.username or "",
+            user.first_name or "",
+            DEFAULT_LANGUAGE,
+        )
+    except Exception as exc:
+        logger.warning(
+            "User register failed: %s",
+            exc,
+        )
 
 
 # ============================================================
@@ -160,15 +165,21 @@ def register_user(update):
 
 def is_owner(user_id):
 
-    return int(user_id) == int(OWNER_ID)
+    try:
+        return int(user_id) == int(OWNER_ID)
+    except Exception:
+        return False
 
 
 def is_staff(user_id):
 
-    return (
-        is_owner(user_id)
-        or is_admin(user_id)
-    )
+    try:
+        return (
+            is_owner(user_id)
+            or is_admin(user_id)
+        )
+    except Exception:
+        return is_owner(user_id)
 
 
 async def owner_guard(update):
@@ -178,11 +189,14 @@ async def owner_guard(update):
     if user and is_owner(user.id):
         return True
 
-    await update.effective_message.reply_text(
-        "👑 <b>Owner Only</b>\n\n"
-        "ဒီ Command ကို Bot Owner ပဲ အသုံးပြုနိုင်ပါတယ်။",
-        parse_mode="HTML",
-    )
+    message = update.effective_message
+
+    if message:
+        await message.reply_text(
+            "👑 <b>Owner Only</b>\n\n"
+            "ဒီ Command ကို Bot Owner ပဲ အသုံးပြုနိုင်ပါတယ်။",
+            parse_mode="HTML",
+        )
 
     return False
 
@@ -194,11 +208,14 @@ async def admin_guard(update):
     if user and is_staff(user.id):
         return True
 
-    await update.effective_message.reply_text(
-        "🛡️ <b>Admin Only</b>\n\n"
-        "ဒီ Command ကို Admin / Owner ပဲ အသုံးပြုနိုင်ပါတယ်။",
-        parse_mode="HTML",
-    )
+    message = update.effective_message
+
+    if message:
+        await message.reply_text(
+            "🛡️ <b>Admin Only</b>\n\n"
+            "ဒီ Command ကို Admin / Owner ပဲ အသုံးပြုနိုင်ပါတယ်။",
+            parse_mode="HTML",
+        )
 
     return False
 
@@ -244,9 +261,12 @@ async def check_group_access(
             "creator",
         )
 
-    except Exception:
+    except Exception as exc:
 
-        bot_is_admin = False
+        logger.debug(
+            "Bot admin check failed: %s",
+            exc,
+        )
 
     # --------------------------------------------------------
     # MEMBER COUNT
@@ -260,7 +280,12 @@ async def check_group_access(
             )
         )
 
-    except Exception:
+    except Exception as exc:
+
+        logger.debug(
+            "Member count failed: %s",
+            exc,
+        )
 
         member_count = 0
 
@@ -268,13 +293,22 @@ async def check_group_access(
     # SAVE GROUP
     # --------------------------------------------------------
 
-    save_group(
-        chat.id,
-        chat.title or "",
-        member_count,
-        int(bot_is_admin),
-        user.id if user else 0,
-    )
+    try:
+
+        save_group(
+            chat.id,
+            chat.title or "",
+            member_count,
+            int(bot_is_admin),
+            user.id if user else 0,
+        )
+
+    except Exception as exc:
+
+        logger.warning(
+            "Save group failed: %s",
+            exc,
+        )
 
     # --------------------------------------------------------
     # BOT ADMIN REQUIRED
@@ -285,12 +319,15 @@ async def check_group_access(
         and not bot_is_admin
     ):
 
-        await update.effective_message.reply_text(
-            "🤖 <b>Bot Admin လိုအပ်ပါတယ်။</b>\n\n"
-            "Bot ကို Group Admin ပေးပြီး "
-            "ပြန်အသုံးပြုပါ။",
-            parse_mode="HTML",
-        )
+        message = update.effective_message
+
+        if message:
+            await message.reply_text(
+                "🤖 <b>Bot Admin လိုအပ်ပါတယ်။</b>\n\n"
+                "Bot ကို Group Admin ပေးပြီး "
+                "ပြန်အသုံးပြုပါ။",
+                parse_mode="HTML",
+            )
 
         return False
 
@@ -300,12 +337,15 @@ async def check_group_access(
 
     if member_count < MIN_GROUP_MEMBERS:
 
-        await update.effective_message.reply_text(
-            f"👥 Group မှာ Member အနည်းဆုံး "
-            f"<b>{MIN_GROUP_MEMBERS}</b> ယောက်ရှိရပါမယ်။\n\n"
-            f"လက်ရှိ Member — <b>{member_count}</b>",
-            parse_mode="HTML",
-        )
+        message = update.effective_message
+
+        if message:
+            await message.reply_text(
+                f"👥 Group မှာ Member အနည်းဆုံး "
+                f"<b>{MIN_GROUP_MEMBERS}</b> ယောက်ရှိရပါမယ်။\n\n"
+                f"လက်ရှိ Member — <b>{member_count}</b>",
+                parse_mode="HTML",
+            )
 
         return False
 
@@ -318,12 +358,15 @@ async def check_group_access(
         and not is_group_enabled(chat.id)
     ):
 
-        await update.effective_message.reply_text(
-            "🔐 <b>Owner Approval လိုအပ်ပါတယ်။</b>\n\n"
-            "Bot Owner ကို အကြောင်းကြားပြီး "
-            "Group ကို ဖွင့်ပေးမှ အသုံးပြုနိုင်ပါတယ်။",
-            parse_mode="HTML",
-        )
+        message = update.effective_message
+
+        if message:
+            await message.reply_text(
+                "🔐 <b>Owner Approval လိုအပ်ပါတယ်။</b>\n\n"
+                "Bot Owner ကို အကြောင်းကြားပြီး "
+                "Group ကို ဖွင့်ပေးမှ အသုံးပြုနိုင်ပါတယ်။",
+                parse_mode="HTML",
+            )
 
         return False
 
@@ -380,40 +423,33 @@ async def start_command(
     register_user(update)
 
     keyboard = [
-
         [
             InlineKeyboardButton(
                 "💗 I'm Waifu",
                 url=WAIFU_LINK,
             )
         ],
-
         [
             InlineKeyboardButton(
                 "👥 Group",
                 url=GROUP_LINK,
             ),
-
             InlineKeyboardButton(
                 "📢 Channel",
                 url=CHANNEL_LINK,
             ),
         ],
-
         [
             InlineKeyboardButton(
                 "📚 Help",
                 callback_data="help:0",
             )
         ],
-
     ]
 
     await update.effective_message.reply_text(
         START_TEXT_MY,
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
     )
 
@@ -473,7 +509,7 @@ HELP_PAGES = [
 
 🤝 <b>Social</b>
 
-/gift [char_id]
+/ngift [char_id]
 /trade YOUR_ID THEIR_ID
 /duel
 
@@ -522,7 +558,6 @@ Command သုံးပါ။
 def help_keyboard(page):
 
     buttons = []
-
     navigation = []
 
     if page > 0:
@@ -552,17 +587,18 @@ def help_keyboard(page):
 
     buttons.append(navigation)
 
-    buttons.append([
-        InlineKeyboardButton(
-            "🇲🇲 Myanmar",
-            callback_data="lang:my",
-        ),
-
-        InlineKeyboardButton(
-            "🇬🇧 English",
-            callback_data="lang:en",
-        ),
-    ])
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "🇲🇲 Myanmar",
+                callback_data="lang:my",
+            ),
+            InlineKeyboardButton(
+                "🇬🇧 English",
+                callback_data="lang:en",
+            ),
+        ]
+    )
 
     return InlineKeyboardMarkup(buttons)
 
@@ -651,7 +687,7 @@ async def check_command(
 
 
 # ============================================================
-# NEXUS SEARCH ALIAS
+# NEXUS
 # ============================================================
 
 async def nexus_command(
@@ -666,7 +702,7 @@ async def nexus_command(
 
 
 # ============================================================
-# GLOBAL TOP
+# TOP
 # ============================================================
 
 async def top_command(
@@ -738,7 +774,6 @@ async def ctop_command(
         update,
         context,
     ):
-
         return
 
     chat = update.effective_chat
@@ -761,7 +796,12 @@ async def ctop_command(
             TOP_LIMIT,
         )
 
-    except Exception:
+    except Exception as exc:
+
+        logger.warning(
+            "Group top failed: %s",
+            exc,
+        )
 
         rows = []
 
@@ -809,10 +849,7 @@ async def today_nexus_catch_command(
 
     register_user(update)
 
-    cutoff = (
-        time.time()
-        - 86400
-    )
+    cutoff = time.time() - 86400
 
     with get_db() as db:
 
@@ -882,7 +919,7 @@ async def today_nexus_catch_command(
 
 
 # ============================================================
-# RANKINGS ALIAS
+# RANKINGS
 # ============================================================
 
 async def rankings_command(
@@ -979,16 +1016,11 @@ async def claim_command(
         update,
         context,
     ):
-
         return
 
-    user_id = (
-        update.effective_user.id
-    )
+    user_id = update.effective_user.id
 
-    user = get_user(
-        user_id
-    )
+    user = get_user(user_id)
 
     if not user:
         return
@@ -1003,9 +1035,7 @@ async def claim_command(
         user["claim_count_24h"] or 0
     )
 
-    # Reset 24h counter
     if now - last_claim >= 86400:
-
         claim_count = 0
 
     if claim_count >= CLAIM_LIMIT_24H:
@@ -1060,9 +1090,7 @@ async def claim_command(
         weights=[
             max(
                 0.01,
-                float(
-                    c["drop_weight"] or 1
-                ),
+                float(c["drop_weight"] or 1),
             )
             for c in cards
         ],
@@ -1150,7 +1178,7 @@ async def send_card_message(
 
 
 # ============================================================
-# DROP
+# MANUAL DROP
 # ============================================================
 
 async def drop_command(
@@ -1160,9 +1188,9 @@ async def drop_command(
 
     register_user(update)
 
-    if not is_staff(
-        update.effective_user.id
-    ):
+    user = update.effective_user
+
+    if not user or not is_staff(user.id):
 
         await update.effective_message.reply_text(
             "👑 Owner/Admin ပဲ "
@@ -1175,13 +1203,248 @@ async def drop_command(
         update,
         context,
     ):
-
         return
+
+    # --------------------------------------------------------
+    # PREVENT MULTIPLE ACTIVE DROPS
+    # --------------------------------------------------------
+
+    try:
+
+        active = get_active_drop(
+            update.effective_chat.id
+        )
+
+        if active:
+
+            await update.effective_message.reply_text(
+                "🎴 ဒီ Group မှာ Card Drop တစ်ခု "
+                "ရှိနေပြီးသားပါ။\n\n"
+                "အရင် Drop ကို Claim လုပ်ပြီးမှ "
+                "နောက် Drop ထပ်ထွက်ပါမယ်။"
+            )
+
+            return
+
+    except Exception as exc:
+
+        logger.warning(
+            "Active drop check failed: %s",
+            exc,
+        )
 
     await create_drop(
         update.effective_message,
         context,
     )
+
+
+# ============================================================
+# AUTO DROP
+# ============================================================
+
+async def auto_drop_message_handler(
+    update,
+    context,
+):
+
+    message = update.effective_message
+
+    if not message:
+        return
+
+    chat = update.effective_chat
+
+    if not chat:
+        return
+
+    # --------------------------------------------------------
+    # GROUP ONLY
+    # --------------------------------------------------------
+
+    if chat.type not in (
+        "group",
+        "supergroup",
+    ):
+        return
+
+    # --------------------------------------------------------
+    # IGNORE COMMANDS
+    # --------------------------------------------------------
+
+    if message.text and message.text.startswith("/"):
+        return
+
+    if message.caption and message.caption.startswith("/"):
+        return
+
+    # --------------------------------------------------------
+    # IGNORE BOT
+    # --------------------------------------------------------
+
+    if (
+        message.from_user
+        and message.from_user.is_bot
+    ):
+        return
+
+    # --------------------------------------------------------
+    # DROP ENABLE
+    # --------------------------------------------------------
+
+    try:
+
+        enabled = get_setting(
+            "drop_enabled",
+            "1",
+        )
+
+        if str(enabled) != "1":
+            return
+
+    except Exception:
+
+        pass
+
+    # --------------------------------------------------------
+    # GET COUNT
+    # --------------------------------------------------------
+
+    try:
+
+        drop_count = int(
+            get_setting(
+                "drop_count",
+                "85",
+            )
+        )
+
+    except Exception:
+
+        drop_count = 85
+
+    if drop_count < 1:
+        drop_count = 85
+
+    # --------------------------------------------------------
+    # PER-GROUP MESSAGE COUNTER
+    # --------------------------------------------------------
+
+    setting_key = (
+        f"message_count:{chat.id}"
+    )
+
+    try:
+
+        current_count = int(
+            get_setting(
+                setting_key,
+                "0",
+            )
+        )
+
+    except Exception:
+
+        current_count = 0
+
+    current_count += 1
+
+    # --------------------------------------------------------
+    # NOT YET
+    # --------------------------------------------------------
+
+    if current_count < drop_count:
+
+        set_setting(
+            setting_key,
+            str(current_count),
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # RESET
+    # --------------------------------------------------------
+
+    set_setting(
+        setting_key,
+        "0",
+    )
+
+    # --------------------------------------------------------
+    # CHECK GROUP ACCESS
+    # --------------------------------------------------------
+
+    try:
+
+        allowed = await check_group_access(
+            update,
+            context,
+        )
+
+    except Exception as exc:
+
+        logger.warning(
+            "Auto drop access check failed: %s",
+            exc,
+        )
+
+        return
+
+    if not allowed:
+        return
+
+    # --------------------------------------------------------
+    # EXISTING DROP?
+    # --------------------------------------------------------
+
+    try:
+
+        active = get_active_drop(
+            chat.id
+        )
+
+        if active:
+
+            logger.info(
+                "Auto drop skipped; active drop exists | group=%s",
+                chat.id,
+            )
+
+            return
+
+    except Exception as exc:
+
+        logger.warning(
+            "Active drop lookup failed: %s",
+            exc,
+        )
+
+    # --------------------------------------------------------
+    # CREATE DROP
+    # --------------------------------------------------------
+
+    try:
+
+        drop_id = await create_drop(
+            message,
+            context,
+        )
+
+        logger.info(
+            "AUTO DROP CREATED | group=%s | "
+            "drop_id=%s | every=%s messages",
+            chat.id,
+            drop_id,
+            drop_count,
+        )
+
+    except Exception as exc:
+
+        logger.exception(
+            "AUTO DROP FAILED | group=%s",
+            chat.id,
+        )
 
 
 # ============================================================
@@ -1226,9 +1489,7 @@ async def upgrade_command(
 
     char_id = context.args[0]
 
-    user_id = (
-        update.effective_user.id
-    )
+    user_id = update.effective_user.id
 
     with get_db() as db:
 
@@ -1258,14 +1519,9 @@ async def upgrade_command(
         row["level"] or 1
     )
 
-    cost = (
-        level * 250
-    )
+    cost = level * 250
 
-    if (
-        get_balance(user_id)
-        < cost
-    ):
+    if get_balance(user_id) < cost:
 
         await update.effective_message.reply_text(
             f"🪙 Coin မလုံလောက်ပါ။\n\n"
@@ -1317,28 +1573,19 @@ def get_target_user_id(
     if context.args:
 
         try:
-
-            return int(
-                context.args[0]
-            )
-
+            return int(context.args[0])
         except ValueError:
-
             pass
 
-    message = (
-        update.effective_message
-    )
+    message = update.effective_message
 
-    if message.reply_to_message:
+    if message and message.reply_to_message:
 
         user = (
-            message.reply_to_message
-            .from_user
+            message.reply_to_message.from_user
         )
 
         if user:
-
             return user.id
 
     return None
@@ -1396,9 +1643,14 @@ async def givecoin_command(
 
         return
 
-    add_or_update_user(
-        target
-    )
+    try:
+
+        add_or_update_user(
+            target
+        )
+
+    except Exception:
+        pass
 
     add_coins(
         target,
@@ -1456,13 +1708,18 @@ async def takecoin_command(
 
         return
 
+    if amount <= 0:
+        return
+
     remove_coins(
         target,
-        max(0, amount),
+        amount,
     )
 
     await update.effective_message.reply_text(
-        "✅ Coins ဖြုတ်ပြီးပါပြီ။"
+        f"✅ <b>-{amount:,} Coins</b>\n\n"
+        f"👤 User ID: <code>{target}</code>",
+        parse_mode="HTML",
     )
 
 
@@ -1498,9 +1755,7 @@ async def givecard_command(
 
     char_id = context.args[1]
 
-    card = get_card(
-        char_id
-    )
+    card = get_card(char_id)
 
     if not card:
 
@@ -1510,9 +1765,10 @@ async def givecard_command(
 
         return
 
-    add_or_update_user(
-        target
-    )
+    try:
+        add_or_update_user(target)
+    except Exception:
+        pass
 
     add_user_card(
         target,
@@ -1520,7 +1776,7 @@ async def givecard_command(
     )
 
     await update.effective_message.reply_text(
-        f"🎁 Card ပေးပြီးပါပြီ။\n\n"
+        f"🎁 <b>CARD GIVEN</b>\n\n"
         f"🎴 {card['name']}\n"
         f"🆔 <code>{char_id}</code>\n"
         f"👤 <code>{target}</code>",
@@ -1630,21 +1886,21 @@ async def addcard_command(
     ]
 
     char_id = parts[0]
-
     name = parts[1]
 
     edition = (
         parts[2]
-        if len(parts) > 2
-        and parts[2]
+        if len(parts) > 2 and parts[2]
         else "Common"
     )
 
     try:
 
-        rarity = int(
-            parts[3]
-        ) if len(parts) > 3 else 1
+        rarity = (
+            int(parts[3])
+            if len(parts) > 3
+            else 1
+        )
 
     except ValueError:
 
@@ -1652,9 +1908,11 @@ async def addcard_command(
 
     try:
 
-        price = int(
-            parts[4]
-        ) if len(parts) > 4 else 0
+        price = (
+            int(parts[4])
+            if len(parts) > 4
+            else 0
+        )
 
     except ValueError:
 
@@ -1662,23 +1920,22 @@ async def addcard_command(
 
     try:
 
-        drop_weight = float(
-            parts[5]
-        ) if len(parts) > 5 else 1
+        drop_weight = (
+            float(parts[5])
+            if len(parts) > 5
+            else 1.0
+        )
 
     except ValueError:
 
-        drop_weight = 1
+        drop_weight = 1.0
 
     image_file_id = ""
-
     video_file_id = ""
-
     media_type = "photo"
 
     reply = (
-        update.effective_message
-        .reply_to_message
+        update.effective_message.reply_to_message
     )
 
     if reply:
@@ -1715,6 +1972,11 @@ async def addcard_command(
 
     except Exception as exc:
 
+        logger.exception(
+            "Add card failed",
+            exc_info=exc,
+        )
+
         await update.effective_message.reply_text(
             "❌ Card ထည့်မရပါ။\n\n"
             f"<code>{str(exc)[:300]}</code>",
@@ -1724,12 +1986,13 @@ async def addcard_command(
         return
 
     await update.effective_message.reply_text(
-        f"✅ <b>CARD ADDED</b>\n\n"
+        f"✅ <b>CARD ADDED / UPDATED</b>\n\n"
         f"🎴 {name}\n"
         f"🆔 <code>{char_id}</code>\n"
         f"✨ {edition}\n"
         f"⭐ Rarity: {rarity}\n"
-        f"💰 Price: {price:,}",
+        f"💰 Price: {price:,}\n"
+        f"⚖️ Drop Weight: {drop_weight}",
         parse_mode="HTML",
     )
 
@@ -1759,7 +2022,9 @@ async def deletecard_command(
     )
 
     await update.effective_message.reply_text(
-        "🗑️ Card ဖျက်ပြီးပါပြီ။"
+        "🗑️ Card ဖျက်ပြီးပါပြီ။\n\n"
+        "Database ကနေ အပြီးမဖျက်ဘဲ "
+        "inactive လုပ်ထားပါတယ်။"
     )
 
 
@@ -1822,8 +2087,17 @@ async def setdrop_command(
 
     if not context.args:
 
+        current = get_setting(
+            "drop_count",
+            "85",
+        )
+
         await update.effective_message.reply_text(
-            "Usage: /setdrop COUNT"
+            f"🎴 Current Auto Drop: "
+            f"<b>{current} messages</b>\n\n"
+            "Usage:\n"
+            "<code>/setdrop 85</code>",
+            parse_mode="HTML",
         )
 
         return
@@ -1842,13 +2116,28 @@ async def setdrop_command(
 
         return
 
+    if count < 1:
+
+        await update.effective_message.reply_text(
+            "❌ Count က 1 ထက်ကြီးရပါမယ်။"
+        )
+
+        return
+
     set_setting(
         "drop_count",
-        max(1, count),
+        str(count),
+    )
+
+    set_setting(
+        "drop_enabled",
+        "1",
     )
 
     await update.effective_message.reply_text(
-        f"🎴 Drop Count = <b>{count}</b>",
+        "🎴 <b>AUTO DROP UPDATED</b>\n\n"
+        f"⏱️ Every <b>{count}</b> messages\n"
+        "🟢 Status: <b>ON</b>",
         parse_mode="HTML",
     )
 
@@ -2103,7 +2392,7 @@ async def maintenance_command(
 
 
 # ============================================================
-# CHANGE TIME / DROP COUNT
+# CHANGE TIME
 # ============================================================
 
 async def changetime_command(
@@ -2122,9 +2411,11 @@ async def changetime_command(
         )
 
         await update.effective_message.reply_text(
-            f"⚙️ Current Drop Count: "
-            f"<b>{current}</b>\n\n"
-            "Usage: /changetime COUNT",
+            "⏱️ <b>NEXUS AUTO DROP</b>\n\n"
+            f"🎴 Current: <b>{current} messages</b>\n\n"
+            "ပြောင်းရန်:\n"
+            "<code>/changetime 50</code>\n\n"
+            "50 messages တိုင်း Card Drop မယ်။",
             parse_mode="HTML",
         )
 
@@ -2139,18 +2430,37 @@ async def changetime_command(
     except ValueError:
 
         await update.effective_message.reply_text(
-            "❌ Count မှားနေပါတယ်။"
+            "❌ Number မှားနေပါတယ်။\n\n"
+            "ဥပမာ:\n"
+            "<code>/changetime 50</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    if count < 1:
+
+        await update.effective_message.reply_text(
+            "❌ Count က 1 ထက်ကြီးရပါမယ်။"
         )
 
         return
 
     set_setting(
         "drop_count",
-        max(1, count),
+        str(count),
+    )
+
+    set_setting(
+        "drop_enabled",
+        "1",
     )
 
     await update.effective_message.reply_text(
-        "✅ Drop setting updated."
+        "✅ <b>AUTO DROP UPDATED</b>\n\n"
+        f"🎴 Drop Every: <b>{count} messages</b>\n"
+        "🟢 Auto Drop: <b>ON</b>",
+        parse_mode="HTML",
     )
 
 
@@ -2206,7 +2516,7 @@ async def broadcast_command(
             pass
 
     await update.effective_message.reply_text(
-        f"📢 Broadcast Complete\n\n"
+        f"📢 <b>Broadcast Complete</b>\n\n"
         f"✅ Sent: <b>{success}</b>",
         parse_mode="HTML",
     )
@@ -2223,13 +2533,8 @@ async def duel_command(
 
     register_user(update)
 
-    message = (
-        update.effective_message
-    )
-
-    user = (
-        update.effective_user
-    )
+    message = update.effective_message
+    user = update.effective_user
 
     if not message.reply_to_message:
 
@@ -2242,9 +2547,7 @@ async def duel_command(
         return
 
     target = (
-        message
-        .reply_to_message
-        .from_user
+        message.reply_to_message.from_user
     )
 
     if (
@@ -2298,11 +2601,8 @@ async def duel_command(
     )
 
     if my_score >= their_score:
-
         winner = user
-
     else:
-
         winner = target
 
     reward = random.randint(
@@ -2340,9 +2640,7 @@ async def bot_install_handler(
     context,
 ):
 
-    change = (
-        update.my_chat_member
-    )
+    change = update.my_chat_member
 
     if not change:
         return
@@ -2350,35 +2648,23 @@ async def bot_install_handler(
     chat = change.chat
 
     new_status = (
-        change
-        .new_chat_member
-        .status
+        change.new_chat_member.status
     )
 
     old_status = (
-        change
-        .old_chat_member
-        .status
+        change.old_chat_member.status
     )
 
-    if (
-        new_status
-        not in (
-            "member",
-            "administrator",
-        )
+    if new_status not in (
+        "member",
+        "administrator",
     ):
-
         return
 
-    if (
-        old_status
-        not in (
-            "left",
-            "kicked",
-        )
+    if old_status not in (
+        "left",
+        "kicked",
     ):
-
         return
 
     added_by = change.from_user
@@ -2386,8 +2672,7 @@ async def bot_install_handler(
     try:
 
         member_count = (
-            await context.bot
-            .get_chat_member_count(
+            await context.bot.get_chat_member_count(
                 chat.id
             )
         )
@@ -2398,13 +2683,10 @@ async def bot_install_handler(
 
     try:
 
-        me = (
-            await context.bot.get_me()
-        )
+        me = await context.bot.get_me()
 
         bot_member = (
-            await context.bot
-            .get_chat_member(
+            await context.bot.get_chat_member(
                 chat.id,
                 me.id,
             )
@@ -2422,16 +2704,21 @@ async def bot_install_handler(
 
         bot_admin = False
 
-    save_group(
-        chat.id,
-        chat.title or "",
-        member_count,
-        int(bot_admin),
-        added_by.id if added_by else 0,
-    )
+    try:
+
+        save_group(
+            chat.id,
+            chat.title or "",
+            member_count,
+            int(bot_admin),
+            added_by.id if added_by else 0,
+        )
+
+    except Exception:
+        pass
 
     # --------------------------------------------------------
-    # SEND LOG TO CHANNEL
+    # CHANNEL LOG
     # --------------------------------------------------------
 
     if CHANNEL_ID:
@@ -2477,13 +2764,12 @@ async def callback_router(
     context,
 ):
 
-    query = (
-        update.callback_query
-    )
+    query = update.callback_query
 
-    data = (
-        query.data or ""
-    )
+    if not query:
+        return
+
+    data = query.data or ""
 
     # --------------------------------------------------------
     # DROP
@@ -2570,13 +2856,17 @@ async def callback_router(
         if value == "no":
             return
 
-        page = int(value)
+        try:
+            page = int(value)
+        except ValueError:
+            return
+
+        if page < 0 or page >= len(HELP_PAGES):
+            return
 
         await query.edit_message_text(
             HELP_PAGES[page],
-            reply_markup=help_keyboard(
-                page
-            ),
+            reply_markup=help_keyboard(page),
             parse_mode="HTML",
         )
 
@@ -2640,6 +2930,12 @@ async def callback_router(
 /hmode
 /reset
 /upgrade
+
+🎴 <b>Social</b>
+
+/ngift
+/trade
+/duel
 """,
             reply_markup=help_keyboard(0),
             parse_mode="HTML",
@@ -2677,8 +2973,9 @@ async def error_handler(
     context,
 ):
 
-    logger.exception(
-        "Unhandled exception:",
+    logger.error(
+        "Unhandled exception: %s",
+        context.error,
         exc_info=context.error,
     )
 
@@ -2693,7 +2990,7 @@ def main():
 
         raise RuntimeError(
             "BOT_TOKEN မထည့်ရသေးပါ။ "
-            "Render Environment Variables ကို စစ်ပါ။"
+            "Railway Variables ကို စစ်ပါ။"
         )
 
     application = (
@@ -2710,119 +3007,89 @@ def main():
     commands = {
 
         "start": start_command,
-
         "help": help_command,
 
         "profile": profile_command,
-
         "harem": harem_command,
 
         "search": search_command,
-
         "Nexus": nexus_command,
+        "nexus": nexus_command,
 
         "check": check_command,
 
         "top": top_command,
-
         "ctop": ctop_command,
-
         "rankings": rankings_command,
-
         "todayNexusCatch":
             today_nexus_catch_command,
 
         "balance": balance_command,
-
         "daily": daily_command,
-
         "sellprice": sellprice_command,
 
         "claim": claim_command,
 
         "fav": fav_command,
-
         "unfav": unfav_command,
 
         "hmode": hmode_command,
-
         "reset": reset_command,
-
         "upgrade": upgrade_command,
+
+        # ----------------------------------------------------
+        # DROP
+        # ----------------------------------------------------
 
         "drop": drop_command,
 
+        # ----------------------------------------------------
+        # MARKET
+        # ----------------------------------------------------
+
         "market": market_command,
-
         "sell": market_sell_command,
-
         "buy": market_buy_command,
-
         "delist": delist_command,
 
-        "gift": gift_command,
+        # ----------------------------------------------------
+        # SOCIAL
+        # ----------------------------------------------------
 
+        "ngift": gift_command,
         "trade": trade_command,
-
         "duel": duel_command,
 
         # ----------------------------------------------------
         # OWNER / ADMIN
         # ----------------------------------------------------
 
-        "addcard":
-            addcard_command,
+        "addcard": addcard_command,
+        "deletecard": deletecard_command,
+        "delcard": deletecard_command,
 
-        "deletecard":
-            deletecard_command,
+        "givecard": givecard_command,
+        "takecard": takecard_command,
 
-        "delcard":
-            deletecard_command,
+        "givecoin": givecoin_command,
+        "givecoins": givecoin_command,
+        "takecoin": takecoin_command,
 
-        "givecard":
-            givecard_command,
+        "setprice": setprice_command,
+        "setdrop": setdrop_command,
 
-        "takecard":
-            takecard_command,
+        "setadmin": setadmin_command,
+        "deladmin": deladmin_command,
 
-        "givecoin":
-            givecoin_command,
+        "approve": approve_command,
+        "reject": reject_command,
 
-        "givecoins":
-            givecoin_command,
+        "stats": stats_command,
+        "maintenance": maintenance_command,
 
-        "takecoin":
-            takecoin_command,
+        "changetime": changetime_command,
 
-        "setprice":
-            setprice_command,
-
-        "setdrop":
-            setdrop_command,
-
-        "setadmin":
-            setadmin_command,
-
-        "deladmin":
-            deladmin_command,
-
-        "approve":
-            approve_command,
-
-        "reject":
-            reject_command,
-
-        "stats":
-            stats_command,
-
-        "maintenance":
-            maintenance_command,
-
-        "changetime":
-            changetime_command,
-
-        "broadcast":
-            broadcast_command,
+        "broadcast": broadcast_command,
     }
 
     for command, handler in commands.items():
@@ -2835,6 +3102,26 @@ def main():
         )
 
     # ========================================================
+    # AUTO DROP MESSAGE COUNTER
+    # ========================================================
+    #
+    # Group message တိုင်း ဒီ handler ဝင်မယ်။
+    #
+    # 85 messages → Drop
+    # /changetime 50 → 50 messages → Drop
+    #
+    # ========================================================
+
+    application.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & ~filters.COMMAND,
+            auto_drop_message_handler,
+        ),
+        group=10,
+    )
+
+    # ========================================================
     # CALLBACKS
     # ========================================================
 
@@ -2845,7 +3132,7 @@ def main():
     )
 
     # ========================================================
-    # BOT ADDED / REMOVED FROM GROUP
+    # BOT ADDED / REMOVED
     # ========================================================
 
     application.add_handler(
@@ -2880,6 +3167,10 @@ def main():
         BOT_VERSION,
     )
 
+    # ========================================================
+    # START BOT
+    # ========================================================
+
     application.run_polling(
         allowed_updates=Update.ALL_TYPES
     )
@@ -2890,5 +3181,4 @@ def main():
 # ============================================================
 
 if __name__ == "__main__":
-
     main()
