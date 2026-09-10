@@ -139,7 +139,6 @@ init_db()
 # ============================================================
 
 def register_user(update):
-
     user = update.effective_user
 
     if not user:
@@ -164,7 +163,6 @@ def register_user(update):
 # ============================================================
 
 def is_owner(user_id):
-
     try:
         return int(user_id) == int(OWNER_ID)
     except Exception:
@@ -172,7 +170,6 @@ def is_owner(user_id):
 
 
 def is_staff(user_id):
-
     try:
         return (
             is_owner(user_id)
@@ -183,7 +180,6 @@ def is_staff(user_id):
 
 
 async def owner_guard(update):
-
     user = update.effective_user
 
     if user and is_owner(user.id):
@@ -202,7 +198,6 @@ async def owner_guard(update):
 
 
 async def admin_guard(update):
-
     user = update.effective_user
 
     if user and is_staff(user.id):
@@ -221,13 +216,23 @@ async def admin_guard(update):
 
 
 # ============================================================
-# GROUP ACCESS
+# GROUP ACCESS — COMMAND USE
 # ============================================================
 
 async def check_group_access(
     update,
     context,
 ):
+    """
+    This function is for USER COMMANDS.
+
+    It may send an explanation to the user when access
+    requirements are not satisfied.
+
+    IMPORTANT:
+    Auto-drop does NOT use this function.
+    Auto-drop uses the silent checker below.
+    """
 
     chat = update.effective_chat
     user = update.effective_user
@@ -248,7 +253,6 @@ async def check_group_access(
     bot_is_admin = False
 
     try:
-
         me = await context.bot.get_me()
 
         member = await context.bot.get_chat_member(
@@ -262,7 +266,6 @@ async def check_group_access(
         )
 
     except Exception as exc:
-
         logger.debug(
             "Bot admin check failed: %s",
             exc,
@@ -273,20 +276,16 @@ async def check_group_access(
     # --------------------------------------------------------
 
     try:
-
         member_count = (
             await context.bot.get_chat_member_count(
                 chat.id
             )
         )
-
     except Exception as exc:
-
         logger.debug(
             "Member count failed: %s",
             exc,
         )
-
         member_count = 0
 
     # --------------------------------------------------------
@@ -294,7 +293,6 @@ async def check_group_access(
     # --------------------------------------------------------
 
     try:
-
         save_group(
             chat.id,
             chat.title or "",
@@ -302,9 +300,7 @@ async def check_group_access(
             int(bot_is_admin),
             user.id if user else 0,
         )
-
     except Exception as exc:
-
         logger.warning(
             "Save group failed: %s",
             exc,
@@ -318,7 +314,6 @@ async def check_group_access(
         REQUIRE_BOT_ADMIN
         and not bot_is_admin
     ):
-
         message = update.effective_message
 
         if message:
@@ -336,7 +331,6 @@ async def check_group_access(
     # --------------------------------------------------------
 
     if member_count < MIN_GROUP_MEMBERS:
-
         message = update.effective_message
 
         if message:
@@ -357,7 +351,6 @@ async def check_group_access(
         REQUIRE_OWNER_APPROVAL
         and not is_group_enabled(chat.id)
     ):
-
         message = update.effective_message
 
         if message:
@@ -369,6 +362,136 @@ async def check_group_access(
             )
 
         return False
+
+    return True
+
+
+# ============================================================
+# SILENT GROUP ACCESS — AUTO DROP
+# ============================================================
+
+async def silent_group_access(
+    chat,
+    context,
+):
+    """
+    Auto-drop အတွက်သာသုံးသည်။
+
+    IMPORTANT:
+    ဒီ function က Group ထဲကို ဘာစာမှ reply မလုပ်ပါ။
+    """
+
+    if not chat:
+        return False
+
+    if chat.type not in (
+        "group",
+        "supergroup",
+    ):
+        return False
+
+    # --------------------------------------------------------
+    # BOT ADMIN
+    # --------------------------------------------------------
+
+    if REQUIRE_BOT_ADMIN:
+
+        try:
+            me = await context.bot.get_me()
+
+            member = await context.bot.get_chat_member(
+                chat.id,
+                me.id,
+            )
+
+            if member.status not in (
+                "administrator",
+                "creator",
+            ):
+                logger.info(
+                    "Auto-drop blocked: bot not admin | group=%s",
+                    chat.id,
+                )
+                return False
+
+        except Exception as exc:
+            logger.warning(
+                "Silent bot admin check failed: %s",
+                exc,
+            )
+            return False
+
+    # --------------------------------------------------------
+    # MEMBER COUNT
+    # --------------------------------------------------------
+
+    try:
+        member_count = (
+            await context.bot.get_chat_member_count(
+                chat.id
+            )
+        )
+
+    except Exception as exc:
+        logger.warning(
+            "Silent member count failed: %s",
+            exc,
+        )
+        return False
+
+    if member_count < MIN_GROUP_MEMBERS:
+
+        logger.info(
+            "Auto-drop blocked: members=%s required=%s group=%s",
+            member_count,
+            MIN_GROUP_MEMBERS,
+            chat.id,
+        )
+
+        return False
+
+    # --------------------------------------------------------
+    # OWNER APPROVAL
+    # --------------------------------------------------------
+
+    if REQUIRE_OWNER_APPROVAL:
+
+        try:
+
+            if not is_group_enabled(chat.id):
+
+                logger.info(
+                    "Auto-drop blocked: group not approved | group=%s",
+                    chat.id,
+                )
+
+                return False
+
+        except Exception as exc:
+
+            logger.warning(
+                "Silent approval check failed: %s",
+                exc,
+            )
+
+            return False
+
+    # --------------------------------------------------------
+    # SAVE GROUP INFO
+    # --------------------------------------------------------
+
+    try:
+
+        save_group(
+            chat.id,
+            chat.title or "",
+            member_count,
+            1,
+            0,
+        )
+
+    except Exception:
+        pass
 
     return True
 
@@ -395,7 +518,6 @@ START_TEXT_MY = f"""
 အောက်က Button တွေကနေ စတင်အသုံးပြုနိုင်ပါတယ်။ 💎
 """
 
-
 START_TEXT_EN = f"""
 🎴 <b>{BOT_NAME}</b>
 
@@ -419,7 +541,6 @@ async def start_command(
     update,
     context,
 ):
-
     register_user(update)
 
     keyboard = [
@@ -561,7 +682,6 @@ def help_keyboard(page):
     navigation = []
 
     if page > 0:
-
         navigation.append(
             InlineKeyboardButton(
                 "⬅️",
@@ -577,7 +697,6 @@ def help_keyboard(page):
     )
 
     if page < len(HELP_PAGES) - 1:
-
         navigation.append(
             InlineKeyboardButton(
                 "➡️",
@@ -607,7 +726,6 @@ async def help_command(
     update,
     context,
 ):
-
     register_user(update)
 
     await update.effective_message.reply_text(
@@ -625,17 +743,14 @@ async def check_command(
     update,
     context,
 ):
-
     register_user(update)
 
     if not context.args:
-
         await update.effective_message.reply_text(
             "🎴 Usage:\n"
             "<code>/check [card_id]</code>",
             parse_mode="HTML",
         )
-
         return
 
     char_id = context.args[0]
@@ -643,11 +758,9 @@ async def check_command(
     card = get_card(char_id)
 
     if not card:
-
         await update.effective_message.reply_text(
             "❌ Card မတွေ့ပါ။"
         )
-
         return
 
     text = (
@@ -663,7 +776,6 @@ async def check_command(
         card["media_type"] == "video"
         and card["video_file_id"]
     ):
-
         await update.effective_message.reply_video(
             video=card["video_file_id"],
             caption=text,
@@ -671,7 +783,6 @@ async def check_command(
         )
 
     elif card["image_file_id"]:
-
         await update.effective_message.reply_photo(
             photo=card["image_file_id"],
             caption=text,
@@ -679,7 +790,6 @@ async def check_command(
         )
 
     else:
-
         await update.effective_message.reply_text(
             text,
             parse_mode="HTML",
@@ -694,7 +804,6 @@ async def nexus_command(
     update,
     context,
 ):
-
     await search_command(
         update,
         context,
@@ -709,7 +818,6 @@ async def top_command(
     update,
     context,
 ):
-
     register_user(update)
 
     rows = get_global_top(
@@ -717,11 +825,9 @@ async def top_command(
     )
 
     if not rows:
-
         await update.effective_message.reply_text(
             "🏆 Ranking data မရှိသေးပါ။"
         )
-
         return
 
     text = (
@@ -732,7 +838,6 @@ async def top_command(
         rows[:TOP_LIMIT],
         start=1,
     ):
-
         medal = {
             1: "🥇",
             2: "🥈",
@@ -767,7 +872,6 @@ async def ctop_command(
     update,
     context,
 ):
-
     register_user(update)
 
     if not await check_group_access(
@@ -779,7 +883,6 @@ async def ctop_command(
     chat = update.effective_chat
 
     try:
-
         administrators = (
             await context.bot.get_chat_administrators(
                 chat.id
@@ -797,12 +900,10 @@ async def ctop_command(
         )
 
     except Exception as exc:
-
         logger.warning(
             "Group top failed: %s",
             exc,
         )
-
         rows = []
 
     text = (
@@ -810,16 +911,13 @@ async def ctop_command(
     )
 
     if not rows:
-
         text += "📭 Ranking data မရှိသေးပါ။"
 
     else:
-
         for index, row in enumerate(
             rows,
             start=1,
         ):
-
             name = (
                 f"@{row['username']}"
                 if row["username"]
@@ -846,7 +944,6 @@ async def today_nexus_catch_command(
     update,
     context,
 ):
-
     register_user(update)
 
     cutoff = time.time() - 86400
@@ -875,33 +972,27 @@ async def today_nexus_catch_command(
     )
 
     if not rows:
-
         text += (
             "📭 ဒီနေ့ Card ရထားသူ "
             "မရှိသေးပါ။"
         )
 
     else:
-
         for index, row in enumerate(
             rows,
             start=1,
         ):
-
             user = get_user(
                 row["user_id"]
             )
 
             if user:
-
                 name = (
                     f"@{user['username']}"
                     if user["username"]
                     else user["first_name"]
                 )
-
             else:
-
                 name = str(
                     row["user_id"]
                 )
@@ -926,7 +1017,6 @@ async def rankings_command(
     update,
     context,
 ):
-
     await top_command(
         update,
         context,
@@ -941,26 +1031,21 @@ async def fav_command(
     update,
     context,
 ):
-
     register_user(update)
 
     if not context.args:
-
         await update.effective_message.reply_text(
             "Usage: <code>/fav [character_id]</code>",
             parse_mode="HTML",
         )
-
         return
 
     char_id = context.args[0]
 
     if not get_card(char_id):
-
         await update.effective_message.reply_text(
             "❌ Card မတွေ့ပါ။"
         )
-
         return
 
     add_favorite(
@@ -979,16 +1064,13 @@ async def unfav_command(
     update,
     context,
 ):
-
     register_user(update)
 
     if not context.args:
-
         await update.effective_message.reply_text(
             "Usage: <code>/unfav [character_id]</code>",
             parse_mode="HTML",
         )
-
         return
 
     remove_favorite(
@@ -1009,7 +1091,6 @@ async def claim_command(
     update,
     context,
 ):
-
     register_user(update)
 
     if not await check_group_access(
@@ -1019,7 +1100,6 @@ async def claim_command(
         return
 
     user_id = update.effective_user.id
-
     user = get_user(user_id)
 
     if not user:
@@ -1039,27 +1119,23 @@ async def claim_command(
         claim_count = 0
 
     if claim_count >= CLAIM_LIMIT_24H:
-
         await update.effective_message.reply_text(
             "🎴 24 နာရီအတွင်း Card "
             "2 ကဒ် ရပြီးပါပြီ။\n\n"
             "နောက်နေ့မှ ပြန် Claim လုပ်ပါ။"
         )
-
         return
 
     if (
         now - last_claim
         < CLAIM_COOLDOWN_HOURS * 3600
     ):
-
         remaining = int(
             CLAIM_COOLDOWN_HOURS * 3600
             - (now - last_claim)
         )
 
         hours = remaining // 3600
-
         minutes = (
             remaining % 3600
         ) // 60
@@ -1071,18 +1147,15 @@ async def claim_command(
             f"ပြန် Claim လုပ်နိုင်ပါတယ်။",
             parse_mode="HTML",
         )
-
         return
 
     cards = get_all_cards()
 
     if not cards:
-
         await update.effective_message.reply_text(
             "❌ Card database ထဲမှာ "
             "Card မရှိသေးပါ။"
         )
-
         return
 
     card = random.choices(
@@ -1103,7 +1176,6 @@ async def claim_command(
     )
 
     with get_db() as db:
-
         db.execute(
             """
             UPDATE users
@@ -1134,7 +1206,6 @@ async def send_card_message(
     card,
     prefix="",
 ):
-
     text = (
         prefix
         + f"🎴 <b>{card['name']}</b>\n"
@@ -1145,7 +1216,6 @@ async def send_card_message(
     )
 
     if card["description"]:
-
         text += (
             f"\n📝 {card['description']}"
         )
@@ -1154,7 +1224,6 @@ async def send_card_message(
         card["media_type"] == "video"
         and card["video_file_id"]
     ):
-
         await message.reply_video(
             card["video_file_id"],
             caption=text,
@@ -1162,7 +1231,6 @@ async def send_card_message(
         )
 
     elif card["image_file_id"]:
-
         await message.reply_photo(
             card["image_file_id"],
             caption=text,
@@ -1170,7 +1238,6 @@ async def send_card_message(
         )
 
     else:
-
         await message.reply_text(
             text,
             parse_mode="HTML",
@@ -1185,18 +1252,15 @@ async def drop_command(
     update,
     context,
 ):
-
     register_user(update)
 
     user = update.effective_user
 
     if not user or not is_staff(user.id):
-
         await update.effective_message.reply_text(
             "👑 Owner/Admin ပဲ "
             "/drop အသုံးပြုနိုင်ပါတယ်။"
         )
-
         return
 
     if not await check_group_access(
@@ -1205,38 +1269,47 @@ async def drop_command(
     ):
         return
 
-    # --------------------------------------------------------
-    # PREVENT MULTIPLE ACTIVE DROPS
-    # --------------------------------------------------------
-
     try:
-
         active = get_active_drop(
             update.effective_chat.id
         )
 
         if active:
-
             await update.effective_message.reply_text(
                 "🎴 ဒီ Group မှာ Card Drop တစ်ခု "
                 "ရှိနေပြီးသားပါ။\n\n"
                 "အရင် Drop ကို Claim လုပ်ပြီးမှ "
                 "နောက် Drop ထပ်ထွက်ပါမယ်။"
             )
-
             return
 
     except Exception as exc:
-
         logger.warning(
             "Active drop check failed: %s",
             exc,
         )
 
-    await create_drop(
-        update.effective_message,
-        context,
-    )
+    try:
+        result = await create_drop(
+            update.effective_message,
+            context,
+        )
+
+        logger.info(
+            "MANUAL DROP CREATED | group=%s | result=%s",
+            update.effective_chat.id,
+            result,
+        )
+
+    except Exception:
+        logger.exception(
+            "MANUAL DROP FAILED"
+        )
+
+        await update.effective_message.reply_text(
+            "❌ Card Drop လုပ်မရပါ။\n"
+            "Card Database / Drop System ကို စစ်ပေးပါ။"
+        )
 
 
 # ============================================================
@@ -1247,15 +1320,21 @@ async def auto_drop_message_handler(
     update,
     context,
 ):
+    """
+    NORMAL GROUP MESSAGES ONLY.
+
+    ဒီ handler က normal message ကို
+    လုံးဝ reply မလုပ်ပါ။
+
+    /changetime 50
+    -> 50 normal messages
+    -> try auto drop
+    """
 
     message = update.effective_message
-
-    if not message:
-        return
-
     chat = update.effective_chat
 
-    if not chat:
+    if not message or not chat:
         return
 
     # --------------------------------------------------------
@@ -1265,6 +1344,16 @@ async def auto_drop_message_handler(
     if chat.type not in (
         "group",
         "supergroup",
+    ):
+        return
+
+    # --------------------------------------------------------
+    # IGNORE BOT MESSAGES
+    # --------------------------------------------------------
+
+    if (
+        message.from_user
+        and message.from_user.is_bot
     ):
         return
 
@@ -1279,21 +1368,10 @@ async def auto_drop_message_handler(
         return
 
     # --------------------------------------------------------
-    # IGNORE BOT
-    # --------------------------------------------------------
-
-    if (
-        message.from_user
-        and message.from_user.is_bot
-    ):
-        return
-
-    # --------------------------------------------------------
-    # DROP ENABLE
+    # DROP ENABLED
     # --------------------------------------------------------
 
     try:
-
         enabled = get_setting(
             "drop_enabled",
             "1",
@@ -1302,32 +1380,32 @@ async def auto_drop_message_handler(
         if str(enabled) != "1":
             return
 
-    except Exception:
-
-        pass
+    except Exception as exc:
+        logger.warning(
+            "drop_enabled check failed: %s",
+            exc,
+        )
+        return
 
     # --------------------------------------------------------
-    # GET COUNT
+    # DROP COUNT
     # --------------------------------------------------------
 
     try:
-
         drop_count = int(
             get_setting(
                 "drop_count",
                 "85",
             )
         )
-
     except Exception:
-
         drop_count = 85
 
     if drop_count < 1:
         drop_count = 85
 
     # --------------------------------------------------------
-    # PER-GROUP MESSAGE COUNTER
+    # PER GROUP MESSAGE COUNTER
     # --------------------------------------------------------
 
     setting_key = (
@@ -1335,90 +1413,98 @@ async def auto_drop_message_handler(
     )
 
     try:
-
         current_count = int(
             get_setting(
                 setting_key,
                 "0",
             )
         )
-
     except Exception:
-
         current_count = 0
 
     current_count += 1
 
     # --------------------------------------------------------
-    # NOT YET
+    # SAVE COUNT
     # --------------------------------------------------------
 
     if current_count < drop_count:
 
-        set_setting(
-            setting_key,
-            str(current_count),
-        )
+        try:
+            set_setting(
+                setting_key,
+                str(current_count),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Message counter save failed: %s",
+                exc,
+            )
 
+        # VERY IMPORTANT:
+        # No reply.
         return
 
     # --------------------------------------------------------
-    # RESET
-    # --------------------------------------------------------
-
-    set_setting(
-        setting_key,
-        "0",
-    )
-
-    # --------------------------------------------------------
-    # CHECK GROUP ACCESS
+    # RESET BEFORE DROP
     # --------------------------------------------------------
 
     try:
-
-        allowed = await check_group_access(
-            update,
-            context,
+        set_setting(
+            setting_key,
+            "0",
         )
-
     except Exception as exc:
-
         logger.warning(
-            "Auto drop access check failed: %s",
+            "Message counter reset failed: %s",
             exc,
         )
 
-        return
-
-    if not allowed:
-        return
-
     # --------------------------------------------------------
-    # EXISTING DROP?
+    # ACTIVE DROP
     # --------------------------------------------------------
 
     try:
-
         active = get_active_drop(
             chat.id
         )
 
         if active:
-
             logger.info(
-                "Auto drop skipped; active drop exists | group=%s",
+                "AUTO DROP SKIPPED — active drop exists | group=%s",
                 chat.id,
             )
+            return
 
+    except Exception as exc:
+        logger.warning(
+            "Active drop lookup failed: %s",
+            exc,
+        )
+        return
+
+    # --------------------------------------------------------
+    # SILENT ACCESS CHECK
+    # --------------------------------------------------------
+
+    try:
+
+        allowed = await silent_group_access(
+            chat,
+            context,
+        )
+
+        if not allowed:
             return
 
     except Exception as exc:
 
         logger.warning(
-            "Active drop lookup failed: %s",
+            "Silent group access failed: %s",
             exc,
         )
+
+        return
 
     # --------------------------------------------------------
     # CREATE DROP
@@ -1426,25 +1512,27 @@ async def auto_drop_message_handler(
 
     try:
 
-        drop_id = await create_drop(
+        result = await create_drop(
             message,
             context,
         )
 
         logger.info(
-            "AUTO DROP CREATED | group=%s | "
-            "drop_id=%s | every=%s messages",
+            "AUTO DROP CREATED | group=%s | result=%s | every=%s messages",
             chat.id,
-            drop_id,
+            result,
             drop_count,
         )
 
-    except Exception as exc:
+    except Exception:
 
         logger.exception(
             "AUTO DROP FAILED | group=%s",
             chat.id,
         )
+
+    # NEVER REPLY HERE.
+    return
 
 
 # ============================================================
@@ -1455,7 +1543,6 @@ async def hmode_command(
     update,
     context,
 ):
-
     from harem_system import (
         hmode_command as real_hmode_command
     )
@@ -1474,25 +1561,20 @@ async def upgrade_command(
     update,
     context,
 ):
-
     register_user(update)
 
     if not context.args:
-
         await update.effective_message.reply_text(
             "⬆️ Usage:\n"
             "<code>/upgrade [card_id]</code>",
             parse_mode="HTML",
         )
-
         return
 
     char_id = context.args[0]
-
     user_id = update.effective_user.id
 
     with get_db() as db:
-
         row = db.execute(
             """
             SELECT *
@@ -1508,11 +1590,9 @@ async def upgrade_command(
         ).fetchone()
 
     if not row:
-
         await update.effective_message.reply_text(
             "❌ ဒီ Card ကို မင်းမပိုင်ပါ။"
         )
-
         return
 
     level = int(
@@ -1522,14 +1602,12 @@ async def upgrade_command(
     cost = level * 250
 
     if get_balance(user_id) < cost:
-
         await update.effective_message.reply_text(
             f"🪙 Coin မလုံလောက်ပါ။\n\n"
             f"Upgrade Cost: "
             f"<b>{cost:,}</b>",
             parse_mode="HTML",
         )
-
         return
 
     remove_coins(
@@ -1538,7 +1616,6 @@ async def upgrade_command(
     )
 
     with get_db() as db:
-
         db.execute(
             """
             UPDATE user_cards
@@ -1569,9 +1646,7 @@ def get_target_user_id(
     update,
     context,
 ):
-
     if context.args:
-
         try:
             return int(context.args[0])
         except ValueError:
@@ -1580,7 +1655,6 @@ def get_target_user_id(
     message = update.effective_message
 
     if message and message.reply_to_message:
-
         user = (
             message.reply_to_message.from_user
         )
@@ -1599,7 +1673,6 @@ async def givecoin_command(
     update,
     context,
 ):
-
     if not await admin_guard(update):
         return
 
@@ -1612,43 +1685,33 @@ async def givecoin_command(
         not target
         or len(context.args) < 2
     ):
-
         await update.effective_message.reply_text(
             "Usage:\n"
             "<code>/givecoin USER_ID AMOUNT</code>",
             parse_mode="HTML",
         )
-
         return
 
     try:
-
         amount = int(
             context.args[1]
         )
-
     except ValueError:
-
         await update.effective_message.reply_text(
             "❌ Amount မှားနေပါတယ်။"
         )
-
         return
 
     if amount <= 0:
-
         await update.effective_message.reply_text(
             "❌ Amount က 0 ထက်ကြီးရပါမယ်။"
         )
-
         return
 
     try:
-
         add_or_update_user(
             target
         )
-
     except Exception:
         pass
 
@@ -1672,7 +1735,6 @@ async def takecoin_command(
     update,
     context,
 ):
-
     if not await admin_guard(update):
         return
 
@@ -1685,27 +1747,21 @@ async def takecoin_command(
         not target
         or len(context.args) < 2
     ):
-
         await update.effective_message.reply_text(
             "Usage:\n"
             "<code>/takecoin USER_ID AMOUNT</code>",
             parse_mode="HTML",
         )
-
         return
 
     try:
-
         amount = int(
             context.args[1]
         )
-
     except ValueError:
-
         await update.effective_message.reply_text(
             "❌ Amount မှားနေပါတယ်။"
         )
-
         return
 
     if amount <= 0:
@@ -1731,7 +1787,6 @@ async def givecard_command(
     update,
     context,
 ):
-
     if not await admin_guard(update):
         return
 
@@ -1744,13 +1799,11 @@ async def givecard_command(
         not target
         or len(context.args) < 2
     ):
-
         await update.effective_message.reply_text(
             "Usage:\n"
             "<code>/givecard USER_ID CARD_ID</code>",
             parse_mode="HTML",
         )
-
         return
 
     char_id = context.args[1]
@@ -1758,11 +1811,9 @@ async def givecard_command(
     card = get_card(char_id)
 
     if not card:
-
         await update.effective_message.reply_text(
             "❌ Card မတွေ့ပါ။"
         )
-
         return
 
     try:
@@ -1792,7 +1843,6 @@ async def takecard_command(
     update,
     context,
 ):
-
     if not await admin_guard(update):
         return
 
@@ -1805,13 +1855,11 @@ async def takecard_command(
         not target
         or len(context.args) < 2
     ):
-
         await update.effective_message.reply_text(
             "Usage:\n"
             "<code>/takecard USER_ID CARD_ID</code>",
             parse_mode="HTML",
         )
-
         return
 
     char_id = context.args[1]
@@ -1833,7 +1881,6 @@ async def takecard_command(
         ).fetchone()
 
         if row:
-
             db.execute(
                 """
                 DELETE FROM user_cards
@@ -1857,7 +1904,6 @@ async def addcard_command(
     update,
     context,
 ):
-
     if not await admin_guard(update):
         return
 
@@ -1885,6 +1931,12 @@ async def addcard_command(
         for x in raw.split("|")
     ]
 
+    if len(parts) < 2:
+        await update.effective_message.reply_text(
+            "❌ Card format မမှန်ပါ။"
+        )
+        return
+
     char_id = parts[0]
     name = parts[1]
 
@@ -1894,40 +1946,54 @@ async def addcard_command(
         else "Common"
     )
 
-    try:
+    # --------------------------------------------------------
+    # EDITION VALIDATION
+    # --------------------------------------------------------
 
+    try:
+        if EDITIONS:
+
+            normalized = {
+                str(x).lower(): str(x)
+                for x in EDITIONS
+            }
+
+            if edition.lower() in normalized:
+                edition = normalized[
+                    edition.lower()
+                ]
+
+    except Exception:
+        pass
+
+    try:
         rarity = (
             int(parts[3])
             if len(parts) > 3
             else 1
         )
-
     except ValueError:
-
         rarity = 1
 
     try:
-
         price = (
             int(parts[4])
             if len(parts) > 4
             else 0
         )
-
     except ValueError:
-
         price = 0
 
     try:
-
         drop_weight = (
             float(parts[5])
             if len(parts) > 5
             else 1.0
         )
-
     except ValueError:
+        drop_weight = 1.0
 
+    if drop_weight <= 0:
         drop_weight = 1.0
 
     image_file_id = ""
@@ -1941,13 +2007,11 @@ async def addcard_command(
     if reply:
 
         if reply.photo:
-
             image_file_id = (
                 reply.photo[-1].file_id
             )
 
         elif reply.video:
-
             video_file_id = (
                 reply.video.file_id
             )
@@ -2005,16 +2069,13 @@ async def deletecard_command(
     update,
     context,
 ):
-
     if not await admin_guard(update):
         return
 
     if not context.args:
-
         await update.effective_message.reply_text(
             "Usage: /deletecard CARD_ID"
         )
-
         return
 
     delete_card(
@@ -2036,30 +2097,23 @@ async def setprice_command(
     update,
     context,
 ):
-
     if not await admin_guard(update):
         return
 
     if len(context.args) != 2:
-
         await update.effective_message.reply_text(
             "Usage: /setprice CARD_ID PRICE"
         )
-
         return
 
     try:
-
         price = int(
             context.args[1]
         )
-
     except ValueError:
-
         await update.effective_message.reply_text(
             "❌ Price မှားနေပါတယ်။"
         )
-
         return
 
     update_card_price(
@@ -2081,7 +2135,6 @@ async def setdrop_command(
     update,
     context,
 ):
-
     if not await admin_guard(update):
         return
 
@@ -2103,25 +2156,19 @@ async def setdrop_command(
         return
 
     try:
-
         count = int(
             context.args[0]
         )
-
     except ValueError:
-
         await update.effective_message.reply_text(
             "❌ Count မှားနေပါတယ်။"
         )
-
         return
 
     if count < 1:
-
         await update.effective_message.reply_text(
             "❌ Count က 1 ထက်ကြီးရပါမယ်။"
         )
-
         return
 
     set_setting(
@@ -2150,7 +2197,6 @@ async def setadmin_command(
     update,
     context,
 ):
-
     if not await owner_guard(update):
         return
 
@@ -2160,11 +2206,9 @@ async def setadmin_command(
     )
 
     if not target:
-
         await update.effective_message.reply_text(
             "Usage: /setadmin USER_ID"
         )
-
         return
 
     add_admin(
@@ -2187,7 +2231,6 @@ async def deladmin_command(
     update,
     context,
 ):
-
     if not await owner_guard(update):
         return
 
@@ -2197,11 +2240,9 @@ async def deladmin_command(
     )
 
     if not target:
-
         await update.effective_message.reply_text(
             "Usage: /deladmin USER_ID"
         )
-
         return
 
     remove_admin(
@@ -2221,30 +2262,23 @@ async def approve_command(
     update,
     context,
 ):
-
     if not await owner_guard(update):
         return
 
     if not context.args:
-
         await update.effective_message.reply_text(
             "Usage: /approve GROUP_ID"
         )
-
         return
 
     try:
-
         group_id = int(
             context.args[0]
         )
-
     except ValueError:
-
         await update.effective_message.reply_text(
             "❌ Group ID မှားနေပါတယ်။"
         )
-
         return
 
     approve_group(
@@ -2266,30 +2300,23 @@ async def reject_command(
     update,
     context,
 ):
-
     if not await owner_guard(update):
         return
 
     if not context.args:
-
         await update.effective_message.reply_text(
             "Usage: /reject GROUP_ID"
         )
-
         return
 
     try:
-
         group_id = int(
             context.args[0]
         )
-
     except ValueError:
-
         await update.effective_message.reply_text(
             "❌ Group ID မှားနေပါတယ်။"
         )
-
         return
 
     reject_group(
@@ -2311,7 +2338,6 @@ async def stats_command(
     update,
     context,
 ):
-
     if not await owner_guard(update):
         return
 
@@ -2361,7 +2387,6 @@ async def maintenance_command(
     update,
     context,
 ):
-
     if not await owner_guard(update):
         return
 
@@ -2399,7 +2424,6 @@ async def changetime_command(
     update,
     context,
 ):
-
     if not await owner_guard(update):
         return
 
@@ -2422,28 +2446,22 @@ async def changetime_command(
         return
 
     try:
-
         count = int(
             context.args[0]
         )
-
     except ValueError:
-
         await update.effective_message.reply_text(
             "❌ Number မှားနေပါတယ်။\n\n"
             "ဥပမာ:\n"
             "<code>/changetime 50</code>",
             parse_mode="HTML",
         )
-
         return
 
     if count < 1:
-
         await update.effective_message.reply_text(
             "❌ Count က 1 ထက်ကြီးရပါမယ်။"
         )
-
         return
 
     set_setting(
@@ -2456,10 +2474,27 @@ async def changetime_command(
         "1",
     )
 
+    # Reset all current counters so the new
+    # interval starts cleanly.
+    try:
+        with get_db() as db:
+            db.execute(
+                """
+                DELETE FROM settings
+                WHERE key LIKE 'message_count:%'
+                """
+            )
+    except Exception as exc:
+        logger.warning(
+            "Counter reset failed after changetime: %s",
+            exc,
+        )
+
     await update.effective_message.reply_text(
         "✅ <b>AUTO DROP UPDATED</b>\n\n"
         f"🎴 Drop Every: <b>{count} messages</b>\n"
-        "🟢 Auto Drop: <b>ON</b>",
+        "🟢 Auto Drop: <b>ON</b>\n\n"
+        "📌 New message counter စတင်ပါပြီ။",
         parse_mode="HTML",
     )
 
@@ -2472,16 +2507,13 @@ async def broadcast_command(
     update,
     context,
 ):
-
     if not await owner_guard(update):
         return
 
     if not context.args:
-
         await update.effective_message.reply_text(
             "Usage: /broadcast MESSAGE"
         )
-
         return
 
     text = " ".join(
@@ -2512,7 +2544,6 @@ async def broadcast_command(
             success += 1
 
         except Exception:
-
             pass
 
     await update.effective_message.reply_text(
@@ -2530,20 +2561,17 @@ async def duel_command(
     update,
     context,
 ):
-
     register_user(update)
 
     message = update.effective_message
     user = update.effective_user
 
     if not message.reply_to_message:
-
         await message.reply_text(
             "⚔️ Duel လုပ်မယ့် User ရဲ့ "
             "message ကို Reply လုပ်ပြီး "
             "/duel သုံးပါ။"
         )
-
         return
 
     target = (
@@ -2555,11 +2583,9 @@ async def duel_command(
         or target.id == user.id
         or target.is_bot
     ):
-
         await message.reply_text(
             "❌ Target User မမှန်ပါ။"
         )
-
         return
 
     my_cards = get_user_cards(
@@ -2574,12 +2600,10 @@ async def duel_command(
         not my_cards
         or not their_cards
     ):
-
         await message.reply_text(
             "🎴 နှစ်ဖက်လုံးမှာ Card "
             "ရှိရပါမယ်။"
         )
-
         return
 
     my_card = random.choice(
@@ -2639,7 +2663,6 @@ async def bot_install_handler(
     update,
     context,
 ):
-
     change = update.my_chat_member
 
     if not change:
@@ -2670,19 +2693,15 @@ async def bot_install_handler(
     added_by = change.from_user
 
     try:
-
         member_count = (
             await context.bot.get_chat_member_count(
                 chat.id
             )
         )
-
     except Exception:
-
         member_count = 0
 
     try:
-
         me = await context.bot.get_me()
 
         bot_member = (
@@ -2701,11 +2720,9 @@ async def bot_install_handler(
         )
 
     except Exception:
-
         bot_admin = False
 
     try:
-
         save_group(
             chat.id,
             chat.title or "",
@@ -2713,7 +2730,6 @@ async def bot_install_handler(
             int(bot_admin),
             added_by.id if added_by else 0,
         )
-
     except Exception:
         pass
 
@@ -2740,7 +2756,6 @@ async def bot_install_handler(
         )
 
         try:
-
             await context.bot.send_message(
                 CHANNEL_ID,
                 text,
@@ -2748,7 +2763,6 @@ async def bot_install_handler(
             )
 
         except Exception as exc:
-
             logger.warning(
                 "Channel log failed: %s",
                 exc,
@@ -2763,7 +2777,6 @@ async def callback_router(
     update,
     context,
 ):
-
     query = update.callback_query
 
     if not query:
@@ -2943,6 +2956,10 @@ async def callback_router(
 
         return
 
+    # --------------------------------------------------------
+    # UNKNOWN CALLBACK
+    # --------------------------------------------------------
+
     await query.answer()
 
 
@@ -2954,14 +2971,19 @@ async def unknown_command(
     update,
     context,
 ):
+    """
+    IMPORTANT:
+    Unknown commands are ignored.
 
-    if update.effective_message:
+    Bot will NOT reply to:
+    /hello
+    /abc
+    /random
+    /test
+    etc.
+    """
 
-        await update.effective_message.reply_text(
-            "❓ Unknown Command\n\n"
-            "📚 အသုံးပြုနိုင်တဲ့ Command တွေကို "
-            "/help မှာကြည့်ပါ။"
-        )
+    return
 
 
 # ============================================================
@@ -2972,7 +2994,6 @@ async def error_handler(
     update,
     context,
 ):
-
     logger.error(
         "Unhandled exception: %s",
         context.error,
@@ -2987,7 +3008,6 @@ async def error_handler(
 def main():
 
     if not BOT_TOKEN:
-
         raise RuntimeError(
             "BOT_TOKEN မထည့်ရသေးပါ။ "
             "Railway Variables ကို စစ်ပါ။"
@@ -3001,10 +3021,14 @@ def main():
     )
 
     # ========================================================
-    # USER COMMANDS
+    # COMMANDS
     # ========================================================
 
     commands = {
+
+        # ----------------------------------------------------
+        # BASIC
+        # ----------------------------------------------------
 
         "start": start_command,
         "help": help_command,
@@ -3012,11 +3036,19 @@ def main():
         "profile": profile_command,
         "harem": harem_command,
 
+        # ----------------------------------------------------
+        # SEARCH
+        # ----------------------------------------------------
+
         "search": search_command,
         "Nexus": nexus_command,
         "nexus": nexus_command,
 
         "check": check_command,
+
+        # ----------------------------------------------------
+        # RANKING
+        # ----------------------------------------------------
 
         "top": top_command,
         "ctop": ctop_command,
@@ -3024,14 +3056,30 @@ def main():
         "todayNexusCatch":
             today_nexus_catch_command,
 
+        # ----------------------------------------------------
+        # ECONOMY
+        # ----------------------------------------------------
+
         "balance": balance_command,
         "daily": daily_command,
         "sellprice": sellprice_command,
 
+        # ----------------------------------------------------
+        # CLAIM
+        # ----------------------------------------------------
+
         "claim": claim_command,
+
+        # ----------------------------------------------------
+        # FAVORITE
+        # ----------------------------------------------------
 
         "fav": fav_command,
         "unfav": unfav_command,
+
+        # ----------------------------------------------------
+        # HAREM
+        # ----------------------------------------------------
 
         "hmode": hmode_command,
         "reset": reset_command,
@@ -3092,6 +3140,10 @@ def main():
         "broadcast": broadcast_command,
     }
 
+    # ========================================================
+    # REGISTER COMMANDS
+    # ========================================================
+
     for command, handler in commands.items():
 
         application.add_handler(
@@ -3102,13 +3154,22 @@ def main():
         )
 
     # ========================================================
-    # AUTO DROP MESSAGE COUNTER
+    # AUTO DROP
     # ========================================================
     #
-    # Group message တိုင်း ဒီ handler ဝင်မယ်။
+    # Normal group messages only.
     #
-    # 85 messages → Drop
-    # /changetime 50 → 50 messages → Drop
+    # IMPORTANT:
+    # This handler NEVER replies to normal messages.
+    #
+    # Example:
+    #
+    # /changetime 50
+    #
+    # User message #1  -> count
+    # User message #2  -> count
+    # ...
+    # User message #50 -> Drop
     #
     # ========================================================
 
@@ -3143,7 +3204,14 @@ def main():
     )
 
     # ========================================================
-    # UNKNOWN COMMAND
+    # UNKNOWN COMMANDS
+    # ========================================================
+    #
+    # This handler does NOTHING.
+    #
+    # Therefore the bot won't reply to commands that
+    # don't belong to Nexus.
+    #
     # ========================================================
 
     application.add_handler(
@@ -3154,22 +3222,22 @@ def main():
     )
 
     # ========================================================
-    # ERROR
+    # ERROR HANDLER
     # ========================================================
 
     application.add_error_handler(
         error_handler
     )
 
+    # ========================================================
+    # START
+    # ========================================================
+
     logger.info(
         "%s %s started.",
         BOT_NAME,
         BOT_VERSION,
     )
-
-    # ========================================================
-    # START BOT
-    # ========================================================
 
     application.run_polling(
         allowed_updates=Update.ALL_TYPES
