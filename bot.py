@@ -115,6 +115,7 @@ from economy import (
     gift_command,
     trade_command,
 )
+from system_status import status_command
 
 # ============================================================
 # LOGGING
@@ -3035,7 +3036,8 @@ def main():
 
         "profile": profile_command,
         "harem": harem_command,
-
+        "status": status_command,
+        
         # ----------------------------------------------------
         # SEARCH
         # ----------------------------------------------------
