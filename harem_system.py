@@ -19,23 +19,24 @@ from database import (
 
 HAREM_PER_PAGE = 6
 
+
 # ============================================================
-# 13 EDITIONS
+# NEXUS — 13 EDITIONS
 # ============================================================
 
 EDITIONS = [
     "Common",
     "Uncommon",
     "Rare",
-    "Super Rare",
-    "Epic",
-    "Ultra",
-    "Elite",
-    "Master",
-    "Grandmaster",
-    "Mythic",
-    "Legendary",
-    "Ultimate",
+    "Legends",
+    "Mythical",
+    "Divine",
+    "Crossverse",
+    "Cataphract",
+    "Supreme",
+    "Celestial",
+    "Immortal",
+    "Eternal",
     "Premium",
 ]
 
@@ -48,15 +49,15 @@ EDITION_ORDER = {
     "common": 1,
     "uncommon": 2,
     "rare": 3,
-    "super rare": 4,
-    "epic": 5,
-    "ultra": 6,
-    "elite": 7,
-    "master": 8,
-    "grandmaster": 9,
-    "mythic": 10,
-    "legendary": 11,
-    "ultimate": 12,
+    "legends": 4,
+    "mythical": 5,
+    "divine": 6,
+    "crossverse": 7,
+    "cataphract": 8,
+    "supreme": 9,
+    "celestial": 10,
+    "immortal": 11,
+    "eternal": 12,
     "premium": 13,
 }
 
@@ -65,7 +66,6 @@ EDITION_ORDER = {
 # USER HMODE
 #
 # user_id -> selected edition
-#
 # None = All Editions
 # ============================================================
 
@@ -80,15 +80,15 @@ EDITION_EMOJI = {
     "common": "⚪",
     "uncommon": "🟢",
     "rare": "🔵",
-    "super rare": "🟣",
-    "epic": "🟠",
-    "ultra": "🔴",
-    "elite": "💠",
-    "master": "🔷",
-    "grandmaster": "🔶",
-    "mythic": "🌌",
-    "legendary": "🌟",
-    "ultimate": "💫",
+    "legends": "🟣",
+    "mythical": "🟠",
+    "divine": "🔴",
+    "crossverse": "🌌",
+    "cataphract": "⚔️",
+    "supreme": "💠",
+    "celestial": "🌠",
+    "immortal": "♾️",
+    "eternal": "🔥",
     "premium": "💎",
 }
 
@@ -98,7 +98,6 @@ EDITION_EMOJI = {
 # ============================================================
 
 def normalize_edition(value):
-
     if value is None:
         return ""
 
@@ -116,81 +115,50 @@ def normalize_edition(value):
 # ============================================================
 
 def get_hmode(user_id):
-
-    return USER_HMODE.get(
-        user_id,
-        None,
-    )
+    return USER_HMODE.get(user_id, None)
 
 
 # ============================================================
 # SET HMODE
 # ============================================================
 
-def set_hmode(
-    user_id,
-    edition,
-):
-
+def set_hmode(user_id, edition):
     if edition is None:
-
-        USER_HMODE.pop(
-            user_id,
-            None,
-        )
-
+        USER_HMODE.pop(user_id, None)
         return
 
-    edition_normalized = normalize_edition(
-        edition
-    )
+    edition_normalized = normalize_edition(edition)
 
     for valid_edition in EDITIONS:
-
-        if normalize_edition(
-            valid_edition
-        ) == edition_normalized:
-
+        if (
+            normalize_edition(valid_edition)
+            == edition_normalized
+        ):
             USER_HMODE[user_id] = valid_edition
-
             return
 
 
 # ============================================================
-# FILTER CARDS BY EDITION
+# FILTER CARDS BY HMODE
 # ============================================================
 
-def filter_cards_by_hmode(
-    cards,
-    user_id,
-):
+def filter_cards_by_hmode(cards, user_id):
+    selected = get_hmode(user_id)
 
-    selected = get_hmode(
-        user_id
-    )
-
-    # --------------------------------------------------------
     # All Editions
-    # --------------------------------------------------------
-
     if not selected:
-
         return list(cards)
 
-    selected_normalized = normalize_edition(
-        selected
-    )
+    selected_normalized = normalize_edition(selected)
 
     filtered = []
 
     for card in cards:
-
         card_edition = normalize_edition(
             card["edition"]
         )
 
         if card_edition == selected_normalized:
-
             filtered.append(card)
 
     return filtered
@@ -203,22 +171,19 @@ def filter_cards_by_hmode(
 def sort_cards(cards):
 
     def sort_key(card):
-
         edition = normalize_edition(
             card["edition"]
         )
 
         try:
-
             char_id = int(
                 str(card["char_id"])
+                .replace("NXS", "")
             )
-
         except (
             ValueError,
             TypeError,
         ):
-
             char_id = 999999999
 
         return (
@@ -236,14 +201,13 @@ def sort_cards(cards):
 
 
 # ============================================================
-# EDITION BUTTON
+# EDITION BUTTON TEXT
 # ============================================================
 
 def edition_button_text(
     edition,
     selected,
 ):
-
     emoji = EDITION_EMOJI.get(
         normalize_edition(edition),
         "🎴",
@@ -253,27 +217,18 @@ def edition_button_text(
         normalize_edition(selected)
         == normalize_edition(edition)
     ):
+        return f"✅ {emoji} {edition}"
 
-        return (
-            f"✅ {emoji} {edition}"
-        )
-
-    return (
-        f"{emoji} {edition}"
-    )
+    return f"{emoji} {edition}"
 
 
 # ============================================================
 # HMODE KEYBOARD
 # ============================================================
 
-def build_hmode_keyboard(
-    user_id,
-):
+def build_hmode_keyboard(user_id):
 
-    selected = get_hmode(
-        user_id
-    )
+    selected = get_hmode(user_id)
 
     keyboard = []
 
@@ -281,134 +236,79 @@ def build_hmode_keyboard(
     # 13 EDITIONS
     # --------------------------------------------------------
 
-    # Row 1
+    for index in range(
+        0,
+        len(EDITIONS),
+        2,
+    ):
+        row = []
+
+        first = EDITIONS[index]
+
+        row.append(
+            InlineKeyboardButton(
+                edition_button_text(
+                    first,
+                    selected,
+                ),
+                callback_data=(
+                    f"hmode_set:"
+                    f"{user_id}:"
+                    f"{first}"
+                ),
+            )
+        )
+
+        if index + 1 < len(EDITIONS):
+
+            second = EDITIONS[index + 1]
+
+            row.append(
+                InlineKeyboardButton(
+                    edition_button_text(
+                        second,
+                        selected,
+                    ),
+                    callback_data=(
+                        f"hmode_set:"
+                        f"{user_id}:"
+                        f"{second}"
+                    ),
+                )
+            )
+
+        keyboard.append(row)
+
+    # --------------------------------------------------------
+    # ALL EDITIONS
+    # --------------------------------------------------------
+
+    all_text = "♾️ All Editions"
+
+    if selected is None:
+        all_text = "✅ ♾️ All Editions"
+
     keyboard.append([
         InlineKeyboardButton(
-            edition_button_text(
-                "Common",
-                selected,
+            all_text,
+            callback_data=(
+                f"hmode_set:"
+                f"{user_id}:ALL"
             ),
-            callback_data=f"hmode_set:{user_id}:Common",
-        ),
-        InlineKeyboardButton(
-            edition_button_text(
-                "Uncommon",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Uncommon",
-        ),
+        )
     ])
 
-    # Row 2
-    keyboard.append([
-        InlineKeyboardButton(
-            edition_button_text(
-                "Rare",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Rare",
-        ),
-        InlineKeyboardButton(
-            edition_button_text(
-                "Super Rare",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Super Rare",
-        ),
-    ])
+    # --------------------------------------------------------
+    # CLOSE
+    # --------------------------------------------------------
 
-    # Row 3
-    keyboard.append([
-        InlineKeyboardButton(
-            edition_button_text(
-                "Epic",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Epic",
-        ),
-        InlineKeyboardButton(
-            edition_button_text(
-                "Ultra",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Ultra",
-        ),
-    ])
-
-    # Row 4
-    keyboard.append([
-        InlineKeyboardButton(
-            edition_button_text(
-                "Elite",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Elite",
-        ),
-        InlineKeyboardButton(
-            edition_button_text(
-                "Master",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Master",
-        ),
-    ])
-
-    # Row 5
-    keyboard.append([
-        InlineKeyboardButton(
-            edition_button_text(
-                "Grandmaster",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Grandmaster",
-        ),
-        InlineKeyboardButton(
-            edition_button_text(
-                "Mythic",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Mythic",
-        ),
-    ])
-
-    # Row 6
-    keyboard.append([
-        InlineKeyboardButton(
-            edition_button_text(
-                "Legendary",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Legendary",
-        ),
-        InlineKeyboardButton(
-            edition_button_text(
-                "Ultimate",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Ultimate",
-        ),
-    ])
-
-    # Row 7
-    keyboard.append([
-        InlineKeyboardButton(
-            edition_button_text(
-                "Premium",
-                selected,
-            ),
-            callback_data=f"hmode_set:{user_id}:Premium",
-        ),
-        InlineKeyboardButton(
-            "♾️ All Editions",
-            callback_data=f"hmode_set:{user_id}:ALL",
-        ),
-    ])
-
-    # Close
     keyboard.append([
         InlineKeyboardButton(
             "❌ Close",
-            callback_data=f"hmode_close:{user_id}",
+            callback_data=(
+                f"hmode_close:"
+                f"{user_id}"
+            ),
         )
     ])
 
@@ -423,9 +323,7 @@ def build_hmode_keyboard(
 
 def hmode_text(user_id):
 
-    selected = get_hmode(
-        user_id
-    )
+    selected = get_hmode(user_id)
 
     if selected:
 
@@ -447,10 +345,22 @@ def hmode_text(user_id):
     return (
         "🎛 <b>NEXUS HMODE</b>\n\n"
         f"📌 Current Mode: {current_text}\n\n"
-        "🎴 Harem မှာ ကြည့်ချင်တဲ့ "
-        "Card Edition ကို ရွေးပါ။\n\n"
-        "ရွေးထားတဲ့ Edition ရဲ့ Card တွေကိုပဲ "
-        "<code>/harem</code> မှာ ပြပေးပါမယ်။"
+        "🎴 <b>13 Card Editions</b>\n\n"
+        "⚪ Common\n"
+        "🟢 Uncommon\n"
+        "🔵 Rare\n"
+        "🟣 Legends\n"
+        "🟠 Mythical\n"
+        "🔴 Divine\n"
+        "🌌 Crossverse\n"
+        "⚔️ Cataphract\n"
+        "💠 Supreme\n"
+        "🌠 Celestial\n"
+        "♾️ Immortal\n"
+        "🔥 Eternal\n"
+        "💎 Premium\n\n"
+        "👇 Harem မှာ ကြည့်ချင်တဲ့ "
+        "Edition ကို ရွေးပါ။"
     )
 
 
@@ -469,12 +379,13 @@ def format_card(
         f"   🆔 <code>{card['char_id']}</code>\n"
         f"   ✨ Edition: <b>{card['edition']}</b>\n"
         f"   ⭐ Rarity: <b>{card['rarity']}</b>\n"
-        f"   💰 Price: <b>{int(card['price'] or 0):,}</b>\n"
+        f"   💰 Price: "
+        f"<b>{int(card['price'] or 0):,}</b>\n"
     )
 
 
 # ============================================================
-# HAREM TEXT + KEYBOARD
+# HAREM VIEW
 # ============================================================
 
 def build_harem_view(
@@ -626,9 +537,7 @@ def build_harem_view(
             )
         )
 
-    keyboard.append(
-        navigation
-    )
+    keyboard.append(navigation)
 
     # --------------------------------------------------------
     # HMODE / RESET
@@ -676,10 +585,7 @@ async def harem_command(
 
     target_user_id = user.id
 
-    # --------------------------------------------------------
-    # Reply User → View Their Harem
-    # --------------------------------------------------------
-
+    # Reply User → Their Harem
     if message.reply_to_message:
 
         replied_user = (
@@ -687,10 +593,7 @@ async def harem_command(
         )
 
         if replied_user:
-
-            target_user_id = (
-                replied_user.id
-            )
+            target_user_id = replied_user.id
 
     all_cards = get_user_cards(
         target_user_id
@@ -717,18 +620,10 @@ async def harem_command(
 
         return
 
-    # --------------------------------------------------------
-    # APPLY HMODE
-    # --------------------------------------------------------
-
     cards = filter_cards_by_hmode(
         all_cards,
         target_user_id,
     )
-
-    # --------------------------------------------------------
-    # Selected Edition Has No Cards
-    # --------------------------------------------------------
 
     if not cards:
 
@@ -787,10 +682,10 @@ async def harem_command(
             parse_mode="HTML",
         )
 
-    except Exception as e:
+    except Exception as exc:
 
         print(
-            f"[HAREM ERROR] {e}"
+            f"[HAREM ERROR] {exc}"
         )
 
 
@@ -870,21 +765,15 @@ async def harem_callback(
     if data == "harem_noop":
 
         await query.answer()
-
         return
 
     # ========================================================
     # HAREM PAGE
     # ========================================================
 
-    if data.startswith(
-        "harem_page:"
-    ):
+    if data.startswith("harem_page:"):
 
-        parts = data.split(
-            ":",
-            2,
-        )
+        parts = data.split(":", 2)
 
         if len(parts) != 3:
 
@@ -892,18 +781,11 @@ async def harem_callback(
                 "Invalid request.",
                 show_alert=True,
             )
-
             return
 
         try:
-
-            owner_id = int(
-                parts[1]
-            )
-
-            page = int(
-                parts[2]
-            )
+            owner_id = int(parts[1])
+            page = int(parts[2])
 
         except ValueError:
 
@@ -911,12 +793,7 @@ async def harem_callback(
                 "Invalid request.",
                 show_alert=True,
             )
-
             return
-
-        # ----------------------------------------------------
-        # Security
-        # ----------------------------------------------------
 
         if query.from_user.id != owner_id:
 
@@ -924,7 +801,6 @@ async def harem_callback(
                 "🚫 ဒီ Harem ကို မင်းမပိုင်ပါ။",
                 show_alert=True,
             )
-
             return
 
         all_cards = get_user_cards(
@@ -950,7 +826,6 @@ async def harem_callback(
                 "📭 ဒီ Edition မှာ Card မရှိပါ။",
                 show_alert=True,
             )
-
             return
 
         text, keyboard = build_harem_view(
@@ -970,10 +845,10 @@ async def harem_callback(
                 parse_mode="HTML",
             )
 
-        except Exception as e:
+        except Exception as exc:
 
             print(
-                f"[HAREM PAGE ERROR] {e}"
+                f"[HAREM PAGE ERROR] {exc}"
             )
 
         return
@@ -982,14 +857,9 @@ async def harem_callback(
     # CARD DETAIL
     # ========================================================
 
-    if data.startswith(
-        "harem_card:"
-    ):
+    if data.startswith("harem_card:"):
 
-        parts = data.split(
-            ":",
-            2,
-        )
+        parts = data.split(":", 2)
 
         if len(parts) != 3:
 
@@ -997,14 +867,10 @@ async def harem_callback(
                 "Invalid card.",
                 show_alert=True,
             )
-
             return
 
         try:
-
-            owner_id = int(
-                parts[1]
-            )
+            owner_id = int(parts[1])
 
         except ValueError:
 
@@ -1012,7 +878,6 @@ async def harem_callback(
                 "Invalid owner.",
                 show_alert=True,
             )
-
             return
 
         char_id = parts[2]
@@ -1024,12 +889,7 @@ async def harem_callback(
                 "ပိုင်ရှင်ပဲ ကြည့်နိုင်ပါတယ်။",
                 show_alert=True,
             )
-
             return
-
-        # ----------------------------------------------------
-        # Make sure card is actually in owner's harem
-        # ----------------------------------------------------
 
         owned_cards = get_user_cards(
             owner_id
@@ -1044,7 +904,6 @@ async def harem_callback(
             ) == str(char_id):
 
                 owned = True
-
                 break
 
         if not owned:
@@ -1053,7 +912,6 @@ async def harem_callback(
                 "❌ ဒီ Card ကို မင်းမပိုင်ပါ။",
                 show_alert=True,
             )
-
             return
 
         card = get_card(
@@ -1066,7 +924,6 @@ async def harem_callback(
                 "❌ Card မတွေ့ပါ။",
                 show_alert=True,
             )
-
             return
 
         text = (
@@ -1110,10 +967,10 @@ async def harem_callback(
                 parse_mode="HTML",
             )
 
-        except Exception as e:
+        except Exception as exc:
 
             print(
-                f"[CARD DETAIL ERROR] {e}"
+                f"[CARD DETAIL ERROR] {exc}"
             )
 
         return
@@ -1122,17 +979,12 @@ async def harem_callback(
     # HMODE MENU
     # ========================================================
 
-    if data.startswith(
-        "harem_hmode:"
-    ):
+    if data.startswith("harem_hmode:"):
 
         try:
 
             owner_id = int(
-                data.split(
-                    ":",
-                    1,
-                )[1]
+                data.split(":", 1)[1]
             )
 
         except ValueError:
@@ -1141,7 +993,6 @@ async def harem_callback(
                 "Invalid user.",
                 show_alert=True,
             )
-
             return
 
         if query.from_user.id != owner_id:
@@ -1150,7 +1001,6 @@ async def harem_callback(
                 "🚫 ဒီ HMode ကို မင်းမပြောင်းနိုင်ပါ။",
                 show_alert=True,
             )
-
             return
 
         await query.answer()
@@ -1165,10 +1015,10 @@ async def harem_callback(
                 parse_mode="HTML",
             )
 
-        except Exception as e:
+        except Exception as exc:
 
             print(
-                f"[HMODE MENU ERROR] {e}"
+                f"[HMODE MENU ERROR] {exc}"
             )
 
         return
@@ -1177,14 +1027,9 @@ async def harem_callback(
     # SET HMODE
     # ========================================================
 
-    if data.startswith(
-        "hmode_set:"
-    ):
+    if data.startswith("hmode_set:"):
 
-        parts = data.split(
-            ":",
-            2,
-        )
+        parts = data.split(":", 2)
 
         if len(parts) != 3:
 
@@ -1192,14 +1037,11 @@ async def harem_callback(
                 "Invalid request.",
                 show_alert=True,
             )
-
             return
 
         try:
 
-            owner_id = int(
-                parts[1]
-            )
+            owner_id = int(parts[1])
 
         except ValueError:
 
@@ -1207,7 +1049,6 @@ async def harem_callback(
                 "Invalid user.",
                 show_alert=True,
             )
-
             return
 
         if query.from_user.id != owner_id:
@@ -1216,7 +1057,6 @@ async def harem_callback(
                 "🚫 ကိုယ့် HMode ကိုပဲ ပြောင်းနိုင်ပါတယ်။",
                 show_alert=True,
             )
-
             return
 
         selected = parts[2]
@@ -1258,7 +1098,6 @@ async def harem_callback(
                     "❌ Invalid Edition.",
                     show_alert=True,
                 )
-
                 return
 
             set_hmode(
@@ -1272,7 +1111,7 @@ async def harem_callback(
             )
 
         # ----------------------------------------------------
-        # Refresh Harem
+        # REFRESH HAREM
         # ----------------------------------------------------
 
         all_cards = get_user_cards(
@@ -1347,10 +1186,10 @@ async def harem_callback(
                     parse_mode="HTML",
                 )
 
-            except Exception as e:
+            except Exception as exc:
 
                 print(
-                    f"[HMODE EMPTY ERROR] {e}"
+                    f"[HMODE EMPTY ERROR] {exc}"
                 )
 
             return
@@ -1370,10 +1209,10 @@ async def harem_callback(
                 parse_mode="HTML",
             )
 
-        except Exception as e:
+        except Exception as exc:
 
             print(
-                f"[HMODE SET ERROR] {e}"
+                f"[HMODE SET ERROR] {exc}"
             )
 
         return
@@ -1382,17 +1221,12 @@ async def harem_callback(
     # HMODE CLOSE
     # ========================================================
 
-    if data.startswith(
-        "hmode_close:"
-    ):
+    if data.startswith("hmode_close:"):
 
         try:
 
             owner_id = int(
-                data.split(
-                    ":",
-                    1,
-                )[1]
+                data.split(":", 1)[1]
             )
 
         except ValueError:
@@ -1401,7 +1235,6 @@ async def harem_callback(
                 "Invalid user.",
                 show_alert=True,
             )
-
             return
 
         if query.from_user.id != owner_id:
@@ -1410,7 +1243,6 @@ async def harem_callback(
                 "🚫 ဒီ Menu ကို မင်းပိတ်လို့မရပါ။",
                 show_alert=True,
             )
-
             return
 
         await query.answer()
@@ -1421,14 +1253,15 @@ async def harem_callback(
                 "🎛 <b>HMODE</b>\n\n"
                 "Menu ပိတ်လိုက်ပါပြီ။\n\n"
                 "📌 <code>/harem</code> "
-                "သို့မဟုတ် <code>/hmode</code> ကို ပြန်သုံးနိုင်ပါတယ်။",
+                "သို့မဟုတ် <code>/hmode</code> ကို "
+                "ပြန်သုံးနိုင်ပါတယ်။",
                 parse_mode="HTML",
             )
 
-        except Exception as e:
+        except Exception as exc:
 
             print(
-                f"[HMODE CLOSE ERROR] {e}"
+                f"[HMODE CLOSE ERROR] {exc}"
             )
 
         return
@@ -1437,17 +1270,12 @@ async def harem_callback(
     # RESET
     # ========================================================
 
-    if data.startswith(
-        "harem_reset:"
-    ):
+    if data.startswith("harem_reset:"):
 
         try:
 
             owner_id = int(
-                data.split(
-                    ":",
-                    1,
-                )[1]
+                data.split(":", 1)[1]
             )
 
         except ValueError:
@@ -1456,7 +1284,6 @@ async def harem_callback(
                 "Invalid user.",
                 show_alert=True,
             )
-
             return
 
         if query.from_user.id != owner_id:
@@ -1465,7 +1292,6 @@ async def harem_callback(
                 "🚫 ကိုယ့် Harem ကိုပဲ Reset လုပ်နိုင်ပါတယ်။",
                 show_alert=True,
             )
-
             return
 
         USER_HMODE.pop(
@@ -1484,14 +1310,15 @@ async def harem_callback(
                 "🔄 <b>HAREM RESET</b>\n\n"
                 "✅ HMode filter ပြန်ရှင်းပြီးပါပြီ။\n"
                 "🎴 Edition အားလုံးကို ပြန်ကြည့်နိုင်ပါပြီ။\n\n"
-                "📌 <code>/harem</code> ကို ပြန်သုံးပါ။",
+                "📌 <code>/harem</code> ကို "
+                "ပြန်သုံးပါ။",
                 parse_mode="HTML",
             )
 
-        except Exception as e:
+        except Exception as exc:
 
             print(
-                f"[HAREM RESET ERROR] {e}"
+                f"[HAREM RESET ERROR] {exc}"
             )
 
         return
