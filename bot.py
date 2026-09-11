@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+from html import escape
 
 from telegram import (
     Update,
@@ -739,61 +740,281 @@ async def help_command(
 # ============================================================
 # CHECK CARD
 # ============================================================
+# ============================================================
+# /CHECK — CARD MEDIA + DETAILS + TOP 15 OWNERS
+# ============================================================
 
 async def check_command(
-    update,
-    context,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
     register_user(update)
 
+    message = update.effective_message
+
+    if not message:
+        return
+
+    # --------------------------------------------------------
+    # USAGE
+    # --------------------------------------------------------
+
     if not context.args:
-        await update.effective_message.reply_text(
-            "🎴 Usage:\n"
-            "<code>/check [card_id]</code>",
+        await message.reply_text(
+            "🎴 <b>Card Check</b>\n\n"
+            "အသုံးပြုပုံ:\n"
+            "<code>/check CARD_ID</code>\n\n"
+            "ဥပမာ:\n"
+            "<code>/check NXS001</code>",
             parse_mode="HTML",
         )
         return
 
-    char_id = context.args[0]
+    char_id = context.args[0].strip()
+
+    # --------------------------------------------------------
+    # GET CARD
+    # --------------------------------------------------------
 
     card = get_card(char_id)
 
     if not card:
-        await update.effective_message.reply_text(
-            "❌ Card မတွေ့ပါ။"
+        await message.reply_text(
+            "❌ <b>Card မတွေ့ပါ။</b>\n\n"
+            f"🆔 ID: <code>{escape(char_id)}</code>",
+            parse_mode="HTML",
         )
         return
 
-    text = (
-        f"🎴 <b>{card['name']}</b>\n\n"
-        f"🆔 ID: <code>{card['char_id']}</code>\n"
-        f"✨ Edition: <b>{card['edition']}</b>\n"
-        f"⭐ Rarity: <b>{card['rarity']}</b>\n"
-        f"💰 Price: <b>{int(card['price'] or 0):,}</b>\n"
-        f"📝 {card['description'] or 'No description'}"
+    # --------------------------------------------------------
+    # CARD DATA
+    # --------------------------------------------------------
+
+    name = escape(
+        str(card["name"] or "Unknown")
     )
 
-    if (
-        card["media_type"] == "video"
-        and card["video_file_id"]
-    ):
-        await update.effective_message.reply_video(
-            video=card["video_file_id"],
-            caption=text,
-            parse_mode="HTML",
+    safe_char_id = escape(
+        str(card["char_id"] or char_id)
+    )
+
+    edition = escape(
+        str(card["edition"] or "Common")
+    )
+
+    rarity = escape(
+        str(card["rarity"] or "1")
+    )
+
+    description = escape(
+        str(
+            card["description"]
+            or "No description"
+        )
+    )
+
+    price = int(
+        card["price"] or 0
+    )
+
+    # --------------------------------------------------------
+    # TOP 15 OWNERS
+    # --------------------------------------------------------
+
+    top_owners = []
+
+    try:
+        with get_db() as db:
+
+            rows = db.execute(
+                """
+                SELECT
+                    uc.user_id,
+                    COUNT(*) AS quantity,
+                    u.username,
+                    u.first_name
+                FROM user_cards uc
+                LEFT JOIN users u
+                    ON u.user_id = uc.user_id
+                WHERE uc.char_id = ?
+                GROUP BY uc.user_id
+                ORDER BY
+                    quantity DESC,
+                    uc.user_id ASC
+                LIMIT 15
+                """,
+                (char_id,),
+            ).fetchall()
+
+            top_owners = rows
+
+    except Exception as exc:
+
+        print(
+            f"[CHECK TOP OWNERS ERROR] {exc}"
         )
 
-    elif card["image_file_id"]:
-        await update.effective_message.reply_photo(
-            photo=card["image_file_id"],
-            caption=text,
-            parse_mode="HTML",
+    # --------------------------------------------------------
+    # CARD DETAILS
+    # --------------------------------------------------------
+
+    details_text = (
+        "🎴 <b>CARD INFORMATION</b>\n\n"
+        f"🎴 <b>{name}</b>\n"
+        f"🆔 ID: <code>{safe_char_id}</code>\n\n"
+        f"✨ Edition: <b>{edition}</b>\n"
+        f"⭐ Rarity: <b>{rarity}</b>\n"
+        f"💰 Price: <b>{price:,}</b> Coins\n"
+        f"📝 Description:\n{description}\n\n"
+    )
+
+    # --------------------------------------------------------
+    # TOP 15
+    # --------------------------------------------------------
+
+    details_text += (
+        "🏆 <b>TOP 15 OWNERS</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+    )
+
+    if not top_owners:
+
+        details_text += (
+            "📭 ဒီ Card ကို ပိုင်ထားသူ "
+            "မရှိသေးပါ။\n"
         )
 
     else:
-        await update.effective_message.reply_text(
-            text,
+
+        for index, row in enumerate(
+            top_owners,
+            start=1,
+        ):
+
+            user_id = row["user_id"]
+            quantity = int(
+                row["quantity"] or 0
+            )
+
+            username = row["username"]
+            first_name = row["first_name"]
+
+            if username:
+
+                display_name = (
+                    f"@{username}"
+                )
+
+            elif first_name:
+
+                display_name = (
+                    str(first_name)
+                )
+
+            else:
+
+                display_name = (
+                    f"User {user_id}"
+                )
+
+            display_name = escape(
+                display_name
+            )
+
+            # Medal
+            if index == 1:
+                rank_icon = "🥇"
+            elif index == 2:
+                rank_icon = "🥈"
+            elif index == 3:
+                rank_icon = "🥉"
+            else:
+                rank_icon = f"<b>{index}.</b>"
+
+            details_text += (
+                f"{rank_icon} "
+                f"{display_name} "
+                f"— 📦 <b>{quantity}</b>\n"
+            )
+
+    # --------------------------------------------------------
+    # MEDIA CAPTION
+    #
+    # Keep caption short because Telegram media
+    # captions have a size limit.
+    # --------------------------------------------------------
+
+    media_caption = (
+        f"🎴 <b>{name}</b>\n"
+        f"🆔 <code>{safe_char_id}</code>\n"
+        f"✨ {edition}\n"
+    )
+
+    # --------------------------------------------------------
+    # SEND CARD VIDEO
+    # --------------------------------------------------------
+
+    try:
+
+        if (
+            str(card["media_type"]).lower()
+            == "video"
+            and card["video_file_id"]
+        ):
+
+            await message.reply_video(
+                video=card["video_file_id"],
+                caption=media_caption,
+                parse_mode="HTML",
+            )
+
+        # ----------------------------------------------------
+        # SEND CARD PHOTO
+        # ----------------------------------------------------
+
+        elif card["image_file_id"]:
+
+            await message.reply_photo(
+                photo=card["image_file_id"],
+                caption=media_caption,
+                parse_mode="HTML",
+            )
+
+        # ----------------------------------------------------
+        # NO MEDIA
+        # ----------------------------------------------------
+
+        else:
+
+            await message.reply_text(
+                media_caption,
+                parse_mode="HTML",
+            )
+
+    except Exception as exc:
+
+        print(
+            f"[CHECK MEDIA ERROR] {exc}"
+        )
+
+        # Media မပို့နိုင်ရင် details ကို
+        # ဆက်ပို့နိုင်အောင် မရပ်ပါ။
+
+    # --------------------------------------------------------
+    # SEND DETAILS + TOP 15
+    # --------------------------------------------------------
+
+    try:
+
+        await message.reply_text(
+            details_text,
             parse_mode="HTML",
+        )
+
+    except Exception as exc:
+
+        print(
+            f"[CHECK DETAILS ERROR] {exc}"
         )
 
 
