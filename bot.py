@@ -2881,68 +2881,65 @@ async def duel_command(
 # BOT ADDED TO GROUP
 # ============================================================
 
-async def bot_install_handler(
-    update,
-    context,
-):
+async def bot_install_handler(update, context):
     change = update.my_chat_member
 
     if not change:
         return
 
     chat = change.chat
+    old_status = change.old_chat_member.status
+    new_status = change.new_chat_member.status
 
-    new_status = (
-        change.new_chat_member.status
-    )
-
-    old_status = (
-        change.old_chat_member.status
-    )
-
-    if new_status not in (
-        "member",
-        "administrator",
-    ):
+    # Group / Supergroup only
+    if chat.type not in ("group", "supergroup"):
         return
 
-    if old_status not in (
-        "left",
-        "kicked",
-    ):
+    # Only when bot is newly added
+    if new_status not in ("member", "administrator"):
+        return
+
+    if old_status not in ("left", "kicked"):
         return
 
     added_by = change.from_user
 
+    # --------------------------------------------------------
+    # GROUP INFO
+    # --------------------------------------------------------
+
     try:
-        member_count = (
-            await context.bot.get_chat_member_count(
-                chat.id
-            )
-        )
+        member_count = await context.bot.get_chat_member_count(chat.id)
     except Exception:
         member_count = 0
 
+    # --------------------------------------------------------
+    # BOT ADMIN STATUS
+    # --------------------------------------------------------
+
+    bot_admin = False
+
     try:
         me = await context.bot.get_me()
-
-        bot_member = (
-            await context.bot.get_chat_member(
-                chat.id,
-                me.id,
-            )
+        bot_member = await context.bot.get_chat_member(
+            chat.id,
+            me.id
         )
 
-        bot_admin = (
-            bot_member.status
-            in (
-                "administrator",
-                "creator",
-            )
+        bot_admin = bot_member.status in (
+            "administrator",
+            "creator"
         )
 
-    except Exception:
-        bot_admin = False
+    except Exception as exc:
+        logger.warning(
+            "Cannot check bot admin status: %s",
+            exc
+        )
+
+    # --------------------------------------------------------
+    # SAVE GROUP
+    # --------------------------------------------------------
 
     try:
         save_group(
@@ -2950,45 +2947,128 @@ async def bot_install_handler(
             chat.title or "",
             member_count,
             int(bot_admin),
-            added_by.id if added_by else 0,
-        )
-    except Exception:
-        pass
-
-    # --------------------------------------------------------
-    # CHANNEL LOG
-    # --------------------------------------------------------
-
-    if CHANNEL_ID:
-
-        text = (
-            "🚀 <b>NEXUS BOT ADDED</b>\n\n"
-            f"👥 Group: <b>{chat.title or 'Unknown'}</b>\n"
-            f"🆔 Group ID: <code>{chat.id}</code>\n\n"
-            f"👤 Added By: "
-            f"<b>{added_by.first_name if added_by else 'Unknown'}</b>\n"
-            f"🆔 User ID: "
-            f"<code>{added_by.id if added_by else 0}</code>\n\n"
-            f"👥 Members: "
-            f"<b>{member_count}</b>\n"
-            f"🤖 Bot Admin: "
-            f"<b>{'YES' if bot_admin else 'NO'}</b>\n\n"
-            "🔐 Status: "
-            "<b>WAITING FOR OWNER APPROVAL</b>"
+            added_by.id if added_by else 0
         )
 
-        try:
-            await context.bot.send_message(
-                CHANNEL_ID,
-                text,
-                parse_mode="HTML",
-            )
+    except Exception as exc:
+        logger.warning(
+            "Group save failed: %s",
+            exc
+        )
 
-        except Exception as exc:
-            logger.warning(
-                "Channel log failed: %s",
-                exc,
-            )
+    # --------------------------------------------------------
+    # GROUP LINK
+    # --------------------------------------------------------
+
+    if getattr(chat, "username", None):
+        group_link = f"https://t.me/{chat.username}"
+    else:
+        group_link = GROUP_LINK or "Private Group"
+
+    # --------------------------------------------------------
+    # ADDED BY
+    # --------------------------------------------------------
+
+    if added_by:
+        added_name = (
+            added_by.full_name
+            or added_by.username
+            or str(added_by.id)
+        )
+
+        if getattr(added_by, "username", None):
+            added_name += f" (@{added_by.username})"
+
+        added_id = added_by.id
+
+    else:
+        added_name = "Unknown"
+        added_id = "Unknown"
+
+    # --------------------------------------------------------
+    # CHANNEL TARGET
+    # IMPORTANT:
+    # CHANNEL_ID must be numeric ID (-100xxxxxxxxxx)
+    # or @channelusername
+    # NOT an invite link.
+    # --------------------------------------------------------
+
+    channel_value = str(CHANNEL_ID or "").strip()
+
+    if not channel_value:
+        logger.warning(
+            "CHANNEL_ID is empty. Channel notification skipped."
+        )
+        return
+
+    # Convert numeric channel ID to integer
+    if channel_value.lstrip("-").isdigit():
+        channel_target = int(channel_value)
+    else:
+        channel_target = channel_value
+
+    # Reject invite links accidentally placed in CHANNEL_ID
+    if channel_value.startswith("https://t.me/+") or \
+       channel_value.startswith("http://t.me/+"):
+
+        logger.error(
+            "CHANNEL_ID is an invite link. "
+            "Use the channel numeric ID (-100...) "
+            "or @channelusername instead."
+        )
+        return
+
+    # --------------------------------------------------------
+    # CHANNEL NOTIFICATION
+    # --------------------------------------------------------
+
+    text = (
+        "🚀 <b>NEXUS BOT ADDED</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        "👥 <b>GROUP INFORMATION</b>\n"
+        f"📌 Name: <b>{chat.title or 'Unknown'}</b>\n"
+        f"🆔 ID: <code>{chat.id}</code>\n"
+        f"🔗 Link: {group_link}\n"
+        f"👤 Members: <b>{member_count:,}</b>\n\n"
+
+        "👤 <b>ADDED BY</b>\n"
+        f"• {added_name}\n"
+        f"• ID: <code>{added_id}</code>\n\n"
+
+        "🤖 <b>BOT STATUS</b>\n"
+        f"• Admin: {'✅ YES' if bot_admin else '❌ NO'}\n"
+        "• Status: <b>Waiting for approval</b>\n\n"
+
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🎴 <b>Nexus Catch Bot</b>"
+    )
+
+    try:
+        await context.bot.send_message(
+            chat_id=channel_target,
+            text=text,
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+
+        logger.info(
+            "Group installation notification sent successfully: %s",
+            chat.id
+        )
+
+    except Exception as exc:
+        logger.error(
+            "CHANNEL NOTIFICATION FAILED | "
+            "channel=%s | group=%s | error=%s",
+            channel_target,
+            chat.id,
+            exc
+        )
+
+    
+
+
 
 
 # ============================================================
