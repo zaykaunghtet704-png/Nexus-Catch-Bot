@@ -3,14 +3,28 @@
 # Persistent Card Management Core
 #
 # IMPORTANT:
-# Card data is stored in database.py / SQLite.
-# Do NOT use clear_cards() in production.
+# Persistent card data is stored in database.py / SQLite.
+# Cards are NEVER physically deleted by this module.
+#
+# Supports:
+# - 13 Editions
+# - Photo / Video / Animation
+# - Existing Card ID restore/reuse
+# - Card editing
+# - Card search
+# - Collection
+# - Favorites
+# - EXP / Level
+# - Card power
+# - Drop weights
+# - Top 15 card owners
+# - Safe soft-delete / restore
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 from html import escape as _html_escape
+from typing import Optional, Any
 
 
 # ============================================================
@@ -60,13 +74,6 @@ EDITION_EMOJIS = {
 # ============================================================
 # EDITION DROP WEIGHTS
 # ============================================================
-#
-# Higher number = more common.
-# Premium is intentionally extremely rare.
-#
-# These are edition-level weights.
-# Individual cards inside an edition are selected separately.
-#
 
 EDITION_DROP_WEIGHTS = {
     "Common": 34.65,
@@ -226,7 +233,7 @@ class Card:
 
     drop_weight: float = 1.0
 
-    metadata: dict | None = None
+    metadata: Optional[dict] = None
 
 
 @dataclass
@@ -258,11 +265,11 @@ except Exception:
 # BASIC HELPERS
 # ============================================================
 
-def escape_html(value) -> str:
+def escape_html(value: Any) -> str:
     return _html_escape(str(value))
 
 
-def normalize_card_id(card_id) -> str:
+def normalize_card_id(card_id: Any) -> str:
     if card_id is None:
         raise ValueError("card_id is required")
 
@@ -271,15 +278,18 @@ def normalize_card_id(card_id) -> str:
     if not value:
         raise ValueError("card_id cannot be empty")
 
-    # Keep existing textual IDs untouched.
-    # Numeric IDs are normalized to 4 digits.
     if value.isdigit():
         return value.zfill(4)
 
     return value
 
 
-def _row_get(row, key, default=None):
+def _row_get(
+    row: Any,
+    key: str,
+    default: Any = None,
+) -> Any:
+
     if row is None:
         return default
 
@@ -297,23 +307,32 @@ def _row_get(row, key, default=None):
         return default
 
 
-def _safe_int(value, default=0):
+def _safe_int(
+    value: Any,
+    default: int = 0,
+) -> int:
+
     try:
         return int(value)
     except Exception:
         return default
 
 
-def _safe_float(value, default=0.0):
+def _safe_float(
+    value: Any,
+    default: float = 0.0,
+) -> float:
+
     try:
         return float(value)
     except Exception:
         return default
 
 
-def _bool(value) -> bool:
+def _bool(value: Any) -> bool:
+
     if isinstance(value, str):
-        return value.lower() in {
+        return value.lower().strip() in {
             "1",
             "true",
             "yes",
@@ -343,122 +362,245 @@ def validate_class(card_class: str) -> bool:
     return str(card_class).strip() in CLASSES
 
 
-def validate_media_type(media_type: Optional[str]) -> bool:
+def validate_media_type(
+    media_type: Optional[str],
+) -> bool:
+
     if media_type is None:
         return True
 
-    return str(media_type).lower() in MEDIA_TYPES
+    return (
+        str(media_type).lower().strip()
+        in MEDIA_TYPES
+    )
 
 
 # ============================================================
 # EDITION NORMALIZATION
 # ============================================================
 
-def normalize_edition(value: str) -> str:
+def normalize_edition(
+    value: Optional[str],
+) -> str:
+
     if not value:
         return "Common"
 
     raw = str(value).strip()
 
+    if raw in EDITIONS:
+        return raw
+
     aliases = {
         "common edition": "Common",
         "uncommon edition": "Uncommon",
         "rare edition": "Rare",
+
         "super rare": "Legends",
         "super rare edition": "Legends",
-        "ultra rare": "Mythical",
-        "ultra rare edition": "Mythical",
-        "epic": "Mythical",
-        "epic edition": "Mythical",
+
         "legendary": "Legends",
         "legendary edition": "Legends",
+
+        "ultra rare": "Mythical",
+        "ultra rare edition": "Mythical",
+
+        "epic": "Mythical",
+        "epic edition": "Mythical",
+
         "mythic": "Mythical",
         "mythic edition": "Mythical",
+
         "divine edition": "Divine",
+        "crossverse edition": "Crossverse",
+        "cataphract edition": "Cataphract",
+        "supreme edition": "Supreme",
+        "celestial edition": "Celestial",
+        "immortal edition": "Immortal",
+        "eternal edition": "Eternal",
         "premium edition": "Premium",
     }
 
-    if raw in EDITIONS:
+    return aliases.get(
+        raw.lower(),
+        raw,
+    )
+
+
+# ============================================================
+# RARITY NORMALIZATION
+# ============================================================
+
+def normalize_rarity(
+    value: Any,
+) -> str:
+
+    if isinstance(value, int):
+        rarity_names = {
+            1: "Common",
+            2: "Uncommon",
+            3: "Rare",
+            4: "Legends",
+            5: "Mythical",
+            6: "Divine",
+            7: "Crossverse",
+            8: "Cataphract",
+            9: "Supreme",
+            10: "Celestial",
+            11: "Immortal",
+            12: "Eternal",
+            13: "Premium",
+        }
+
+        return rarity_names.get(
+            value,
+            "Common",
+        )
+
+    raw = str(value or "").strip()
+
+    if raw in RARITIES:
         return raw
 
-    return aliases.get(raw.lower(), raw)
+    aliases = {
+        "sr": "Legends",
+        "ssr": "Mythical",
+        "ur": "Divine",
+        "legendary": "Legends",
+        "mythic": "Mythical",
+        "epic": "Mythical",
+    }
+
+    return aliases.get(
+        raw.lower(),
+        "Common",
+    )
 
 
 # ============================================================
 # CARD ROW -> CARD
 # ============================================================
 
-def _row_to_card(row) -> Optional[Card]:
+def _row_to_card(
+    row: Any,
+) -> Optional[Card]:
+
     if row is None:
         return None
 
     card_id = _row_get(
         row,
         "char_id",
-        _row_get(row, "card_id", _row_get(row, "id", "")),
+        _row_get(
+            row,
+            "card_id",
+            _row_get(
+                row,
+                "id",
+                "",
+            ),
+        ),
     )
 
-    name = _row_get(row, "name", "")
+    name = _row_get(
+        row,
+        "name",
+        "",
+    )
 
     if not card_id or not name:
         return None
 
     edition = normalize_edition(
-        _row_get(row, "edition", "Common")
+        _row_get(
+            row,
+            "edition",
+            "Common",
+        )
     )
 
-    rarity = _row_get(
+    rarity = normalize_rarity(
+        _row_get(
+            row,
+            "rarity",
+            "Common",
+        )
+    )
+
+    media_type = _row_get(
         row,
-        "rarity",
-        "Common",
+        "media_type",
+        None,
     )
 
-    # Database currently stores rarity as INTEGER.
-    # Convert safely to a readable rarity.
-    if isinstance(rarity, int):
-    rarity_names = {
-        1: "Common",
-        2: "Uncommon",
-        3: "Rare",
-        4: "Legends",
-        5: "Mythical",
-        6: "Divine",
-        7: "Crossverse",
-        8: "Cataphract",
-        9: "Supreme",
-        10: "Celestial",
-        11: "Immortal",
-        12: "Eternal",
-        13: "Premium",
-    }
-
-    rarity = rarity_names.get(
-        rarity,
-        "Common",
+    image_file_id = _row_get(
+        row,
+        "image_file_id",
+        "",
     )
+
+    video_file_id = _row_get(
+        row,
+        "video_file_id",
+        "",
+    )
+
+    media_id = _row_get(
+        row,
+        "media_id",
+        None,
+    )
+
+    if not media_id:
+        if (
+            str(media_type or "").lower()
+            == "video"
+        ):
+            media_id = video_file_id
+        else:
+            media_id = image_file_id
 
     return Card(
         card_id=normalize_card_id(card_id),
         name=str(name),
 
         edition=edition,
-        rarity=str(rarity),
+        rarity=rarity,
 
         atk=_safe_int(
-            _row_get(row, "atk", 0)
+            _row_get(
+                row,
+                "atk",
+                0,
+            )
         ),
+
         defense=_safe_int(
             _row_get(
                 row,
                 "defense",
-                _row_get(row, "def", 0),
+                _row_get(
+                    row,
+                    "def",
+                    0,
+                ),
             )
         ),
+
         hp=_safe_int(
-            _row_get(row, "hp", 0)
+            _row_get(
+                row,
+                "hp",
+                0,
+            )
         ),
+
         speed=_safe_int(
-            _row_get(row, "speed", 0)
+            _row_get(
+                row,
+                "speed",
+                0,
+            )
         ),
 
         element=str(
@@ -473,7 +615,11 @@ def _row_to_card(row) -> Optional[Card]:
             _row_get(
                 row,
                 "card_class",
-                _row_get(row, "class", "Special"),
+                _row_get(
+                    row,
+                    "class",
+                    "Special",
+                ),
             )
         ),
 
@@ -482,55 +628,76 @@ def _row_to_card(row) -> Optional[Card]:
                 row,
                 "description",
                 "",
-            ) or ""
+            )
+            or ""
         ),
 
-        media_type=_row_get(
-            row,
-            "media_type",
-            None,
+        media_type=(
+            str(media_type).lower()
+            if media_type
+            else None
         ),
 
-        media_id=_row_get(
-            row,
-            "media_id",
-            _row_get(
-                row,
-                "image_file_id",
-                None,
-            ),
-        ),
+        media_id=media_id,
 
         price=_safe_int(
-            _row_get(row, "price", 0)
+            _row_get(
+                row,
+                "price",
+                0,
+            )
         ),
 
         shiny=_bool(
-            _row_get(row, "shiny", False)
+            _row_get(
+                row,
+                "shiny",
+                False,
+            )
         ),
 
         limited=_bool(
-            _row_get(row, "limited", False)
+            _row_get(
+                row,
+                "limited",
+                False,
+            )
         ),
 
         animated=_bool(
-            _row_get(row, "animated", False)
+            _row_get(
+                row,
+                "animated",
+                False,
+            )
         ),
 
         level=_safe_int(
-            _row_get(row, "level", 1),
+            _row_get(
+                row,
+                "level",
+                1,
+            ),
             1,
         ),
 
         exp=_safe_int(
-            _row_get(row, "exp", 0)
+            _row_get(
+                row,
+                "exp",
+                0,
+            )
         ),
 
         enabled=_bool(
             _row_get(
                 row,
                 "active",
-                _row_get(row, "enabled", 1),
+                _row_get(
+                    row,
+                    "enabled",
+                    1,
+                ),
             )
         ),
 
@@ -548,7 +715,7 @@ def _row_to_card(row) -> Optional[Card]:
 
 
 # ============================================================
-# CARD CREATION
+# CARD CREATION / RESTORE
 # ============================================================
 
 def create_card(
@@ -584,10 +751,16 @@ def create_card(
 
     if not name:
         raise ValueError(
-            "Card name is required"
+            "Card name is required."
         )
 
-    edition = normalize_edition(edition)
+    edition = normalize_edition(
+        edition
+    )
+
+    rarity = normalize_rarity(
+        rarity
+    )
 
     if not validate_edition(edition):
         raise ValueError(
@@ -609,7 +782,9 @@ def create_card(
             f"Invalid class: {card_class}"
         )
 
-    if not validate_media_type(media_type):
+    if not validate_media_type(
+        media_type
+    ):
         raise ValueError(
             f"Invalid media type: {media_type}"
         )
@@ -633,15 +808,33 @@ def create_card(
     )
 
     # --------------------------------------------------------
-    # IMPORTANT:
-    # database.add_card() is designed to UPDATE/RESTORE an
-    # existing char_id instead of creating a duplicate.
+    # Existing Card ID:
+    #
+    # database.add_card() should UPDATE / RESTORE the existing
+    # row rather than create a duplicate.
     # --------------------------------------------------------
 
-    if not hasattr(_db, "add_card"):
+    image_file_id = ""
+    video_file_id = ""
+
+    if (
+        media_type
+        and str(media_type).lower()
+        == "video"
+    ):
+        video_file_id = media_id or ""
+    else:
+        image_file_id = media_id or ""
+
+    if not hasattr(
+        _db,
+        "add_card",
+    ):
         raise RuntimeError(
             "database.py does not contain add_card()."
         )
+
+    row = None
 
     try:
         row = _db.add_card(
@@ -650,16 +843,8 @@ def create_card(
             edition=edition,
             rarity=rarity,
             price=price,
-            image_file_id=(
-                media_id
-                if media_type == "photo"
-                else ""
-            ),
-            video_file_id=(
-                media_id
-                if media_type == "video"
-                else ""
-            ),
+            image_file_id=image_file_id,
+            video_file_id=video_file_id,
             media_type=(
                 media_type or "photo"
             ),
@@ -667,84 +852,142 @@ def create_card(
             drop_weight=drop_weight,
             active=1,
         )
-    except TypeError:
-        # Compatibility with older database.add_card()
-        row = _db.add_card(
-            cid,
-            name,
-            edition,
-            rarity,
-            price,
-            (
-                media_id
-                if media_type == "photo"
-                else ""
-            ),
-            (
-                media_id
-                if media_type == "video"
-                else ""
-            ),
-            media_type or "photo",
-            description or "",
-            drop_weight,
-        )
 
-    # Restore existing card if possible.
-    if hasattr(_db, "restore_card"):
+    except TypeError:
+
+        try:
+            row = _db.add_card(
+                cid,
+                name,
+                edition,
+                rarity,
+                price,
+                image_file_id,
+                video_file_id,
+                media_type or "photo",
+                description or "",
+                drop_weight,
+            )
+
+        except TypeError:
+
+            row = _db.add_card(
+                cid,
+                name,
+                edition,
+                rarity,
+                price,
+                image_file_id,
+                video_file_id,
+                media_type or "photo",
+                description or "",
+            )
+
+    # Restore old card ID if it was soft deleted.
+    if hasattr(
+        _db,
+        "restore_card",
+    ):
         try:
             _db.restore_card(cid)
         except Exception:
             pass
 
-    card = get_card(cid)
+    card = get_card_any(cid)
 
     if card is None:
-        # Return a complete object even if database.add_card()
-        # does not return a row.
+
         card = Card(
             card_id=cid,
             name=name,
             edition=edition,
             rarity=rarity,
-            atk=max(0, int(atk)),
-            defense=max(0, int(defense)),
-            hp=max(0, int(hp)),
-            speed=max(0, int(speed)),
+
+            atk=max(
+                0,
+                int(atk),
+            ),
+
+            defense=max(
+                0,
+                int(defense),
+            ),
+
+            hp=max(
+                0,
+                int(hp),
+            ),
+
+            speed=max(
+                0,
+                int(speed),
+            ),
+
             element=element,
             card_class=card_class,
+
             description=description or "",
-            media_type=media_type,
+
+            media_type=(
+                media_type or "photo"
+            ),
+
             media_id=media_id,
+
             price=price,
+
             shiny=bool(shiny),
             limited=bool(limited),
             animated=bool(animated),
+
             drop_weight=drop_weight,
-            metadata=dict(metadata or {}),
+
+            metadata=dict(
+                metadata or {}
+            ),
         )
 
     else:
-        # Update extended fields that may not exist in the
-        # original database schema.
+
         update_card(
             cid,
+
+            name=name,
+            edition=edition,
+            rarity=rarity,
+
             atk=atk,
             defense=defense,
             hp=hp,
             speed=speed,
+
             element=element,
             card_class=card_class,
-            media_type=media_type,
+
+            description=description or "",
+
+            media_type=(
+                media_type
+                or card.media_type
+            ),
+
             media_id=media_id,
+
+            price=price,
+
             shiny=shiny,
             limited=limited,
             animated=animated,
+
             drop_weight=drop_weight,
-            metadata=metadata or {},
+
+            active=1,
         )
 
-        card = get_card(cid) or card
+        card = (
+            get_card_any(cid)
+            or card
+        )
 
     return card
 
@@ -753,52 +996,96 @@ def create_card(
 # GET CARD
 # ============================================================
 
-def get_card(card_id) -> Optional[Card]:
+def get_card(
+    card_id,
+) -> Optional[Card]:
 
     if _db is None:
         return None
 
     try:
-        cid = normalize_card_id(card_id)
-    except ValueError:
+        cid = normalize_card_id(
+            card_id
+        )
+    except Exception:
         return None
 
     row = None
 
-    if hasattr(_db, "get_card"):
+    if hasattr(
+        _db,
+        "get_card",
+    ):
         try:
             row = _db.get_card(cid)
         except Exception:
             row = None
 
-    if row is None and hasattr(_db, "get_card_any"):
-        try:
-            row = _db.get_card_any(cid)
-        except Exception:
-            row = None
+    if row is None:
+        if hasattr(
+            _db,
+            "get_card_any",
+        ):
+            try:
+                row = _db.get_card_any(
+                    cid
+                )
+            except Exception:
+                row = None
 
     return _row_to_card(row)
 
 
-def get_card_any(card_id) -> Optional[Card]:
+def get_card_any(
+    card_id,
+) -> Optional[Card]:
 
     if _db is None:
         return None
 
-    cid = normalize_card_id(card_id)
+    try:
+        cid = normalize_card_id(
+            card_id
+        )
+    except Exception:
+        return None
 
     row = None
 
-    if hasattr(_db, "get_card_any"):
-        row = _db.get_card_any(cid)
-    elif hasattr(_db, "get_card"):
-        row = _db.get_card(cid)
+    if hasattr(
+        _db,
+        "get_card_any",
+    ):
+        try:
+            row = _db.get_card_any(
+                cid
+            )
+        except Exception:
+            row = None
+
+    if row is None:
+        if hasattr(
+            _db,
+            "get_card",
+        ):
+            try:
+                row = _db.get_card(
+                    cid
+                )
+            except Exception:
+                row = None
 
     return _row_to_card(row)
 
 
-def card_exists(card_id) -> bool:
-    return get_card_any(card_id) is not None
+def card_exists(
+    card_id,
+) -> bool:
+
+    return (
+        get_card_any(card_id)
+        is not None
+    )
 
 
 # ============================================================
@@ -813,7 +1100,9 @@ def update_card(
     if _db is None:
         return None
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
     card = get_card_any(cid)
 
@@ -821,59 +1110,78 @@ def update_card(
         return None
 
     if "edition" in changes:
-        changes["edition"] = normalize_edition(
-            changes["edition"]
+        changes["edition"] = (
+            normalize_edition(
+                changes["edition"]
+            )
         )
 
-    if "edition" in changes:
         if not validate_edition(
             changes["edition"]
         ):
             raise ValueError(
-                "Invalid edition"
+                "Invalid edition."
             )
 
     if "rarity" in changes:
+        changes["rarity"] = (
+            normalize_rarity(
+                changes["rarity"]
+            )
+        )
+
         if not validate_rarity(
             changes["rarity"]
         ):
             raise ValueError(
-                "Invalid rarity"
+                "Invalid rarity."
             )
 
     if "element" in changes:
+
         if not validate_element(
             changes["element"]
         ):
             raise ValueError(
-                "Invalid element"
+                "Invalid element."
             )
 
     if "card_class" in changes:
+
         if not validate_class(
             changes["card_class"]
         ):
             raise ValueError(
-                "Invalid class"
+                "Invalid class."
             )
 
     if "media_type" in changes:
+
         if not validate_media_type(
             changes["media_type"]
         ):
             raise ValueError(
-                "Invalid media type"
+                "Invalid media type."
             )
 
+        changes["media_type"] = (
+            str(
+                changes["media_type"]
+            ).lower()
+        )
+
     if "price" in changes:
+
         edition = changes.get(
             "edition",
             card.edition,
         )
 
-        max_price = EDITION_MAX_PRICES.get(
-            edition,
-            MAX_CARD_PRICE,
+        max_price = (
+            EDITION_MAX_PRICES.get(
+                edition,
+                MAX_CARD_PRICE,
+            )
         )
 
         changes["price"] = max(
@@ -885,25 +1193,123 @@ def update_card(
         )
 
     if "drop_weight" in changes:
+
         changes["drop_weight"] = max(
             0.0,
-            float(changes["drop_weight"]),
+            float(
+                changes[
+                    "drop_weight"
+                ]
+            ),
         )
 
-    # Existing database.py has update_card().
-    if hasattr(_db, "update_card"):
+    if "atk" in changes:
+        changes["atk"] = max(
+            0,
+            min(
+                int(changes["atk"]),
+                MAX_ATK,
+            ),
+        )
+
+    if "defense" in changes:
+        changes["defense"] = max(
+            0,
+            min(
+                int(changes["defense"]),
+                MAX_DEF,
+            ),
+        )
+
+    if "hp" in changes:
+        changes["hp"] = max(
+            0,
+            min(
+                int(changes["hp"]),
+                MAX_HP,
+            ),
+        )
+
+    if "speed" in changes:
+        changes["speed"] = max(
+            0,
+            min(
+                int(changes["speed"]),
+                MAX_SPEED,
+            ),
+        )
+
+    # --------------------------------------------------------
+    # Map media_id into existing DB columns when necessary.
+    # --------------------------------------------------------
+
+    if "media_id" in changes:
+
+        media_id = (
+            changes.pop("media_id")
+            or ""
+        )
+
+        media_type = str(
+            changes.get(
+                "media_type",
+                card.media_type or "photo",
+            )
+        ).lower()
+
+        if media_type == "video":
+
+            changes[
+                "video_file_id"
+            ] = media_id
+
+            changes[
+                "image_file_id"
+            ] = ""
+
+        else:
+
+            changes[
+                "image_file_id"
+            ] = media_id
+
+            if media_type == "photo":
+                changes[
+                    "video_file_id"
+                ] = ""
+
+    if "name" in changes:
+        changes["name"] = str(
+            changes["name"]
+        ).strip()
+
+    if "active" in changes:
+        changes["active"] = (
+            1 if changes["active"]
+            else 0
+        )
+
+    if hasattr(
+        _db,
+        "update_card",
+    ):
+
         try:
+
             _db.update_card(
                 cid,
                 **changes,
             )
+
         except TypeError:
-            # Try common positional compatibility.
+
             try:
+
                 _db.update_card(
                     char_id=cid,
                     **changes,
                 )
+
             except Exception:
                 pass
 
@@ -914,16 +1320,25 @@ def update_card(
 # SOFT DELETE
 # ============================================================
 
-def delete_card(card_id) -> bool:
+def delete_card(
+    card_id,
+) -> bool:
 
     if _db is None:
         return False
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
-    # NEVER physically delete the row.
-    # This preserves the card ID and existing data.
-    if hasattr(_db, "delete_card"):
+    # IMPORTANT:
+    # Never physically delete the card row.
+
+    if hasattr(
+        _db,
+        "delete_card",
+    ):
+
         try:
             return bool(
                 _db.delete_card(cid)
@@ -931,13 +1346,19 @@ def delete_card(card_id) -> bool:
         except Exception:
             pass
 
-    if hasattr(_db, "update_card"):
+    if hasattr(
+        _db,
+        "update_card",
+    ):
+
         try:
             _db.update_card(
                 cid,
                 active=0,
             )
+
             return True
+
         except Exception:
             pass
 
@@ -948,14 +1369,22 @@ def delete_card(card_id) -> bool:
 # RESTORE
 # ============================================================
 
-def restore_card(card_id) -> bool:
+def restore_card(
+    card_id,
+) -> bool:
 
     if _db is None:
         return False
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
-    if hasattr(_db, "restore_card"):
+    if hasattr(
+        _db,
+        "restore_card",
+    ):
+
         try:
             return bool(
                 _db.restore_card(cid)
@@ -963,41 +1392,60 @@ def restore_card(card_id) -> bool:
         except Exception:
             pass
 
-    if hasattr(_db, "update_card"):
+    if hasattr(
+        _db,
+        "update_card",
+    ):
+
         try:
+
             _db.update_card(
                 cid,
                 active=1,
             )
+
             return True
+
         except Exception:
             pass
 
     return False
 
 
-# ============================================================
-# ENABLE / DISABLE
-# ============================================================
+def enable_card(
+    card_id,
+) -> bool:
 
-def enable_card(card_id) -> bool:
-    return restore_card(card_id)
+    return restore_card(
+        card_id
+    )
 
 
-def disable_card(card_id) -> bool:
+def disable_card(
+    card_id,
+) -> bool:
 
     if _db is None:
         return False
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
-    if hasattr(_db, "update_card"):
+    if hasattr(
+        _db,
+        "update_card",
+    ):
+
         try:
+
             _db.update_card(
                 cid,
                 active=0,
             )
+
             return True
+
         except Exception:
             pass
 
@@ -1017,35 +1465,54 @@ def get_all_cards(
 
     rows = []
 
-    if include_disabled and hasattr(
-        _db,
-        "get_all_cards_including_inactive",
+    if (
+        include_disabled
+        and hasattr(
+            _db,
+            "get_all_cards_including_inactive",
+        )
     ):
+
         try:
-            rows = _db.get_all_cards_including_inactive()
+            rows = (
+                _db
+                .get_all_cards_including_inactive()
+            )
         except Exception:
             rows = []
 
-    elif hasattr(_db, "get_all_cards"):
+    elif hasattr(
+        _db,
+        "get_all_cards",
+    ):
+
         try:
             rows = _db.get_all_cards(
                 include_disabled
             )
+
         except TypeError:
+
             try:
-                rows = _db.get_all_cards()
+                rows = (
+                    _db.get_all_cards()
+                )
             except Exception:
                 rows = []
 
     cards = []
 
     for row in rows or []:
+
         card = _row_to_card(row)
 
         if card is None:
             continue
 
-        if not include_disabled and not card.enabled:
+        if (
+            not include_disabled
+            and not card.enabled
+        ):
             continue
 
         cards.append(card)
@@ -1059,9 +1526,10 @@ def get_all_cards(
 def get_card_count(
     include_disabled: bool = False,
 ) -> int:
+
     return len(
         get_all_cards(
-            include_disabled=include_disabled
+            include_disabled
         )
     )
 
@@ -1078,22 +1546,34 @@ def search_cards(
     if not query:
         return []
 
-    q = str(query).strip().lower()
+    q = str(
+        query
+    ).strip().lower()
 
     if not q:
         return []
 
-    if _db is not None and hasattr(
-        _db,
-        "search_cards",
+    if (
+        _db is not None
+        and hasattr(
+            _db,
+            "search_cards",
+        )
     ):
+
         try:
-            rows = _db.search_cards(q)
+
+            rows = _db.search_cards(
+                q
+            )
 
             result = []
 
             for row in rows or []:
-                card = _row_to_card(row)
+
+                card = _row_to_card(
+                    row
+                )
 
                 if card is None:
                     continue
@@ -1112,12 +1592,12 @@ def search_cards(
         except Exception:
             pass
 
-    # Safe fallback search.
     result = []
 
     for card in get_all_cards(
-        include_disabled=include_disabled
+        include_disabled
     ):
+
         searchable = " ".join(
             [
                 card.card_id,
@@ -1144,7 +1624,9 @@ def get_cards_by_edition(
     edition: str,
 ) -> list[Card]:
 
-    edition = normalize_edition(edition)
+    edition = normalize_edition(
+        edition
+    )
 
     return [
         card
@@ -1157,6 +1639,10 @@ def get_cards_by_rarity(
     rarity: str,
 ) -> list[Card]:
 
+    rarity = normalize_rarity(
+        rarity
+    )
+
     return [
         card
         for card in get_all_cards()
@@ -1165,12 +1651,14 @@ def get_cards_by_rarity(
 
 
 def get_premium_cards() -> list[Card]:
+
     return get_cards_by_edition(
         PREMIUM_EDITION
     )
 
 
 def get_limited_cards() -> list[Card]:
+
     return [
         card
         for card in get_all_cards()
@@ -1179,6 +1667,7 @@ def get_limited_cards() -> list[Card]:
 
 
 def get_shiny_cards() -> list[Card]:
+
     return [
         card
         for card in get_all_cards()
@@ -1187,6 +1676,7 @@ def get_shiny_cards() -> list[Card]:
 
 
 def get_animated_cards() -> list[Card]:
+
     return [
         card
         for card in get_all_cards()
@@ -1201,7 +1691,10 @@ def get_animated_cards() -> list[Card]:
 def get_edition_drop_weight(
     edition: str,
 ) -> float:
-    edition = normalize_edition(edition)
+
+    edition = normalize_edition(
+        edition
+    )
 
     return float(
         EDITION_DROP_WEIGHTS.get(
@@ -1215,14 +1708,18 @@ def get_card_drop_weight(
     card_id,
 ) -> float:
 
-    card = get_card(card_id)
+    card = get_card(
+        card_id
+    )
 
     if card is None:
         return 0.0
 
     return max(
         0.0,
-        float(card.drop_weight),
+        float(
+            card.drop_weight
+        ),
     )
 
 
@@ -1234,7 +1731,9 @@ def set_card_drop_weight(
     if _db is None:
         return False
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
     weight = max(
         0.0,
@@ -1245,23 +1744,33 @@ def set_card_drop_weight(
         _db,
         "update_card_drop_weight",
     ):
+
         try:
+
             return bool(
                 _db.update_card_drop_weight(
                     cid,
                     weight,
                 )
             )
+
         except Exception:
             pass
 
-    if hasattr(_db, "update_card"):
+    if hasattr(
+        _db,
+        "update_card",
+    ):
+
         try:
+
             _db.update_card(
                 cid,
                 drop_weight=weight,
             )
+
             return True
+
         except Exception:
             pass
 
@@ -1280,15 +1789,19 @@ def add_user_card(
 
     if _db is None:
         raise RuntimeError(
-            "database.py unavailable"
+            "database.py unavailable."
         )
+
+    quantity = int(quantity)
 
     if quantity <= 0:
         raise ValueError(
-            "quantity must be greater than zero"
+            "quantity must be greater than zero."
         )
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
     if not card_exists(cid):
         raise ValueError(
@@ -1300,38 +1813,51 @@ def add_user_card(
         "add_user_card",
     ):
         raise RuntimeError(
-            "database.py missing add_user_card()"
+            "database.py missing add_user_card()."
         )
 
     row = _db.add_user_card(
         int(user_id),
         cid,
-        int(quantity),
+        quantity,
     )
 
-    if isinstance(row, UserCard):
+    if isinstance(
+        row,
+        UserCard,
+    ):
         return row
 
     return UserCard(
         owner_id=int(user_id),
         card_id=cid,
-        quantity=(
-            _safe_int(
-                _row_get(
-                    row,
-                    "quantity",
-                    quantity,
-                ),
+
+        quantity=_safe_int(
+            _row_get(
+                row,
+                "quantity",
                 quantity,
-            )
+            ),
+            quantity,
         ),
+
         level=_safe_int(
-            _row_get(row, "level", 1),
+            _row_get(
+                row,
+                "level",
+                1,
+            ),
             1,
         ),
+
         exp=_safe_int(
-            _row_get(row, "exp", 0)
+            _row_get(
+                row,
+                "exp",
+                0,
+            )
         ),
+
         favorite=_bool(
             _row_get(
                 row,
@@ -1339,6 +1865,7 @@ def add_user_card(
                 0,
             )
         ),
+
         obtained_count=_safe_int(
             _row_get(
                 row,
@@ -1359,13 +1886,17 @@ def remove_user_card(
     if _db is None:
         return False
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
     if hasattr(
         _db,
         "remove_user_card",
     ):
+
         try:
+
             return bool(
                 _db.remove_user_card(
                     int(user_id),
@@ -1373,6 +1904,7 @@ def remove_user_card(
                     int(quantity),
                 )
             )
+
         except Exception:
             pass
 
@@ -1387,7 +1919,9 @@ def get_user_card(
     if _db is None:
         return None
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
     if not hasattr(
         _db,
@@ -1396,35 +1930,61 @@ def get_user_card(
         return None
 
     try:
+
         row = _db.get_user_card(
             int(user_id),
             cid,
         )
+
     except Exception:
         return None
 
     if row is None:
         return None
 
-    if isinstance(row, UserCard):
+    if isinstance(
+        row,
+        UserCard,
+    ):
         return row
 
     return UserCard(
         owner_id=int(user_id),
         card_id=cid,
+
         quantity=_safe_int(
-            _row_get(row, "quantity", 0)
+            _row_get(
+                row,
+                "quantity",
+                0,
+            )
         ),
+
         level=_safe_int(
-            _row_get(row, "level", 1),
+            _row_get(
+                row,
+                "level",
+                1,
+            ),
             1,
         ),
+
         exp=_safe_int(
-            _row_get(row, "exp", 0)
+            _row_get(
+                row,
+                "exp",
+                0,
+            )
         ),
+
         favorite=_bool(
-            _row_get(row, "favorite", 0)
+            _row_get(
+                row,
+                "favorite",
+                0,
+            )
         ),
+
         obtained_count=_safe_int(
             _row_get(
                 row,
@@ -1465,23 +2025,33 @@ def get_user_cards(
         return []
 
     try:
+
         rows = _db.get_user_cards(
             int(user_id)
         )
+
     except Exception:
         return []
 
     result = []
 
     for row in rows or []:
-        if isinstance(row, UserCard):
+
+        if isinstance(
+            row,
+            UserCard,
+        ):
             result.append(row)
             continue
 
         cid = _row_get(
             row,
             "char_id",
-            _row_get(row, "card_id", ""),
+            _row_get(
+                row,
+                "card_id",
+                "",
+            ),
         )
 
         if not cid:
@@ -1489,8 +2059,14 @@ def get_user_cards(
 
         result.append(
             UserCard(
-                owner_id=int(user_id),
-                card_id=normalize_card_id(cid),
+                owner_id=int(
+                    user_id
+                ),
+
+                card_id=normalize_card_id(
+                    cid
+                ),
+
                 quantity=_safe_int(
                     _row_get(
                         row,
@@ -1498,6 +2074,7 @@ def get_user_cards(
                         0,
                     )
                 ),
+
                 level=_safe_int(
                     _row_get(
                         row,
@@ -1506,6 +2083,7 @@ def get_user_cards(
                     ),
                     1,
                 ),
+
                 exp=_safe_int(
                     _row_get(
                         row,
@@ -1513,6 +2091,7 @@ def get_user_cards(
                         0,
                     )
                 ),
+
                 favorite=_bool(
                     _row_get(
                         row,
@@ -1520,6 +2099,7 @@ def get_user_cards(
                         0,
                     )
                 ),
+
                 obtained_count=_safe_int(
                     _row_get(
                         row,
@@ -1542,7 +2122,9 @@ def get_user_unique_card_count(
 ) -> int:
 
     return len(
-        get_user_cards(user_id)
+        get_user_cards(
+            user_id
+        )
     )
 
 
@@ -1552,7 +2134,9 @@ def get_user_total_card_count(
 
     return sum(
         card.quantity
-        for card in get_user_cards(user_id)
+        for card in get_user_cards(
+            user_id
+        )
     )
 
 
@@ -1569,7 +2153,9 @@ def set_favorite(
     if _db is None:
         return False
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
 
     if not has_user_card(
         user_id,
@@ -1581,7 +2167,9 @@ def set_favorite(
         _db,
         "set_favorite",
     ):
+
         try:
+
             return bool(
                 _db.set_favorite(
                     int(user_id),
@@ -1589,6 +2177,7 @@ def set_favorite(
                     bool(value),
                 )
             )
+
         except Exception:
             pass
 
@@ -1599,6 +2188,7 @@ def favorite_card(
     user_id: int,
     card_id,
 ) -> bool:
+
     return set_favorite(
         user_id,
         card_id,
@@ -1610,6 +2200,7 @@ def unfavorite_card(
     user_id: int,
     card_id,
 ) -> bool:
+
     return set_favorite(
         user_id,
         card_id,
@@ -1623,7 +2214,9 @@ def get_favorite_cards(
 
     return [
         card
-        for card in get_user_cards(user_id)
+        for card in get_user_cards(
+            user_id
+        )
         if card.favorite
     ]
 
@@ -1666,6 +2259,7 @@ def get_level_progress(
     )
 
     if level >= MAX_CARD_LEVEL:
+
         return {
             "level": MAX_CARD_LEVEL,
             "exp": exp,
@@ -1674,7 +2268,9 @@ def get_level_progress(
             "max_level": True,
         }
 
-    required = exp_required_for_level(level)
+    required = exp_required_for_level(
+        level
+    )
 
     progress = (
         exp / required * 100
@@ -1700,6 +2296,8 @@ def add_card_exp(
     amount: int,
 ) -> tuple[bool, int, int]:
 
+    amount = int(amount)
+
     if amount <= 0:
         return False, 0, 0
 
@@ -1715,15 +2313,20 @@ def add_card_exp(
         _db,
         "add_card_exp",
     ):
+
         try:
+
             result = _db.add_card_exp(
                 int(user_id),
-                normalize_card_id(card_id),
-                int(amount),
+                normalize_card_id(
+                    card_id
+                ),
+                amount,
             )
 
             if result:
                 return result
+
         except Exception:
             pass
 
@@ -1765,7 +2368,11 @@ def upgrade_card(
     )
 
     if user_card.exp < required:
-        missing = required - user_card.exp
+
+        missing = (
+            required
+            - user_card.exp
+        )
 
         return (
             False,
@@ -1779,11 +2386,16 @@ def upgrade_card(
         _db,
         "upgrade_card",
     ):
+
         try:
+
             return _db.upgrade_card(
                 int(user_id),
-                normalize_card_id(card_id),
+                normalize_card_id(
+                    card_id
+                ),
             )
+
         except Exception:
             pass
 
@@ -1807,14 +2419,20 @@ def calculate_card_power(
         int(level),
     )
 
-    multiplier = 1.0 + (
-        (level - 1) * 0.05
+    multiplier = (
+        1.0
+        + (
+            (level - 1)
+            * 0.05
+        )
     )
 
     base = (
         card.atk
         + card.defense
-        + card.hp // 10
+        + (
+            card.hp // 10
+        )
         + card.speed
     )
 
@@ -1848,7 +2466,9 @@ def get_card_max_price(
     card_id,
 ) -> int:
 
-    card = get_card_any(card_id)
+    card = get_card_any(
+        card_id
+    )
 
     if card is None:
         return 0
@@ -1863,7 +2483,9 @@ def get_sell_price(
     card_id,
 ) -> int:
 
-    card = get_card_any(card_id)
+    card = get_card_any(
+        card_id
+    )
 
     if card is None:
         return 0
@@ -1884,7 +2506,9 @@ def set_card_price(
     price: int,
 ) -> bool:
 
-    card = get_card_any(card_id)
+    card = get_card_any(
+        card_id
+    )
 
     if card is None:
         return False
@@ -1920,16 +2544,24 @@ def get_card_tags(
     tags = []
 
     if card.shiny:
-        tags.append("✨ Shiny")
+        tags.append(
+            "✨ Shiny"
+        )
 
     if card.limited:
-        tags.append("⏳ Limited")
+        tags.append(
+            "⏳ Limited"
+        )
 
     if card.animated:
-        tags.append("🎞️ Animated")
+        tags.append(
+            "🎞️ Animated"
+        )
 
     if card.edition == PREMIUM_EDITION:
-        tags.append("💎 Premium")
+        tags.append(
+            "💎 Premium"
+        )
 
     return tags
 
@@ -1947,7 +2579,9 @@ def format_card(
         "🎴",
     )
 
-    tags = get_card_tags(card)
+    tags = get_card_tags(
+        card
+    )
 
     tag_text = ""
 
@@ -1980,10 +2614,17 @@ def format_card(
         f"⭐ Rarity    : "
         f"<b>{escape_html(card.rarity)}</b>\n\n"
 
-        f"⚔️ ATK       : <b>{card.atk:,}</b>\n"
-        f"🛡️ DEF       : <b>{card.defense:,}</b>\n"
-        f"❤️ HP        : <b>{card.hp:,}</b>\n"
-        f"⚡ Speed     : <b>{card.speed:,}</b>\n\n"
+        f"⚔️ ATK       : "
+        f"<b>{card.atk:,}</b>\n"
+
+        f"🛡️ DEF       : "
+        f"<b>{card.defense:,}</b>\n"
+
+        f"❤️ HP        : "
+        f"<b>{card.hp:,}</b>\n"
+
+        f"⚡ Speed     : "
+        f"<b>{card.speed:,}</b>\n\n"
 
         f"🌌 Element   : "
         f"<b>{escape_html(card.element)}</b>\n"
@@ -1996,7 +2637,9 @@ def format_card(
 
         f"{tag_text}\n\n"
 
-        f"📝 <i>{escape_html(description)}</i>"
+        f"📝 <i>"
+        f"{escape_html(description)}"
+        f"</i>"
     )
 
 
@@ -2009,6 +2652,7 @@ def format_user_card(
     )
 
     if card is None:
+
         return (
             "🎴 Card\n"
             f"🆔 <code>"
@@ -2016,8 +2660,10 @@ def format_user_card(
             f"</code>"
         )
 
-    power = calculate_user_card_power(
-        user_card
+    power = (
+        calculate_user_card_power(
+            user_card
+        )
     )
 
     favorite = (
@@ -2032,17 +2678,31 @@ def format_user_card(
     )
 
     return (
-        f"{emoji} <b>{escape_html(card.name)}</b>"
+        f"{emoji} "
+        f"<b>{escape_html(card.name)}</b>"
         f"{favorite}\n\n"
 
-        f"🆔 <code>{escape_html(card.card_id)}</code>\n"
-        f"💎 {escape_html(card.edition)}\n"
-        f"⭐ {escape_html(card.rarity)}\n\n"
+        f"🆔 <code>"
+        f"{escape_html(card.card_id)}"
+        f"</code>\n"
 
-        f"📊 Level    : <b>{user_card.level}</b>\n"
-        f"✨ EXP      : <b>{user_card.exp:,}</b>\n"
-        f"📦 Quantity : <b>{user_card.quantity:,}</b>\n"
-        f"⚔️ Power    : <b>{power:,}</b>"
+        f"💎 "
+        f"{escape_html(card.edition)}\n"
+
+        f"⭐ "
+        f"{escape_html(card.rarity)}\n\n"
+
+        f"📊 Level    : "
+        f"<b>{user_card.level}</b>\n"
+
+        f"✨ EXP      : "
+        f"<b>{user_card.exp:,}</b>\n"
+
+        f"📦 Quantity : "
+        f"<b>{user_card.quantity:,}</b>\n"
+
+        f"⚔️ Power    : "
+        f"<b>{power:,}</b>"
     )
 
 
@@ -2054,7 +2714,9 @@ def get_card_media(
     card_id,
 ) -> Optional[dict]:
 
-    card = get_card_any(card_id)
+    card = get_card_any(
+        card_id
+    )
 
     if card is None:
         return None
@@ -2084,7 +2746,9 @@ def get_card_statistics(
     card_id,
 ) -> dict:
 
-    card = get_card_any(card_id)
+    card = get_card_any(
+        card_id
+    )
 
     if card is None:
         return {}
@@ -2092,31 +2756,28 @@ def get_card_statistics(
     owners = 0
     total_quantity = 0
 
-    if _db is not None and hasattr(
-        _db,
-        "get_card_top_owners",
-    ):
-        try:
-            rows = _db.get_card_top_owners(
-                card.card_id,
-                15,
+    rows = get_card_top_owners(
+        card.card_id,
+        15,
+    )
+
+    for row in rows:
+
+        quantity = _safe_int(
+            _row_get(
+                row,
+                "quantity",
+                _row_get(
+                    row,
+                    "count",
+                    0,
+                ),
             )
+        )
 
-            for row in rows or []:
-                quantity = _safe_int(
-                    _row_get(
-                        row,
-                        "quantity",
-                        0,
-                    )
-                )
-
-                if quantity > 0:
-                    owners += 1
-                    total_quantity += quantity
-
-        except Exception:
-            pass
+        if quantity > 0:
+            owners += 1
+            total_quantity += quantity
 
     return {
         "card_id": card.card_id,
@@ -2141,17 +2802,33 @@ def get_card_top_owners(
     if _db is None:
         return []
 
-    cid = normalize_card_id(card_id)
+    cid = normalize_card_id(
+        card_id
+    )
+
+    limit = max(
+        1,
+        min(
+            int(limit),
+            100,
+        ),
+    )
 
     if hasattr(
         _db,
         "get_card_top_owners",
     ):
+
         try:
-            return _db.get_card_top_owners(
-                cid,
-                int(limit),
+
+            return list(
+                _db.get_card_top_owners(
+                    cid,
+                    limit,
+                )
+                or []
             )
+
         except Exception:
             return []
 
@@ -2175,7 +2852,10 @@ def get_global_statistics() -> dict:
 
     for card in cards:
 
-        if card.edition == PREMIUM_EDITION:
+        if (
+            card.edition
+            == PREMIUM_EDITION
+        ):
             premium += 1
 
         if card.limited:
@@ -2229,7 +2909,10 @@ def give_card_to_user(
             (
                 "🎁 <b>CARD ADDED</b>\n\n"
                 f"🎴 ID: "
-                f"<code>{escape_html(user_card.card_id)}</code>\n"
+                f"<code>"
+                f"{escape_html(user_card.card_id)}"
+                f"</code>\n"
+
                 f"📦 Quantity: "
                 f"<b>{quantity:,}</b>"
             ),
@@ -2241,7 +2924,9 @@ def give_card_to_user(
             False,
             (
                 "❌ "
-                + escape_html(str(exc))
+                + escape_html(
+                    str(exc)
+                )
             ),
         )
 
@@ -2289,6 +2974,7 @@ def get_user_collection_with_cards(
         )
 
         if card is not None:
+
             result.append(
                 (
                     card,
@@ -2302,16 +2988,16 @@ def get_user_collection_with_cards(
 # ============================================================
 # SAFE CLEAR
 # ============================================================
-#
-# Intentionally DOES NOT delete database cards.
-#
-# This function is kept only for compatibility with old code.
-#
 
 def clear_cards() -> None:
     """
-    Production safety:
-    This no longer deletes persistent cards.
+    Compatibility function only.
+
+    IMPORTANT:
+    This function intentionally does NOTHING.
+
+    Persistent cards in SQLite must never be deleted
+    accidentally by old code.
     """
 
     return None
@@ -2329,7 +3015,7 @@ __all__ = [
     "EDITION_EMOJIS",
     "EDITION_DROP_WEIGHTS",
 
-    # Rarity / types
+    # Types
     "RARITIES",
     "ELEMENTS",
     "CLASSES",
@@ -2352,6 +3038,7 @@ __all__ = [
     "escape_html",
     "normalize_card_id",
     "normalize_edition",
+    "normalize_rarity",
 
     # Validation
     "validate_edition",
@@ -2400,7 +3087,7 @@ __all__ = [
     "get_user_unique_card_count",
     "get_user_total_card_count",
 
-    # Favorite
+    # Favorites
     "set_favorite",
     "favorite_card",
     "unfavorite_card",
