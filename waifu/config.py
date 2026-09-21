@@ -25,15 +25,13 @@ class Config:
     MONGO_URL: str = _req("MONGO_URL")
     DB_NAME: str = os.environ.get("DB_NAME", "waifu_bot")
     
-    # မလိုအပ်တော့သော Support Chat, Update Chat များကို ဖယ်ရှားလိုက်ပါပြီ
-    
     photo_raw = os.environ.get("PHOTO_URLS", "")
     PHOTO_URL: list[str] = [u.strip() for u in photo_raw.split(",") if u.strip().startswith("http")]
 
     DROP_INTERVAL_MIN: int = int(os.environ.get("DROP_INTERVAL_MIN", "10"))
     DEFAULT_MSG_FREQUENCY: int = int(os.environ.get("DEFAULT_MSG_FREQUENCY", "100"))
 
-    DAILY_COINS: int = 200
+    DAILY_COINS: int = 500
     DUEL_WIN_COINS: int = 150
     DUEL_LOSE_COINS: int = 30
 
