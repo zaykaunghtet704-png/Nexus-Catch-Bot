@@ -24,8 +24,8 @@ class Config:
     CHARA_CHANNEL_ID: int = int(_req("CHARA_CHANNEL_ID"))
     MONGO_URL: str = _req("MONGO_URL")
     DB_NAME: str = os.environ.get("DB_NAME", "waifu_bot")
-    SUPPORT_CHAT: str = os.environ.get("SUPPORT_CHAT", "")
-    UPDATE_CHAT: str = os.environ.get("UPDATE_CHAT", "")
+    
+    # မလိုအပ်တော့သော Support Chat, Update Chat များကို ဖယ်ရှားလိုက်ပါပြီ
     
     photo_raw = os.environ.get("PHOTO_URLS", "")
     PHOTO_URL: list[str] = [u.strip() for u in photo_raw.split(",") if u.strip().startswith("http")]
@@ -37,7 +37,6 @@ class Config:
     DUEL_WIN_COINS: int = 150
     DUEL_LOSE_COINS: int = 30
 
-    # Rarity 13 ဆင့် (9 နေရာတွင် Exotic ပြောင်းထားသည်)
     RARITY_MAP: dict[int, str] = {
         1: "⚪ Common",
         2: "🟢 Uncommon",
