@@ -22,7 +22,7 @@ class Config:
     SUDO_USERS: list[int] = _int_list("SUDO_IDS")
     GROUP_ID: int = int(_req("GROUP_ID"))
     CHARA_CHANNEL_ID: int = int(_req("CHARA_CHANNEL_ID"))
-    MONGO_URL: str = _req("MONGO_URI")
+    MONGO_URL: str = _req("MONGO_URL")
     DB_NAME: str = os.environ.get("DB_NAME", "waifu_bot")
     SUPPORT_CHAT: str = os.environ.get("SUPPORT_CHAT", "")
     UPDATE_CHAT: str = os.environ.get("UPDATE_CHAT", "")
