@@ -34,6 +34,12 @@ class LocalCollection:
         data.append(document)
         self._save(data)
 
+    def insert_many(self, documents):
+        data = self._load()
+        for doc in documents:
+            data.append(doc)
+        self._save(data)
+
     def update_one(self, query, update):
         data = self._load()
         updated = False
