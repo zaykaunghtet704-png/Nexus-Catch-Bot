@@ -11,15 +11,7 @@ from duel import start_duel
 from trade import gift_card
 from leaderboard import leaderboard
 from profile import profile_command
-
-# main() ထဲတွင် အောက်ပါအတိုင်း ချိတ်ဆက်ပေးပါ
-app.add_handler(CommandHandler("profile", profile_command))
-
 from upload import upload_card, delete_card
-
-# main() ফাংশন ထဲတွင် ထည့်ရန်:
-app.add_handler(CommandHandler("uploadchar", upload_card))
-app.add_handler(CommandHandler("deletecard", delete_card))
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -54,6 +46,7 @@ def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Handler အားလုံးကို main() ထဲတွင် app တည်ဆောက်ပြီးမှ ထည့်သွင်းခြင်း
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("drop", waifu_drop))
     app.add_handler(CommandHandler("guess", guess_card))
@@ -65,6 +58,9 @@ def main():
     app.add_handler(CommandHandler("duel", start_duel))
     app.add_handler(CommandHandler("gift", gift_card))
     app.add_handler(CommandHandler("top", leaderboard))
+    app.add_handler(CommandHandler("profile", profile_command))
+    app.add_handler(CommandHandler("uploadchar", upload_card))
+    app.add_handler(CommandHandler("deletecard", delete_card))
 
     print("Bot စတင် အလုပ်လုပ်နေပါပြီ...")
     app.run_polling()
