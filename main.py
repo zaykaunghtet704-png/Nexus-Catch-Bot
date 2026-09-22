@@ -10,6 +10,10 @@ from economy import balance, daily_reward, sell_card, view_market
 from duel import start_duel
 from trade import gift_card
 from leaderboard import leaderboard
+from profile import profile_command
+
+# main() ထဲတွင် အောက်ပါအတိုင်း ချိတ်ဆက်ပေးပါ
+app.add_handler(CommandHandler("profile", profile_command))
 
 from upload import upload_card, delete_card
 
