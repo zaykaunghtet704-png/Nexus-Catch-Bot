@@ -39,14 +39,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_message)
 
 def main():
-    BOT_TOKEN = os.getenv("BOT_TOKEN")
-    if not BOT_TOKEN:
+    # ဤနေရာတွင် BotFather ဆီမှ ရထားသော သင်၏ Telegram Bot Token ကို တိုက်ရိုက်ထည့်ပါ
+    BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+    
+    if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("Error: BOT_TOKEN ကို ထည့်သွင်းထားခြင်း မရှိပါ။")
         return
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Handler အားလုံးကို main() ထဲတွင် app တည်ဆောက်ပြီးမှ ထည့်သွင်းခြင်း
+    # Handler များ သတ်မှတ်ခြင်း
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("drop", waifu_drop))
     app.add_handler(CommandHandler("guess", guess_card))
