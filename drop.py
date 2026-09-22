@@ -16,14 +16,21 @@ async def waifu_drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     card = random.choice(all_cards)
     active_drops[chat_id] = card['name'].lower()
 
+    media_url = card.get('image_url', '')
     drop_text = (
         f"✨ **WAIFU DROP အသစ် ကျလာပါပြီ!** ✨\n\n"
         f"🌸 အမည်: **???** (ခန့်မှန်းရန် `/guess [နာမည်]` ကိုသုံးပါ)\n"
         f"📺 အန်နီမဲ: {card['anime']}\n"
         f"⭐ ရှားပါးမှု: {card['rarity']}"
     )
-    
-    await update.message.reply_text(drop_text, parse_mode="Markdown")
+
+    # ပုံ သို့မဟုတ် ဗီဒီယို Link ဟုတ်မဟုတ် စစ်ဆေးပြီး ပို့ခြင်း
+    if media_url.endswith(('.mp4', '.gif')):
+        await update.message.reply_animation(animation=media_url, caption=drop_text, parse_mode="Markdown")
+    elif media_url.startswith('http'):
+        await update.message.reply_photo(photo=media_url, caption=drop_text, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(drop_text, parse_mode="Markdown")
 
 async def guess_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
