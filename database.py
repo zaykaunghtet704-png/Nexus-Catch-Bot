@@ -79,3 +79,4 @@ class LocalCollection:
 users_col = LocalCollection("users.json")
 cards_col = LocalCollection("cards.json")
 inventory_col = LocalCollection("inventory.json")
+market_col = LocalCollection("market.json")
