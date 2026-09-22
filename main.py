@@ -11,6 +11,12 @@ from duel import start_duel
 from trade import gift_card
 from leaderboard import leaderboard
 
+from upload import upload_card, delete_card
+
+# main() ফাংশন ထဲတွင် ထည့်ရန်:
+app.add_handler(CommandHandler("uploadchar", upload_card))
+app.add_handler(CommandHandler("deletecard", delete_card))
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
