@@ -60,7 +60,16 @@ class LocalCollection:
                 result.append(item)
         return result
 
-# MongoDB Collection များနေရာတွင် Local Collection များကို အစားထိုးခြင်း
+    def count_documents(self, query=None):
+        data = self._load()
+        if not query:
+            return len(data)
+        count = 0
+        for item in data:
+            if all(item.get(k) == v for k, v in query.items()):
+                count += 1
+        return count
+
 users_col = LocalCollection("users.json")
 cards_col = LocalCollection("cards.json")
 inventory_col = LocalCollection("inventory.json")
