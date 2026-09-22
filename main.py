@@ -40,7 +40,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     # ဤနေရာတွင် BotFather ဆီမှ ရထားသော သင်၏ Telegram Bot Token ကို တိုက်ရိုက်ထည့်ပါ
-    BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+    BOT_TOKEN = "8823072889:AAHIYPMd3Qon8oRrsoi9EPdNhWlIlBFeeGU"
     
     if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("Error: BOT_TOKEN ကို ထည့်သွင်းထားခြင်း မရှိပါ။")
