@@ -89,3 +89,13 @@ async def view_market(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     
     await update.message.reply_text(market_text, parse_mode="Markdown")
+from telegram import Update
+from telegram.ext import ContextTypes
+
+
+async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Database ထဲမှာ daily bonus ထည့်ပေးမည့် logic ရေးရန်
+    user_id = update.effective_user.id
+    await update.message.reply_text(
+        "🎉 ယနေ့အတွက် နေ့စဉ်ဘောနပ်စ် 500 Coins ရရှိပါပြီ။"
+    )
