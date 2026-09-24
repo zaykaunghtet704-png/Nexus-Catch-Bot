@@ -84,6 +84,16 @@ def main():
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("uploadchar", upload_card))
     app.add_handler(CommandHandler("deletecard", delete_card))
+from cards import check, fav, search, unfav
+from leaderboard import todaytop
+from telegram.ext import Application, CommandHandler
+
+# main() function ထဲတွင် -
+app.add_handler(CommandHandler("fav", fav))
+app.add_handler(CommandHandler("unfav", unfav))
+app.add_handler(CommandHandler("search", search))
+app.add_handler(CommandHandler("check", check))
+app.add_handler(CommandHandler("todaytop", todaytop))
 
     print("Bot စတင် အလုပ်လုပ်နေပါပြီ...")
     app.run_polling()
