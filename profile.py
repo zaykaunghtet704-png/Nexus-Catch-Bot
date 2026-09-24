@@ -1,5 +1,4 @@
-"""
-modules/profile.py — /profile command showing full user stats.
+ /profile command showing full user stats.
 """
 import math
 import random
