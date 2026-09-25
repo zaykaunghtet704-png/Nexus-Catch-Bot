@@ -3,17 +3,19 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Modules များ import လုပ်ခြင်း
+# Modules များ import လုပ်ခြင်း (config import ကို ဖြုတ်လိုက်ပါ)
 from cards import check, fav, search, unfav
 from economy import daily
 from leaderboard import todaytop
 from profile import profile
-from config import BOT_TOKEN
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+
+# သင့် Bot Token ကို ဒီနေရာမှာ တိုက်ရိုက် ထည့်ပါ
+BOT_TOKEN = "8823072889:AAFHC43_m1GAq_jQO2qBxVn1pIeWWg2RHvs"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -37,7 +39,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Application ထဲတွင် Handler များထည့်ခြင်း
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("profile", profile))
