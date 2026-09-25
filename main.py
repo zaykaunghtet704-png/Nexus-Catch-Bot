@@ -74,7 +74,7 @@ def main():
     seed_initial_cards()
 
     # သင့် Bot Token ကို ဒီနေရာမှာ ထည့်ပါ
-    BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+    BOT_TOKEN = "8823072889:AAFHC43_m1GAq_jQO2qBxVn1pIeWWg2RHvs"
 
     app = Application.builder().token(BOT_TOKEN).build()
 
