@@ -1,5 +1,5 @@
 """
-profile.py - Custom Tree-style Profile Display
+profile.py - Custom Catcher Profile Command
 """
 from html import escape
 from telegram import Update
@@ -21,7 +21,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     user_id = user.id
 
-    # User ဒေတာ စစ်ဆေးခြင်း/အသစ်ထည့်ခြင်း
+    # Database ထဲမှာ User ရှာခြင်း သို့မဟုတ် အသစ်ထည့်ခြင်း
     user_data = users_col.find_one({"user_id": user_id})
     if not user_data:
         new_user = {
@@ -34,7 +34,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         users_col.insert_one(new_user)
         user_data = new_user
 
-    # Rarity အလိုက် စုစုပေါင်း ကတ်ပမာဏ ရေတွက်ခြင်း
+    # Rarity အလိုက် ကတ်ရေတွက်ခြင်း
     rarity_counts = {
         "Supreme": inventory_col.count_documents({"user_id": user_id, "rarity": "Supreme"}),
         "Cataphract": inventory_col.count_documents({"user_id": user_id, "rarity": "Cataphract"}),
@@ -52,7 +52,6 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     xp = user_data.get("xp", 0)
     progress_bar = _bar(xp % 100, 100, 10)
 
-    # Rarity Icons
     icons = {
         "Supreme": "💎",
         "Cataphract": "✨",
@@ -65,13 +64,12 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Common": "🎁",
     }
 
-    # Rarity စာကြောင်းများ တည်ဆောက်ခြင်း
     rarity_text = ""
     for r_name, count in rarity_counts.items():
         icon = icons.get(r_name, "🔹")
         rarity_text += f"├──⇒ {icon} <b>RARITY: {r_name}:</b> {count}\n"
 
-    # Profile Text အပြည့်အစုံ ရေးဆွဲခြင်း
+    # Tree branch layout ဖွဲ့စည်းခြင်း
     text = (
         f"┌──🩵 <b>CATCHER PROFILE</b>\n"
         f"├──⇒ 👤 <b>USER:</b> {escape(user.first_name)}\n"
@@ -90,7 +88,6 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"└──⇒ 🍁 <b>CHAT POSITION:</b> 1"
     )
 
-    # Favorite Card Image ပါလျှင် ပုံပါပြရန် (မပါလျှင် စာပဲ ပို့ရန်)
     fav_card = inventory_col.find_one({"user_id": user_id, "is_fav": True})
     photo_url = fav_card.get("image_url") if fav_card else None
 
