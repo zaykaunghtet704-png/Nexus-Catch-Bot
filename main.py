@@ -94,7 +94,6 @@ from cards import check, fav, search, unfav
 from leaderboard import todaytop
 from telegram.ext import Application, CommandHandler
 
-    print("Bot စတင် အလုပ်လုပ်နေပါပြီ...")
     app.run_polling()
 
 if __name__ == '__main__':
