@@ -148,7 +148,7 @@ async def transfer_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ User ID ဂဏန်း မှန်ကန်ပါစေ။")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. SECURITY, SUDOS & BLACKLISTS
+# 2. SECURITY, VIP SYSTEM & BLACKLISTS
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def add_sudo_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -180,6 +180,38 @@ async def list_sudo_users(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     sudos = await sudo_col.find({}).to_list(length=None)
     sudo_list_str = "\n".join([f"  • <code>{s['user_id']}</code>" for s in sudos])
     text = f"👑 <b>Sudo Admins List</b>\n\n{sudo_list_str if sudo_list_str else '  • Sudo Admin မရှိသေးပါ။'}"
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+# 🌟 VIP Management Commands
+async def set_vip_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await is_admin_or_owner(update.effective_user.id): return
+    if not context.args:
+        await update.message.reply_text("အသုံးပြုပုံ: <code>/setvip [user_id]</code>", parse_mode=ParseMode.HTML)
+        return
+    try:
+        user_id = int(context.args[0])
+        await users_col.update_one({"user_id": user_id}, {"$set": {"is_vip": True}}, upsert=True)
+        await update.message.reply_text(f"🌟 User <code>{user_id}</code> အား **VIP** အဖြစ် သတ်မှတ်လိုက်ပါပြီ။", parse_mode=ParseMode.HTML)
+    except ValueError:
+        await update.message.reply_text("❌ User ID ဂဏန်းဖြစ်ရပါမည်။")
+
+async def unset_vip_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await is_admin_or_owner(update.effective_user.id): return
+    if not context.args:
+        await update.message.reply_text("အသုံးပြုပုံ: <code>/unsetvip [user_id]</code>", parse_mode=ParseMode.HTML)
+        return
+    try:
+        user_id = int(context.args[0])
+        await users_col.update_one({"user_id": user_id}, {"$set": {"is_vip": False}})
+        await update.message.reply_text(f"⚪ User <code>{user_id}</code> ၏ VIP Status ကို ရုပ်သိမ်းလိုက်ပါပြီ။", parse_mode=ParseMode.HTML)
+    except ValueError:
+        await update.message.reply_text("❌ User ID ဂဏန်းဖြစ်ရပါမည်။")
+
+async def list_vip_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await is_admin_or_owner(update.effective_user.id): return
+    vips = await users_col.find({"is_vip": True}).to_list(length=None)
+    vip_str = "\n".join([f"  • <code>{v.get('user_id')}</code> ({escape(v.get('first_name', 'Unknown'))})" for v in vips])
+    text = f"🌟 <b>VIP Users List ({len(vips)}):</b>\n\n{vip_str if vip_str else '  • VIP User မရှိသေးပါ။'}"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 async def blacklist_user_global(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -391,6 +423,9 @@ def get_master_owner_handlers():
         CommandHandler("addsudo", add_sudo_user, block=False),
         CommandHandler("delsudo", del_sudo_user, block=False),
         CommandHandler("sudolist", list_sudo_users, block=False),
+        CommandHandler("setvip", set_vip_user, block=False),
+        CommandHandler("unsetvip", unset_vip_user, block=False),
+        CommandHandler("viplist", list_vip_users, block=False),
         CommandHandler("blockuser", blacklist_user_global, block=False),
         CommandHandler("unblockuser", unblacklist_user_global, block=False),
         CommandHandler("blockgroup", blacklist_group, block=False),
