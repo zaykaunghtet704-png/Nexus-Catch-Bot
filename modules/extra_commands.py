@@ -1,5 +1,5 @@
 """
-modules/extra_commands.py - Missing Command Handlers
+modules/extra_commands.py - Cleaned Extra Handlers
 """
 from telegram import Update
 from telegram.constants import ParseMode
@@ -36,23 +36,6 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🪙 <b>Coins:</b> {balance:,}\n"
         f"💎 <b>Gems:</b> {gems:,}\n"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
-async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("❓ ရှာဖွေလိုသော Character အမည်ကို ထည့်ပေးပါ။\nဥပမာ - <code>/search Naruto</code>", parse_mode=ParseMode.HTML)
-        return
-        
-    query = " ".join(context.args)
-    results = list(cards_col.find({"name": {"$regex": query, "$options": "i"}}).limit(5))
-    
-    if not results:
-        await update.message.reply_text("❌ မည်သည့် Character မျှ မတွေ့ရှိပါ။")
-        return
-        
-    text = f"🔍 <b>'{query}' ရှာဖွေမှု ရလဒ်များ:</b>\n\n"
-    for c in results:
-        text += f"• <b>{c.get('name')}</b> (Anime: {c.get('anime', 'Unknown')})\n"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,7 +113,6 @@ def get_extra_handlers():
     return [
         CommandHandler("profile", profile_command),
         CommandHandler("balance", balance_command),
-        CommandHandler("search", search_command),
         CommandHandler("top", top_command),
         CommandHandler("ctop", ctop_command),
         CommandHandler("ranking", ranking_command),
