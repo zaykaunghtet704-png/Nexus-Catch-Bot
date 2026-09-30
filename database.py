@@ -1,12 +1,16 @@
 import os
 from pymongo import MongoClient
 
-# MongoDB Connection URI
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+# Environment Variable မှ MONGO_URI ခေါ်ယူခြင်း
+MONGO_URI = os.getenv("MONGO_URI")
+
+if not MONGO_URI:
+    print("⚠️ MONGO_URI မတွေ့ရှိပါ။ Local MongoDB ကို ချိတ်ဆက်ပါမည်။")
+    MONGO_URI = "mongodb://localhost:27017"
 
 client = MongoClient(MONGO_URI)
 
-# Database Name Definition (db object ကို တိုက်ရိုက်ထုတ်ပေးထားပါသည်)
+# Database Name
 db = client["nexus_catcher_db"]
 
 # Collections
