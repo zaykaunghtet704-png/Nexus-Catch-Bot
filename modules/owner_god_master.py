@@ -47,12 +47,138 @@ async def is_admin_or_owner(user_id: int) -> bool:
     return bool(sudo)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. DATABASE MAINTENANCE & ECONOMY MANAGEMENT
+# 1. CARD MANAGEMENT (ကတ်အသစ်ထည့် / ပြင် / ဖျက်)
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def add_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    ကတ်အသစ်ထည့်ရန် Command
+    အသုံးပြုပုံ: ကတ်ပုံရိပ် (Photo) ကို Reply လုပ်ပြီး 
+    /addcard [card_id] [name] | [anime] | [rarity]
+    ဥပမာ: /addcard c001 Rem | Re:Zero | ⚪ Common
+    """
+    if not await is_admin_or_owner(update.effective_user.id): return
+
+    msg = update.message
+    photo_id = None
+
+    # Reply လုပ်ထားသော ပုံ သို့မဟုတ် တိုက်ရိုက်ပို့သော ပုံမှ File ID ကို ယူခြင်း
+    if msg.reply_to_message and msg.reply_to_message.photo:
+        photo_id = msg.reply_to_message.photo[-1].file_id
+    elif msg.photo:
+        photo_id = msg.photo[-1].file_id
+
+    if not photo_id:
+        await msg.reply_text(
+            "⚠️ <b>ကျေးဇူးပြု၍ ကတ်ပုံရိပ် (Photo) ကို Reply လုပ်ပြီးမှ Command ရိုက်ပါ!</b>\n\n"
+            "<b>အသုံးပြုပုံ:</b>\n<code>/addcard [card_id] [name] | [anime] | [rarity]</code>\n\n"
+            "<b>ဥပမာ:</b>\n<code>/addcard c001 Rem | Re:Zero | ⚪ Common</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    text_args = " ".join(context.args)
+    if not text_args or "|" not in text_args:
+        await msg.reply_text(
+            "❌ <b>Format မမှန်ပါ။</b>\n\n"
+            "<b>အသုံးပြုပုံ:</b> <code>/addcard [card_id] [name] | [anime] | [rarity]</code>\n"
+            "<b>ဥပမာ:</b> <code>/addcard c001 Rem | Re:Zero | ⚪ Common</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    try:
+        parts = text_args.split("|")
+        first_part = parts[0].strip().split(maxsplit=1)
+        if len(first_part) < 2:
+            await msg.reply_text("❌ Card ID နှင့် Name ကို သီးခြားခွဲရေးပေးပါ။ (ဥပမာ: <code>c001 Rem</code>)", parse_mode=ParseMode.HTML)
+            return
+
+        card_id = first_part[0].strip()
+        card_name = first_part[1].strip()
+        anime = parts[1].strip() if len(parts) > 1 else "Unknown Anime"
+        rarity = parts[2].strip() if len(parts) > 2 else "⚪ Common"
+
+        # Database ထဲတွင် ရှိပြီးသားလား စစ်မည်
+        existing = await cards_col.find_one({"$or": [{"card_id": card_id}, {"id": card_id}]})
+        if existing:
+            await msg.reply_text(f"⚠️ Card ID <code>{card_id}</code> မှာ Database ထဲတွင် ရှိပြီးသားဖြစ်ပါသည်။", parse_mode=ParseMode.HTML)
+            return
+
+        card_data = {
+            "card_id": card_id,
+            "id": card_id,
+            "name": card_name,
+            "anime": anime,
+            "rarity": rarity,
+            "img_url": photo_id,
+            "created_at": datetime.utcnow()
+        }
+
+        await cards_col.insert_one(card_data)
+        
+        caption = (
+            f"🎉 <b>ကတ်အသစ် အောင်မြင်စွာ ထည့်သွင်းလိုက်ပါပြီ!</b>\n\n"
+            f"🆔 <b>Card ID:</b> <code>{card_id}</code>\n"
+            f"👤 <b>Name:</b> {escape(card_name)}\n"
+            f"📺 <b>Anime:</b> {escape(anime)}\n"
+            f"💎 <b>Rarity:</b> {escape(rarity)}"
+        )
+        await msg.reply_photo(photo=photo_id, caption=caption, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        await msg.reply_text(f"❌ Error adding card: {e}")
+
+async def delete_card_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """ကတ် ဖျက်ရန် Command"""
+    if not await is_admin_or_owner(update.effective_user.id): return
+    if not context.args:
+        await update.message.reply_text("အသုံးပြုပုံ: <code>/delcard [card_id]</code>", parse_mode=ParseMode.HTML)
+        return
+
+    card_id = context.args[0].strip()
+    res = await cards_col.delete_one({"$or": [{"card_id": card_id}, {"id": card_id}]})
+    if res.deleted_count > 0:
+        await update.message.reply_text(f"🗑️ Card ID <code>{card_id}</code> ကို Database မှ ဖျက်လိုက်ပါပြီ။", parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(f"❌ Card ID <code>{card_id}</code> ကို ရှာမတွေ့ပါ။", parse_mode=ParseMode.HTML)
+
+async def card_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """ကတ် အချက်အလက် ကြည့်ရန် Command"""
+    if not await is_admin_or_owner(update.effective_user.id): return
+    if not context.args:
+        await update.message.reply_text("အသုံးပြုပုံ: <code>/cardinfo [card_id]</code>", parse_mode=ParseMode.HTML)
+        return
+
+    card_id = context.args[0].strip()
+    card = await cards_col.find_one({"$or": [{"card_id": card_id}, {"id": card_id}]})
+    if not card:
+        await update.message.reply_text(f"❌ Card ID <code>{card_id}</code> မရှိပါ။", parse_mode=ParseMode.HTML)
+        return
+
+    caption = (
+        f"🎴 <b>Card Information</b>\n\n"
+        f"🆔 <b>Card ID:</b> <code>{card.get('card_id') or card.get('id')}</code>\n"
+        f"👤 <b>Name:</b> {escape(card.get('name', ''))}\n"
+        f"📺 <b>Anime:</b> {escape(card.get('anime', ''))}\n"
+        f"💎 <b>Rarity:</b> {escape(card.get('rarity', ''))}"
+    )
+    img_url = card.get('img_url') or card.get('image')
+    if img_url:
+        try:
+            await update.message.reply_photo(photo=img_url, caption=caption, parse_mode=ParseMode.HTML)
+        except Exception:
+            await update.message.reply_text(caption, parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(caption, parse_mode=ParseMode.HTML)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. DATABASE MAINTENANCE & ECONOMY MANAGEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def clean_ghost_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_admin_or_owner(update.effective_user.id): return
-    msg = await update.message.reply_text("🧹 <b>Ghost Data & Orphan Records စစ်ဆေး ရှင်းလင်းနေပါသည်...</b>", parse_mode=ParseMode.HTML)
+    msg = await update.message.reply_text("🧹 <b>Ghost Data စစ်ဆေးနေပါသည်...</b>", parse_mode=ParseMode.HTML)
 
     valid_card_ids = set(await cards_col.distinct("card_id"))
     valid_ids_legacy = set(await cards_col.distinct("id"))
@@ -82,7 +208,7 @@ async def clean_ghost_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def db_stats_detailed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_admin_or_owner(update.effective_user.id): return
-    msg = await update.message.reply_text("📊 <b>Economy Analytical Data များကို တွက်ချက်နေပါသည်...</b>", parse_mode=ParseMode.HTML)
+    msg = await update.message.reply_text("📊 <b>Economy Data တွက်ချက်နေပါသည်...</b>", parse_mode=ParseMode.HTML)
 
     pipeline = [{"$group": {"_id": "$rarity", "count": {"$sum": 1}}}, {"$sort": {"count": -1}}]
     rarity_counts = await cards_col.aggregate(pipeline).to_list(length=None)
@@ -93,8 +219,8 @@ async def db_stats_detailed(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     total_coins = coin_res[0]["total_coins"] if coin_res else 0
 
     text = (
-        "📈 <b>Game Economy & Rarity Analytics</b>\n\n"
-        f"💰 <b>Total Coins in Circulation:</b> <code>{total_coins:,}</code>\n\n"
+        "📈 <b>Game Economy Analytics</b>\n\n"
+        f"💰 <b>Total Coins:</b> <code>{total_coins:,}</code>\n\n"
         f"💎 <b>Card Rarity Distribution:</b>\n{rarity_str if rarity_str else '  • Data မရှိပါ'}"
     )
     await msg.edit_text(text, parse_mode=ParseMode.HTML)
@@ -107,7 +233,7 @@ async def reset_economy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     try:
         pct = float(context.args[0]) / 100.0
-        msg = await update.message.reply_text("⚠️ <b>Coins ပြန်လည် ထိန်းညှိနေပါသည်...</b>", parse_mode=ParseMode.HTML)
+        msg = await update.message.reply_text("⚠️ <b>Coins ထိန်းညှိနေပါသည်...</b>", parse_mode=ParseMode.HTML)
         users = await users_col.find({"coins": {"$gt": 0}}).to_list(length=None)
         updated = 0
         for u in users:
@@ -148,7 +274,7 @@ async def transfer_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ User ID ဂဏန်း မှန်ကန်ပါစေ။")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. SECURITY, VIP SYSTEM & BLACKLISTS
+# 3. SECURITY, SUDOS, VIP & BLACKLISTS
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def add_sudo_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -182,7 +308,6 @@ async def list_sudo_users(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     text = f"👑 <b>Sudo Admins List</b>\n\n{sudo_list_str if sudo_list_str else '  • Sudo Admin မရှိသေးပါ။'}"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
-# 🌟 VIP Management Commands
 async def set_vip_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_admin_or_owner(update.effective_user.id): return
     if not context.args:
@@ -191,7 +316,7 @@ async def set_vip_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         user_id = int(context.args[0])
         await users_col.update_one({"user_id": user_id}, {"$set": {"is_vip": True}}, upsert=True)
-        await update.message.reply_text(f"🌟 User <code>{user_id}</code> အား **VIP** အဖြစ် သတ်မှတ်လိုက်ပါပြီ။", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(f"🌟 User <code>{user_id}</code> အား VIP အဖြစ် သတ်မှတ်လိုက်ပါပြီ။", parse_mode=ParseMode.HTML)
     except ValueError:
         await update.message.reply_text("❌ User ID ဂဏန်းဖြစ်ရပါမည်။")
 
@@ -210,7 +335,7 @@ async def unset_vip_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def list_vip_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_admin_or_owner(update.effective_user.id): return
     vips = await users_col.find({"is_vip": True}).to_list(length=None)
-    vip_str = "\n".join([f"  • <code>{v.get('user_id')}</code> ({escape(v.get('first_name', 'Unknown'))})" for v in vips])
+    vip_str = "\n".join([f"  • <code>{v.get('user_id')}</code>" for v in vips])
     text = f"🌟 <b>VIP Users List ({len(vips)}):</b>\n\n{vip_str if vip_str else '  • VIP User မရှိသေးပါ။'}"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
@@ -264,7 +389,7 @@ async def emergency_lockdown(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("🚨 <b>EMERGENCY LOCKDOWN ACTIVATED!</b>" if new_state else "✅ <b>LOCKDOWN LIFTED!</b>", parse_mode=ParseMode.HTML)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. BACKUPS, CODES & REDEEM LOGIC
+# 4. BACKUPS, CODES & REDEEM LOGIC
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def full_zip_backup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -324,7 +449,7 @@ async def redeem_gift_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text(f"🎉 <b>Success!</b> Gift Code မှ Coins <b>{coins:,}</b> ရရှိသွားပါပြီ။", parse_mode=ParseMode.HTML)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. VPS, LOGS, SHELL & BROADCAST
+# 5. VPS, LOGS, SHELL & BROADCAST
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def vps_status_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -373,7 +498,7 @@ async def execute_shell_command(update: Update, context: ContextTypes.DEFAULT_TY
         await msg.edit_text(f"❌ Error: {e}")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 5. INTERACTIVE ADMIN DASHBOARD
+# 6. INTERACTIVE ADMIN DASHBOARD
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def admin_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -415,30 +540,46 @@ async def dashboard_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 def get_master_owner_handlers():
     return [
+        # Card Management Handlers
+        CommandHandler("addcard", add_card_command, block=False),
+        CommandHandler("delcard", delete_card_command, block=False),
+        CommandHandler("cardinfo", card_info_command, block=False),
+
+        # System & Economy
         CommandHandler("cleanghost", clean_ghost_data, block=False),
         CommandHandler("dbstats", db_stats_detailed, block=False),
         CommandHandler("wipecoins", reset_economy, block=False),
         CommandHandler("setdroprate", set_custom_drop_rate, block=False),
         CommandHandler("transferinv", transfer_inventory, block=False),
+
+        # Sudo & VIP
         CommandHandler("addsudo", add_sudo_user, block=False),
         CommandHandler("delsudo", del_sudo_user, block=False),
         CommandHandler("sudolist", list_sudo_users, block=False),
         CommandHandler("setvip", set_vip_user, block=False),
         CommandHandler("unsetvip", unset_vip_user, block=False),
         CommandHandler("viplist", list_vip_users, block=False),
+
+        # Blacklist & Emergency
         CommandHandler("blockuser", blacklist_user_global, block=False),
         CommandHandler("unblockuser", unblacklist_user_global, block=False),
         CommandHandler("blockgroup", blacklist_group, block=False),
         CommandHandler("lockdown", emergency_lockdown, block=False),
+
+        # Backup, Codes & Redeem
         CommandHandler("zipbackup", full_zip_backup, block=False),
         CommandHandler("gencode", generate_gift_code, block=False),
         CommandHandler("redeem", redeem_gift_code, block=False),
+
+        # VPS, Logs, Shell & Broadcast
         CommandHandler("vps", vps_status_monitor, block=False),
         CommandHandler("sysinfo", vps_status_monitor, block=False),
         CommandHandler("logs", get_latest_error_logs, block=False),
         CommandHandler("broadcast", broadcast_message, block=False),
         CommandHandler("shell", execute_shell_command, block=False),
         CommandHandler("exec", execute_shell_command, block=False),
+
+        # Dashboard
         CommandHandler("admindash", admin_dashboard, block=False),
         CallbackQueryHandler(dashboard_callback, pattern="^dash_")
     ]
