@@ -62,6 +62,15 @@ except ImportError:
     except ImportError:
         def get_master_owner_handlers(): return []
 
+# Missing Command များအတွက် extra_commands module မှ Import လုပ်ခြင်း
+try:
+    from modules.extra_commands import get_extra_handlers
+except ImportError:
+    try:
+        from extra_commands import get_extra_handlers
+    except ImportError:
+        def get_extra_handlers(): return []
+
 # Logging Setup
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -83,12 +92,10 @@ async def post_init(application: Application):
         BotCommand("balance", "လက်ကျန် Coins/Gems ကြည့်ရန်"),
         BotCommand("shop", "Item ဆိုင်ကြည့်ရန်"),
         BotCommand("market", "ကတ် အရောင်းအဝယ်ဈေးကွက်"),
-        BotCommand("leaderboard", "Top Collectors စာရင်း"),
-        BotCommand("top", "ဒီ Chat ထဲမှ Top ရလဒ်များ"),
+        BotCommand("top", "Top Collectors စာရင်း"),
         BotCommand("ctop", "Top Characters စာရင်း"),
         BotCommand("ranking", "Global Ranking ကြည့်ရန်"),
-        BotCommand("fav", "Favorite ကတ် စာရင်း"),
-        BotCommand("sell", "ကတ် ဈေးကွက်တင် ရောင်းရန်"),
+        BotCommand("search", "Character ရှာဖွေရန်"),
         BotCommand("gift", "အခြားသူထံ ကတ်လက်ဆောင်ပေးရန်"),
         BotCommand("check", "Character အချက်အလက် စစ်ရန်"),
     ]
@@ -125,6 +132,10 @@ def main():
         app.add_handler(handler)
 
     for handler in get_spawn_settings_handlers():
+        app.add_handler(handler)
+
+    # Extra Commands (/profile, /balance, /top, /ctop, /ranking, /search, /gift, /check)
+    for handler in get_extra_handlers():
         app.add_handler(handler)
 
     app.add_handler(CommandHandler("admin", admin_panel_command))
