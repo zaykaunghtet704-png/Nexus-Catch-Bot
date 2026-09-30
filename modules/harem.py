@@ -8,7 +8,7 @@ from database import inventory_col, users_col, cards_col
 
 PAGE_SIZE = 10  # စာမျက်နှာတစ်ခုတွင် ပြသမည့် Anime / Rarity အရေအတွက်
 
-# ── Rarity Icons & Emoji Mapping (13 Rarities Total) ──────────────────────────
+# ── Rarity Icons & Emoji Mapping (All 13 Rarities + Custom Tiers) ────────────
 RARITY_ICONS = {
     "⚪ Common": "🧊",
     "🟢 Uncommon": "🔮",
@@ -23,7 +23,7 @@ RARITY_ICONS = {
     "Primordial": "🔱",
     "Omnipotent": "👁️",
     "Transcendent": "♾️",
-    # Text Matching Fallbacks
+    # Fallback / Custom Matching
     "Common": "🧊",
     "Uncommon": "🔮",
     "Rare": "🎁",
@@ -32,8 +32,9 @@ RARITY_ICONS = {
     "Mythic": "🔥",
     "Ancient": "📜",
     "CrossVerse": "💎",
-    "Cataphract": "🛡️",
-    "Supreme": "🌌"
+    "Cataphract": "⚔️️",
+    "Supreme": "🔮",
+    "Mystical": "🔥"
 }
 
 def get_user_doc(user_id: int):
@@ -44,6 +45,16 @@ def get_user_doc(user_id: int):
     except Exception:
         return {}
 
+def get_header(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """Bot နာမည်နှင့် Username ကို အလိုအလျောက် ယူ၍ Header ပြုလုပ်ခြင်း"""
+    bot_name = escape(context.bot.first_name or "Nexus Catch Bot")
+    bot_user = context.bot.username or "Nexus_Catch_Bot"
+    return (
+        f"<b>{bot_name}</b>\n"
+        f"<i>||/ ☽ MayBe ☾ ⋆⁺₊</i>\n"
+        f"<code>/chmode@{bot_user}</code>\n\n"
+    )
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. /chmode & /hmode (HAREM PREFERENCES SETTINGS)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -53,63 +64,74 @@ async def chmode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = update.effective_user.id
     user = get_user_doc(user_id)
 
-    mode = user.get("harem_mode", "DETAILED")
-    rarity_pref = user.get("harem_rarity_filter", "ALL")
-    event_pref = user.get("harem_event_filter", "ALL")
+    mode = user.get("harem_mode", "Detailed")
+    header = get_header(context)
 
     text = (
-        f"<b>Character Catcher Bot</b>\n\n"
-        f"👤 <b>Account:</b> @{update.effective_user.username or 'No Username'}\n"
-        f"🆔 <b>User ID:</b> <code>{user_id}</code>\n\n"
-        f"✅ <b>PREFERENCES SET:</b>\n"
-        f"<b>INTERFACE:</b> {mode} 🦖\n"
-        f"<b>RARITY:</b> ⚜️ {rarity_pref}\n"
-        f"<b>EVENT:</b> {event_pref}\n\n"
-        f"YOU CAN CHANGE YOUR HAREM INTERFACE USING THESE BUTTONS:"
+        f"{header}"
+        f"<b>Your Harem Interface Is Already Set To {mode} 🦖☑️</b>\n\n"
+        f"<b>Still You Can Choose How To Sort Your Harem:</b>"
     )
 
     keyboard = [
         [
-            InlineKeyboardButton("🦎 DEFAULT", callback_data="chmode_set_mode_DEFAULT"),
-            InlineKeyboardButton("DETAILED 🦖", callback_data="chmode_set_mode_DETAILED")
-        ],
-        [
-            InlineKeyboardButton("🏵️ RARITY / EVENT", callback_data="chmode_menu_rarity"),
+            InlineKeyboardButton("🎯 RARITY / EVENT", callback_data="chmode_menu_rarity"),
             InlineKeyboardButton("📖 SORT BY ANIME", callback_data="chmode_sort_anime")
         ],
-        [
-            InlineKeyboardButton("🦕 RESET PREFERENCE", callback_data="chmode_reset"),
-            InlineKeyboardButton("❌ CLOSE", callback_data="chmode_close")
-        ]
+        [InlineKeyboardButton("📊 CLOSE", callback_data="chmode_close")]
     ]
 
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
+async def show_event_menu_page(query, header: str, selected_rarity: str, page: int = 1):
+    """Event ရွေးချယ်သည့် Menu (Page 1 & Page 2)"""
+    text = (
+        f"{header}"
+        f"✅ <b>RARITY SET TO: ⚡ RARITY: {selected_rarity}</b>\n\n"
+        f"🎉 <b>NOW CHOOSE AN EVENT (OR SKIP):</b>"
+    )
+
+    if page == 1:
+        keyboard = [
+            [InlineKeyboardButton("🐰 Bunny", callback_data="chmode_event_Bunny"), InlineKeyboardButton("🧹 Maid", callback_data="chmode_event_Maid")],
+            [InlineKeyboardButton("🎩 Tuxedo", callback_data="chmode_event_Tuxedo"), InlineKeyboardButton("🏖️ Summer", callback_data="chmode_event_Summer")],
+            [InlineKeyboardButton("🎃 Halloween", callback_data="chmode_event_Halloween"), InlineKeyboardButton("👘 Kimono", callback_data="chmode_event_Kimono")],
+            [InlineKeyboardButton("🎒 School", callback_data="chmode_event_School"), InlineKeyboardButton("💖 Valentine", callback_data="chmode_event_Valentine")],
+            [InlineKeyboardButton("🥻 Saree", callback_data="chmode_event_Saree"), InlineKeyboardButton("🩺 Nurse", callback_data="chmode_event_Nurse")],
+            [InlineKeyboardButton("Next ➡️", callback_data=f"chmode_evtpage_2_{selected_rarity}")],
+            [InlineKeyboardButton("⏩ Skip Event", callback_data="chmode_event_ALL")],
+            [InlineKeyboardButton("📊 CLOSE", callback_data="chmode_close")]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("❄ Winter", callback_data="chmode_event_Winter"), InlineKeyboardButton("🎄 Christmas", callback_data="chmode_event_Christmas")],
+            [InlineKeyboardButton("✨ Sacred ✨", callback_data="chmode_event_Sacred"), InlineKeyboardButton("🍷 Classic", callback_data="chmode_event_Classic")],
+            [InlineKeyboardButton("👨‍💼 Employee 👩‍💼", callback_data="chmode_event_Employee"), InlineKeyboardButton("📖 Manga", callback_data="chmode_event_Manga")],
+            [InlineKeyboardButton("⚔️ Knight ⚔️", callback_data="chmode_event_Knight"), InlineKeyboardButton("🥷 Ninja 🥷", callback_data="chmode_event_Ninja")],
+            [InlineKeyboardButton("⛩️ Shogun ⛩️", callback_data="chmode_event_Shogun"), InlineKeyboardButton("🧪 Monster Girl", callback_data="chmode_event_MonsterGirl")],
+            [InlineKeyboardButton("⬅️ Previous", callback_data=f"chmode_evtpage_1_{selected_rarity}")],
+            [InlineKeyboardButton("⏩ Skip Event", callback_data="chmode_event_ALL")],
+            [InlineKeyboardButton("📊 CLOSE", callback_data="chmode_close")]
+        ]
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
 async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """chmode ၏ Inline Keyboard များကို နှိပ်သည့်အခါ အလုပ်လုပ်မည့် Callback"""
+    """chmode Inline Keyboard Callback"""
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
 
     await query.answer()
+    header = get_header(context)
 
     if data == "chmode_close":
         await query.message.delete()
         return
 
-    elif data.startswith("chmode_set_mode_"):
-        new_mode = data.split("_")[-1]
-        try:
-            users_col.update_one({"user_id": user_id}, {"$set": {"harem_mode": new_mode}}, upsert=True)
-        except Exception:
-            pass
-        await query.edit_message_text(
-            f"✅ <b>Harem Interface Set To: {new_mode}</b>",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="chmode_main")]]),
-            parse_mode=ParseMode.HTML
-        )
-
     elif data == "chmode_menu_rarity":
+        text = f"{header}<b>❄️ CHOOSE YOUR PREFERRED RARITY</b>"
+        # Rarity အဆင့် (၁၃) မျိုးစလုံး အပြည့်အစုံ ပါဝင်သော Keyboard Grid Layout
         keyboard = [
             [InlineKeyboardButton("♾️ Transcendent", callback_data="chmode_rarity_Transcendent"), InlineKeyboardButton("👁️ Omnipotent", callback_data="chmode_rarity_Omnipotent")],
             [InlineKeyboardButton("🔱 Primordial", callback_data="chmode_rarity_Primordial"), InlineKeyboardButton("🌌 Cosmic", callback_data="chmode_rarity_Cosmic")],
@@ -117,11 +139,12 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             [InlineKeyboardButton("📜 Ancient", callback_data="chmode_rarity_Ancient"), InlineKeyboardButton("🔥 Mythic", callback_data="chmode_rarity_Mythic")],
             [InlineKeyboardButton("🏆 Legendary", callback_data="chmode_rarity_Legendary"), InlineKeyboardButton("✨ Epic", callback_data="chmode_rarity_Epic")],
             [InlineKeyboardButton("🎁 Rare", callback_data="chmode_rarity_Rare"), InlineKeyboardButton("🔮 Uncommon", callback_data="chmode_rarity_Uncommon")],
-            [InlineKeyboardButton("🧊 Common", callback_data="chmode_rarity_Common")],
+            [InlineKeyboardButton("🧊 Common", callback_data="chmode_rarity_Common"), InlineKeyboardButton("💎 CrossVerse", callback_data="chmode_rarity_CrossVerse")],
+            [InlineKeyboardButton("⚔️ Cataphract", callback_data="chmode_rarity_Cataphract"), InlineKeyboardButton("🔮 Supreme", callback_data="chmode_rarity_Supreme")],
             [InlineKeyboardButton("⏩ Skip Rarity", callback_data="chmode_rarity_ALL")],
-            [InlineKeyboardButton("❌ CLOSE", callback_data="chmode_close")]
+            [InlineKeyboardButton("📊 CLOSE", callback_data="chmode_close")]
         ]
-        await query.edit_message_text("❄️ <b>CHOOSE YOUR PREFERRED RARITY:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
     elif data.startswith("chmode_rarity_"):
         selected_rarity = data.replace("chmode_rarity_", "")
@@ -130,14 +153,13 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         except Exception:
             pass
 
-        keyboard = [
-            [InlineKeyboardButton("🐰 Bunny", callback_data="chmode_event_Bunny"), InlineKeyboardButton("🧹 Maid", callback_data="chmode_event_Maid")],
-            [InlineKeyboardButton("🎓 Tuxedo", callback_data="chmode_event_Tuxedo"), InlineKeyboardButton("🏖️ Summer", callback_data="chmode_event_Summer")],
-            [InlineKeyboardButton("🎃 Halloween", callback_data="chmode_event_Halloween"), InlineKeyboardButton("👘 Kimono", callback_data="chmode_event_Kimono")],
-            [InlineKeyboardButton("⏩ Skip Event", callback_data="chmode_event_ALL")],
-            [InlineKeyboardButton("❌ CLOSE", callback_data="chmode_close")]
-        ]
-        await query.edit_message_text(f"✅ <b>RARITY SET TO: {selected_rarity}</b>\n\n🎉 NOW CHOOSE AN EVENT (OR SKIP):", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await show_event_menu_page(query, header, selected_rarity, page=1)
+
+    elif data.startswith("chmode_evtpage_"):
+        parts = data.split("_")
+        page = int(parts[2])
+        selected_rarity = parts[3]
+        await show_event_menu_page(query, header, selected_rarity, page=page)
 
     elif data.startswith("chmode_event_"):
         selected_event = data.replace("chmode_event_", "")
@@ -145,14 +167,14 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             users_col.update_one({"user_id": user_id}, {"$set": {"harem_event_filter": selected_event}}, upsert=True)
         except Exception:
             pass
-        await query.edit_message_text("✅ <b>Preferences Updated Successfully!</b>\nType /harem to view your updated character list.", parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"{header}✅ <b>Preferences Updated Successfully!</b>\nType /harem to view your updated character list.", parse_mode=ParseMode.HTML)
 
-    elif data == "chmode_reset":
+    elif data == "chmode_sort_anime":
         try:
-            users_col.update_one({"user_id": user_id}, {"$set": {"harem_mode": "DETAILED", "harem_rarity_filter": "ALL", "harem_event_filter": "ALL"}}, upsert=True)
+            users_col.update_one({"user_id": user_id}, {"$set": {"harem_sort": "ANIME"}}, upsert=True)
         except Exception:
             pass
-        await query.edit_message_text("🔄 <b>Preferences Reset To Default!</b>", parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"{header}✅ <b>Harem Sorted By Anime!</b>\nType /harem to view.", parse_mode=ParseMode.HTML)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. /harem (CHARACTER INVENTORY DISPLAY)
@@ -239,7 +261,7 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
         except Exception:
             total_in_db = len(items)
 
-        text_lines.append(f"☘️️ <b>{escape(anime)} ({len(items)}/{total_in_db})</b>")
+        text_lines.append(f"☘ <b>{escape(anime)} ({len(items)}/{total_in_db})</b>")
         text_lines.append("--------------------")
 
         # Group duplicate cards
