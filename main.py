@@ -1,12 +1,12 @@
 import os
 import sys
+import logging
+from telegram import BotCommand
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 
-# Current Working Directory နှင့် modules folder အား Python Path ထဲသို့ အတင်းထည့်ခြင်း
+# Current Working Directory နှင့် modules folder အား Python Path ထဲသို့ ထည့်သွင်းခြင်း
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules"))
-
-import logging
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 
 # Modules များ Import ပြုလုပ်ခြင်း (Safe Loading)
 try:
@@ -71,12 +71,37 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+# Telegram Bot Menu စာရင်း အလိုအလျောက် သတ်မှတ်ခြင်း
+async def post_init(application: Application):
+    commands = [
+        BotCommand("start", "Bot ကို စတင်ရန်"),
+        BotCommand("help", "အကူအညီနှင့် Command များကြည့်ရန်"),
+        BotCommand("harem", "မိမိ၏ Character ကတ်များကြည့်ရန်"),
+        BotCommand("profile", "မိမိ Profile နှင့် Stats ကြည့်ရန်"),
+        BotCommand("catch", "ကတ်ဖမ်းရန်"),
+        BotCommand("daily", "နေ့စဉ် ဆုလာဘ်ယူရန်"),
+        BotCommand("balance", "လက်ကျန် Coins/Gems ကြည့်ရန်"),
+        BotCommand("shop", "Item ဆိုင်ကြည့်ရန်"),
+        BotCommand("market", "ကတ် အရောင်းအဝယ်ဈေးကွက်"),
+        BotCommand("leaderboard", "Top Collectors စာရင်း"),
+        BotCommand("top", "ဒီ Chat ထဲမှ Top ရလဒ်များ"),
+        BotCommand("ctop", "Top Characters စာရင်း"),
+        BotCommand("ranking", "Global Ranking ကြည့်ရန်"),
+        BotCommand("fav", "Favorite ကတ် စာရင်း"),
+        BotCommand("sell", "ကတ် ဈေးကွက်တင် ရောင်းရန်"),
+        BotCommand("gift", "အခြားသူထံ ကတ်လက်ဆောင်ပေးရန်"),
+        BotCommand("check", "Character အချက်အလက် စစ်ရန်"),
+    ]
+    await application.bot.set_my_commands(commands)
+    logger.info("✅ Bot Menu Commands set successfully!")
+
 def main():
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN environment variable မတွေ့ရှိပါ။")
         return
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Application Builder နှင့် post_init တပ်ဆင်ခြင်း
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     # Handlers Registrar
     app.add_handler(CommandHandler("start", start_command))
@@ -110,7 +135,9 @@ def main():
         app.add_handler(handler)
 
     logger.info("🤖 Bot started successfully...")
-    app.run_polling()
+    
+    # drop_pending_updates=True ထည့်သွင်းပေးခြင်းဖြင့် 409 Conflict သို့မဟုတ် Queue ငြိသည့် အမှားများ ကာကွယ်ပေးသည်
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
