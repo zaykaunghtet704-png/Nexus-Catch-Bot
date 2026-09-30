@@ -2,12 +2,12 @@ from datetime import datetime, timedelta
 from html import escape
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import ContextTypes, CommandHandler
+from telegram.ext import ContextTypes
 
 from database import users_col, inventory_col
 
 def get_user(user_id: int):
-    """PyMongo Safe User Fetch (Ensures user_id is int)"""
+    """PyMongo Safe User Fetch"""
     user_id = int(user_id)
     try:
         user = users_col.find_one({"user_id": user_id})
@@ -23,11 +23,10 @@ def get_user(user_id: int):
             }
             users_col.insert_one(user)
         return user
-    except Exception as e:
-        print(f"User Fetch Error: {e}")
+    except Exception:
         return {"user_id": user_id, "coins": 0, "gems": 0, "xp": 0, "title": "Novice Collector", "vip_status": "None"}
 
-# ── 1. Daily Command (24-Hour Cooldown & Exact DB Update) ─────────────────────
+# ── 1. Daily Command (24-Hour Cooldown) ───────────────────────────────────────
 
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -57,7 +56,6 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             )
             return
 
-    # Reward values
     bonus_coins = 1000
     bonus_gems = 5
 
@@ -78,7 +76,6 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(f"❌ Daily Bonus ရယူရာတွင် Error ဖြစ်ပေါ်ခဲ့သည်: {e}")
         return
 
-    # Fetch updated profile data
     updated_user = get_user(user_id)
     total_coins = updated_user.get("coins", bonus_coins)
     total_gems = updated_user.get("gems", bonus_gems)
@@ -90,35 +87,24 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         parse_mode=ParseMode.HTML
     )
 
-# ── 2. Profile Command (Accurate Real-time Data Display) ──────────────────────
+# ── 2. Shop Command ───────────────────────────────────────────────────────────
 
-async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user = update.effective_user
-    user_id = int(user.id)
+async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = int(update.effective_user.id)
     user_data = get_user(user_id)
-
-    # Get total cards count safely from inventory
-    try:
-        total_cards = inventory_col.count_documents({"user_id": user_id})
-    except Exception:
-        total_cards = 0
-
-    title = user_data.get("title", "Novice Collector")
+    
     coins = user_data.get("coins", 0)
     gems = user_data.get("gems", 0)
-    xp = user_data.get("xp", 0)
-    vip_status = user_data.get("vip_status", "None")
 
-    profile_text = (
-        f"👤 <b>PLAYER PROFILE</b>\n"
-        f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        f"🏷️ <b>Name:</b> {escape(user.first_name)}\n"
-        f"👑 <b>Title:</b> {escape(title)}\n"
-        f"💰 <b>Coins:</b> {coins:,}\n"
-        f"💎 <b>Gems:</b> {gems:,}\n"
-        f"⚡ <b>XP:</b> {xp:,}\n"
-        f"🎴 <b>Total Cards:</b> {total_cards}\n"
-        f"🌟 <b>VIP Status:</b> {vip_status}"
+    text = (
+        f"🏪 <b>NEXUS ITEM SHOP</b>\n"
+        f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        f"💰 <b>Your Coins:</b> {coins:,}\n"
+        f"💎 <b>Your Gems:</b> {gems:,}\n\n"
+        f"<b>ရရှိနိုင်သော ပစ္စည်းများ:</b>\n"
+        f"1. 📦 <b>Common Chest</b> - 500 Coins\n"
+        f"2. 🎁 <b>Rare Chest</b> - 2,000 Coins\n"
+        f"3. 👑 <b>Legendary Crate</b> - 50 Gems\n\n"
+        f"<i>Marketplace ကိုကြည့်ရန် <code>/market</code> ကို အသုံးပြုပါ။</i>"
     )
-
-    await update.message.reply_text(profile_text, parse_mode=ParseMode.HTML)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
