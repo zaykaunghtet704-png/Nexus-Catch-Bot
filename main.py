@@ -9,11 +9,13 @@ from modules.game import catch_command, collection_command, leaderboard_command,
 from modules.shop_trade import daily_command, shop_command
 from modules.start import help_command, start_command
 
-# Master Owner Module မှ Handler များကို တင်သွင်းခြင်း (owner_god_master.py ကို modules ဖိုင်ထဲသို့ ထည့်ထားသည်ဟု ယူဆပါသည်)
+# Harem Module မှ Handler များကို တင်သွင်းခြင်း
+from modules.harem import get_harem_handlers
+
+# Master Owner Module မှ Handler များကို တင်သွင်းခြင်း
 try:
     from modules.owner_god_master import get_master_owner_handlers
 except ImportError:
-    # တစ်ခါတည်း တူညီသော directory ထဲတွင် ရှိနေပါက
     from owner_god_master import get_master_owner_handlers
 
 # Logging Setup
@@ -23,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Bot Token ကို Environment Variable မှသာ လုံခြုံစွာ ခေါ်ယူမည် (ဖိုင်ထဲတွင် တိုက်ရိုက်ထည့်မထားပါ)
+# Bot Token ကို Environment Variable မှ ခေါ်ယူခြင်း
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 def main():
@@ -44,16 +46,20 @@ def main():
     app.add_handler(CommandHandler("daily", daily_command))
     app.add_handler(CommandHandler("shop", shop_command))
 
-    # 2. Existing Admin Handlers
+    # 2. Harem Modules Handlers (/harem, /chmode)
+    for handler in get_harem_handlers():
+        app.add_handler(handler)
+
+    # 3. Admin Handlers
     app.add_handler(CommandHandler("admin", admin_panel_command))
     app.add_handler(CommandHandler("gban", gban_command))
     app.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
 
-    # 3. Master Owner God-Mode Suite Handlers (အပေါ်မှာ ဆွေးနွေးခဲ့သမျှ Owner Commands အားလုံး)
+    # 4. Master Owner God-Mode Suite Handlers
     for handler in get_master_owner_handlers():
         app.add_handler(handler)
 
-    logger.info("🤖 Nexus Catch Bot started successfully with Master Owner Suite...")
+    logger.info("🤖 Nexus Catch Bot started successfully with Master Owner Suite & Harem Module...")
     print("🤖 Nexus Catch Bot started successfully...")
     
     app.run_polling()
