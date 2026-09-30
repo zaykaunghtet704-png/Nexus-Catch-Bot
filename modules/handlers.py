@@ -6,9 +6,9 @@ User Commands:
 - /profile
 - /search
 - /top
-- /market
 
 Harem Commands are handled separately by modules/harem.py
+Market Commands are handled separately by modules/trade_market.py
 """
 
 import re
@@ -17,24 +17,12 @@ from html import escape
 
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import (
-    ContextTypes,
-    CommandHandler,
-)
+from telegram.ext import ContextTypes, CommandHandler
 
-from database import (
-    users_col,
-    cards_col,
-    inventory_col,
-    market_col,
-)
+from database import users_col, cards_col, inventory_col
 
 logger = logging.getLogger(__name__)
 
-
-# ==========================================
-# HELPER FUNCTIONS
-# ==========================================
 
 def safe_int(value, default=0):
     try:
@@ -46,7 +34,6 @@ def safe_int(value, default=0):
 def safe_text(value, default="Unknown"):
     if value is None:
         value = default
-
     return escape(str(value))
 
 
@@ -58,7 +45,6 @@ async def profile_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     message = update.effective_message
     user = update.effective_user
 
@@ -66,11 +52,12 @@ async def profile_command(
         return
 
     try:
-        user_data = users_col.find_one(
-            {"user_id": user.id}
-        ) or {}
+        user_data = users_col.find_one({"user_id": user.id}) or {}
 
-        balance = safe_int(user_data.get("balance", 0))
+        # coins ကို အဓိကသုံးပြီး balance အဟောင်းကို fallback ထားသည်
+        coins = safe_int(
+            user_data.get("coins", user_data.get("balance", 0))
+        )
         gems = safe_int(user_data.get("gems", 0))
 
         total_cards = inventory_col.count_documents(
@@ -78,7 +65,6 @@ async def profile_command(
         )
 
         name = safe_text(user.first_name)
-
         username = (
             f"@{safe_text(user.username)}"
             if user.username
@@ -93,7 +79,7 @@ async def profile_command(
             f"🆔 ID: <code>{user.id}</code>\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "💰 <b>ECONOMY</b>\n\n"
-            f"🪙 Coins: <b>{balance:,}</b>\n"
+            f"🪙 Coins: <b>{coins:,}</b>\n"
             f"💎 Gems: <b>{gems:,}</b>\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "🎴 <b>COLLECTION</b>\n\n"
@@ -109,7 +95,6 @@ async def profile_command(
 
     except Exception:
         logger.exception("Profile command error")
-
         await message.reply_text(
             "❌ Profile ကို ဖွင့်မရပါ။ နောက်မှ ထပ်ကြိုးစားပါ။"
         )
@@ -123,7 +108,6 @@ async def search_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     message = update.effective_message
 
     if not message:
@@ -169,23 +153,10 @@ async def search_command(
         )
 
         for index, card in enumerate(results, 1):
-
-            card_name = safe_text(
-                card.get("name", "Unknown")
-            )
-
-            anime = safe_text(
-                card.get("anime", "N/A")
-            )
-
-            rarity = safe_text(
-                card.get("rarity", "Common")
-            )
-
-            edition = safe_text(
-                card.get("edition", "Normal")
-            )
-
+            card_name = safe_text(card.get("name", "Unknown"))
+            anime = safe_text(card.get("anime", "N/A"))
+            rarity = safe_text(card.get("rarity", "Common"))
+            edition = safe_text(card.get("edition", "Normal"))
             card_id = safe_text(
                 card.get("card_id", card.get("_id", "N/A"))
             )
@@ -210,7 +181,6 @@ async def search_command(
 
     except Exception:
         logger.exception("Search command error")
-
         await message.reply_text(
             "❌ Search ပြုလုပ်ရာတွင် Error ဖြစ်နေပါသည်။"
         )
@@ -224,7 +194,6 @@ async def top_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     message = update.effective_message
 
     if not message:
@@ -238,19 +207,11 @@ async def top_command(
                     "count": {"$sum": 1},
                 }
             },
-            {
-                "$sort": {
-                    "count": -1,
-                }
-            },
-            {
-                "$limit": 10,
-            },
+            {"$sort": {"count": -1}},
+            {"$limit": 10},
         ]
 
-        top_users = list(
-            inventory_col.aggregate(pipeline)
-        )
+        top_users = list(inventory_col.aggregate(pipeline))
 
         if not top_users:
             await message.reply_text(
@@ -266,7 +227,6 @@ async def top_command(
         )
 
         for index, item in enumerate(top_users, 1):
-
             user_id = item.get("_id", "Unknown")
             count = safe_int(item.get("count", 0))
 
@@ -293,95 +253,8 @@ async def top_command(
 
     except Exception:
         logger.exception("Top command error")
-
         await message.reply_text(
             "❌ Ranking ကို ဖွင့်မရပါ။"
-        )
-
-
-# ==========================================
-# MARKET COMMAND
-# ==========================================
-
-async def market_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-
-    if not message:
-        return
-
-    try:
-        items = list(
-            market_col.find().sort("_id", -1).limit(10)
-        )
-
-        if not items:
-            await message.reply_text(
-                "🏪 <b>CHARACTER MARKETPLACE</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                "📭 လက်ရှိ Market တွင် Card ရောင်းရန် "
-                "တင်ထားခြင်း မရှိသေးပါ။\n\n"
-                "💡 နောက်မှ ထပ်လာကြည့်ပါ။",
-                parse_mode=ParseMode.HTML,
-            )
-            return
-
-        text = (
-            "🛒 <b>CHARACTER MARKETPLACE</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-        )
-
-        for index, item in enumerate(items, 1):
-
-            card_name = safe_text(
-                item.get("card_name")
-                or item.get("name")
-                or "Unknown Card"
-            )
-
-            price = safe_int(
-                item.get("price", 0)
-            )
-
-            listing_id = safe_text(
-                item.get(
-                    "listing_id",
-                    item.get("_id", "N/A")
-                )
-            )
-
-            seller_id = safe_text(
-                item.get(
-                    "seller_id",
-                    item.get("user_id", "N/A")
-                )
-            )
-
-            text += (
-                f"{index}. 🎴 <b>{card_name}</b>\n"
-                f"   💰 Price: <b>{price:,}</b> Coins\n"
-                f"   🆔 Listing: <code>{listing_id}</code>\n"
-                f"   👤 Seller: <code>{seller_id}</code>\n\n"
-            )
-
-        text += (
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "💡 Card ဝယ်ယူရန် /buy ကို အသုံးပြုပါ။"
-        )
-
-        await message.reply_text(
-            text,
-            parse_mode=ParseMode.HTML,
-        )
-
-    except Exception:
-        logger.exception("Market command error")
-
-        await message.reply_text(
-            "❌ Market ကို ဖွင့်မရပါ။"
         )
 
 
@@ -390,10 +263,8 @@ async def market_command(
 # ==========================================
 
 def get_user_handlers():
-
     return [
         CommandHandler("profile", profile_command),
         CommandHandler("search", search_command),
         CommandHandler("top", top_command),
-        CommandHandler("market", market_command),
     ]
