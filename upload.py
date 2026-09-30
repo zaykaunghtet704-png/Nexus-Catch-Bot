@@ -5,33 +5,73 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, CommandHandler
 
-# သင့်ကိုယ်ပိုင် config နှင့် database ဖိုင်များမှ Import လုပ်ခြင်း
-from config import OWNER_ID, CHARA_CHANNEL_ID
-from database import db, cards_col
+# Config နှင့် Database Import ပြုလုပ်ခြင်း
+try:
+    from config import OWNER_ID, CHARA_CHANNEL_ID
+except ImportError:
+    OWNER_ID = 0
+    CHARA_CHANNEL_ID = 0
 
-# Rarity များကို မိမိစိတ်ကြိုက် ပြင်ဆင်သတ်မှတ်နိုင်ပါသည်
+from database import db, cards_col, sudo_col
+
+# ── Rarity အဆင့် ၁၃ မျိုး အပြည့်အစုံ ──────────────────────────────────────────
 RARITY_MAP = {
     1: "⚪ Common",
     2: "🟢 Uncommon",
     3: "🔵 Rare",
     4: "🟣 Epic",
     5: "🟡 Legendary",
-    6: "👑 Mythic"
+    6: "🔴 Mythic",
+    7: "🟠 Ancient",
+    8: "🔮 Divine",
+    9: "👑 Immortal",
+    10: "🌌 Cosmic",
+    11: "🔱 Primordial",
+    12: "👁️ Omnipotent",
+    13: "♾️ Transcendent"
 }
+
 RARITY_STRS = {v.lower(): v for v in RARITY_MAP.values()}
+RARITY_STRS.update({
+    "common": "⚪ Common",
+    "uncommon": "🟢 Uncommon",
+    "rare": "🔵 Rare",
+    "epic": "🟣 Epic",
+    "legendary": "🟡 Legendary",
+    "mythic": "🔴 Mythic",
+    "ancient": "🟠 Ancient",
+    "divine": "🔮 Divine",
+    "immortal": "👑 Immortal",
+    "cosmic": "🌌 Cosmic",
+    "primordial": "🔱 Primordial",
+    "omnipotent": "👁️ Omnipotent",
+    "transcendent": "♾️ Transcendent",
+    "crossverse": "💎 CrossVerse",
+    "cataphract": "⚔️ Cataphract",
+    "supreme": "🔮 Supreme"
+})
 
 WRONG_FORMAT = (
-    "❌ အသုံးပြုပုံ မှားယွင်းနေပါသည်။\n\n"
+    "❌ <b>အသုံးပြုပုံ မှားယွင်းနေပါသည်။</b>\n\n"
     "<code>/upload IMG_URL character-name anime-name rarity_number</code>\n\n"
-    "<b>Rarity နံပါတ်များ:</b>\n"
+    "<b>Rarity နံပါတ်များ (1 မှ 13):</b>\n"
     + "\n".join(f"  {k} → {v}" for k, v in RARITY_MAP.items())
 )
 
 def _is_sudo(uid: int) -> bool:
-    # Sudo User များ ထပ်ထည့်လိုပါက [OWNER_ID, 1234567, 9876543] ပုံစံဖြင့် ထည့်သွင်းနိုင်သည်
-    return uid == OWNER_ID
+    """Owner သို့မဟုတ် Sudo User ဟုတ်မဟုတ် စစ်ဆေးခြင်း"""
+    if uid == OWNER_ID:
+        return True
+    try:
+        s = sudo_col.find_one({"user_id": uid})
+        if s:
+            return True
+    except Exception:
+        pass
+    return False
 
 async def _validate_url(url: str) -> bool:
+    """URL အလုပ်လုပ်မလုပ် စစ်ဆေးခြင်း"""
     try:
         async with aiohttp.ClientSession() as s:
             async with s.head(url, timeout=aiohttp.ClientTimeout(total=8)) as r:
@@ -39,15 +79,19 @@ async def _validate_url(url: str) -> bool:
     except Exception:
         return False
 
-async def _next_id() -> str:
-    # Auto-increment ID အတွက် Database မှ sequences collection ကို အသုံးပြုခြင်း
-    doc = await db["sequences"].find_one_and_update(
-        {"_id": "character_id"},
-        {"$inc": {"sequence_value": 1}},
-        upsert=True,
-        return_document=ReturnDocument.AFTER,
-    )
-    return str(doc["sequence_value"]).zfill(4)
+def _next_id() -> str:
+    """PyMongo Synchronous Safe Auto-increment ID Generation"""
+    try:
+        doc = db["sequences"].find_one_and_update(
+            {"_id": "character_id"},
+            {"$inc": {"sequence_value": 1}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        return str(doc["sequence_value"]).zfill(4)
+    except Exception:
+        import random
+        return str(random.randint(1000, 9999))
 
 def _char_caption(char: dict, uploader_id: int, uploader_name: str) -> str:
     return (
@@ -62,7 +106,7 @@ def _char_caption(char: dict, uploader_id: int, uploader_name: str) -> str:
 
 async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_sudo(update.effective_user.id):
-        await update.message.reply_text("❌ Bot Owner သာ အသုံးပြုနိုင်ပါသည်။")
+        await update.message.reply_text("❌ Bot Owner / Sudo User သာ အသုံးပြုနိုင်ပါသည်။")
         return
 
     if len(context.args) != 4:
@@ -84,7 +128,7 @@ async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     name    = raw_name.replace("-", " ").title()
     anime   = raw_anime.replace("-", " ").title()
-    char_id = await _next_id()
+    char_id = _next_id()
     char    = {"img_url": img_url, "name": name, "anime": anime,
                "rarity": rarity, "id": char_id}
 
@@ -96,9 +140,12 @@ async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             parse_mode=ParseMode.HTML,
         )
         char["message_id"] = msg.message_id
-        await cards_col.insert_one(char)
+        cards_col.insert_one(char)
         await update.message.reply_text(
-            f"✅ <b>{name}</b> ကို အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ! ID: <code>{char_id}</code>",
+            f"✅ <b>{name}</b> ကို အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!\n"
+            f"🎴 Rarity: {rarity}\n"
+            f"📺 Anime: {anime}\n"
+            f"🆔 ID: <code>{char_id}</code>",
             parse_mode=ParseMode.HTML,
         )
     except Exception as e:
@@ -107,7 +154,7 @@ async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             parse_mode=ParseMode.HTML,
         )
 
-# ── Method 2: /uploadchar (reply to formatted post) ──────────────────────────
+# ── Method 2: /uploadchar (Reply to photo with caption) ─────────────────────
 
 def _parse_caption(caption: str) -> dict | None:
     fields: dict[str, str] = {}
@@ -144,7 +191,7 @@ def _parse_caption(caption: str) -> dict | None:
 
 async def uploadchar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_sudo(update.effective_user.id):
-        await update.message.reply_text("❌ Bot Owner သာ အသုံးပြုနိုင်ပါသည်။")
+        await update.message.reply_text("❌ Bot Owner / Sudo User သာ အသုံးပြုနိုင်ပါသည်။")
         return
 
     replied = update.message.reply_to_message
@@ -174,7 +221,10 @@ async def uploadchar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     if parsed["id"]:
-        existing = await cards_col.find_one({"id": parsed["id"]})
+        try:
+            existing = cards_col.find_one({"id": parsed["id"]})
+        except Exception:
+            existing = None
         if existing:
             await update.message.reply_text(
                 f"❌ ID <code>{parsed['id']}</code> သည် Database တွင် ရှိနှင့်ပြီးသား ဖြစ်သည်။",
@@ -183,7 +233,7 @@ async def uploadchar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             return
         char_id = parsed["id"]
     else:
-        char_id = await _next_id()
+        char_id = _next_id()
 
     char = {
         "img_url": photo,           
@@ -201,7 +251,7 @@ async def uploadchar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             parse_mode=ParseMode.HTML,
         )
         char["message_id"] = msg.message_id
-        await cards_col.insert_one(char)
+        cards_col.insert_one(char)
         await update.message.reply_text(
             f"✅ <b>{parsed['name']}</b> ကို ထည့်သွင်းပြီးပါပြီ!\n"
             f"🎴 Rarity: {parsed['rarity']}\n"
@@ -219,14 +269,18 @@ async def uploadchar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def delete_char(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_sudo(update.effective_user.id):
-        await update.message.reply_text("❌ Bot Owner သာ အသုံးပြုနိုင်ပါသည်။")
+        await update.message.reply_text("❌ Bot Owner / Sudo User သာ အသုံးပြုနိုင်ပါသည်။")
         return
     if len(context.args) != 1:
         await update.message.reply_text(
             "အသုံးပြုရန်: <code>/delete ID</code>", parse_mode=ParseMode.HTML)
         return
 
-    char = await cards_col.find_one_and_delete({"id": context.args[0]})
+    try:
+        char = cards_col.find_one_and_delete({"id": context.args[0]})
+    except Exception:
+        char = None
+
     if not char:
         await update.message.reply_text("❌ ထို ID ဖြင့် ကတ်ကို ရှာမတွေ့ပါ။")
         return
@@ -246,9 +300,9 @@ _VALID = {"img_url", "name", "anime", "rarity"}
 
 async def update_char(upd: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_sudo(upd.effective_user.id):
-        await upd.message.reply_text("❌ Bot Owner သာ အသုံးပြုနိုင်ပါသည်။")
+        await upd.message.reply_text("❌ Bot Owner / Sudo User သာ အသုံးပြုနိုင်ပါသည်။")
         return
-    if len(context.args) != 3:
+    if len(context.args) < 3:
         await upd.message.reply_text(
             "အသုံးပြုရန်: <code>/update ID field new_value</code>\n"
             f"ပြင်ဆင်နိုင်သော အချက်အလက်များ: {', '.join(_VALID)}",
@@ -256,12 +310,19 @@ async def update_char(upd: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    char_id, field, raw = context.args
+    char_id = context.args[0]
+    field = context.args[1]
+    raw = " ".join(context.args[2:])
+
     if field not in _VALID:
         await upd.message.reply_text(f"❌ အချက်အလက်အမည် မှားယွင်းနေပါသည်။ {', '.join(_VALID)} ထဲမှ ရွေးချယ်ပါ။")
         return
 
-    char = await cards_col.find_one({"id": char_id})
+    try:
+        char = cards_col.find_one({"id": char_id})
+    except Exception:
+        char = None
+
     if not char:
         await upd.message.reply_text("❌ ထို ID ဖြင့် ကတ်ကို ရှာမတွေ့ပါ။")
         return
@@ -282,19 +343,27 @@ async def update_char(upd: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         new_val = raw
 
-    await cards_col.update_one({"id": char_id}, {"$set": {field: new_val}})
+    try:
+        cards_col.update_one({"id": char_id}, {"$set": {field: new_val}})
+    except Exception as e:
+        await upd.message.reply_text(f"❌ Database update အဆင်မပြေပါ: {e}")
+        return
+
     char[field] = new_val
 
     try:
         if field == "img_url":
             if char.get("message_id"):
-                await context.bot.delete_message(CHARA_CHANNEL_ID, char["message_id"])
+                try:
+                    await context.bot.delete_message(CHARA_CHANNEL_ID, char["message_id"])
+                except Exception:
+                    pass
             msg = await context.bot.send_photo(
                 CHARA_CHANNEL_ID, photo=new_val,
                 caption=_char_caption(char, upd.effective_user.id, upd.effective_user.first_name),
                 parse_mode=ParseMode.HTML,
             )
-            await cards_col.update_one({"id": char_id}, {"$set": {"message_id": msg.message_id}})
+            cards_col.update_one({"id": char_id}, {"$set": {"message_id": msg.message_id}})
         elif char.get("message_id"):
             await context.bot.edit_message_caption(
                 CHARA_CHANNEL_ID, char["message_id"],
