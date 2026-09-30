@@ -4,10 +4,11 @@ modules/handlers.py
 
 User Commands:
 - /profile
-- /harem
 - /search
 - /top
 - /market
+
+Harem Commands are handled separately by modules/harem.py
 """
 
 import re
@@ -36,7 +37,6 @@ logger = logging.getLogger(__name__)
 # ==========================================
 
 def safe_int(value, default=0):
-    """Convert value to integer safely."""
     try:
         return int(value)
     except (ValueError, TypeError):
@@ -44,18 +44,10 @@ def safe_int(value, default=0):
 
 
 def safe_text(value, default="Unknown"):
-    """Escape HTML text safely."""
-    return escape(str(value if value is not None else default))
+    if value is None:
+        value = default
 
-
-def get_user_id(update: Update):
-    """Get Telegram user ID."""
-    user = update.effective_user
-
-    if not user:
-        return None
-
-    return user.id
+    return escape(str(value))
 
 
 # ==========================================
@@ -124,97 +116,6 @@ async def profile_command(
 
 
 # ==========================================
-# HAREM COMMAND
-# ==========================================
-
-async def harem_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    user = update.effective_user
-
-    if not message or not user:
-        return
-
-    try:
-        total = inventory_col.count_documents(
-            {"user_id": user.id}
-        )
-
-        if total == 0:
-            await message.reply_text(
-                "🏰 <b>YOUR HAREM</b>\n\n"
-                "🧧 သင့်တွင် Card မရှိသေးပါ။\n\n"
-                "🎴 /catch ဖြင့် Card ဖမ်းယူနိုင်ပါသည်။",
-                parse_mode=ParseMode.HTML,
-            )
-            return
-
-        user_cards = list(
-            inventory_col.find(
-                {"user_id": user.id}
-            ).sort("_id", -1).limit(10)
-        )
-
-        name = safe_text(user.first_name)
-
-        text = (
-            f"🏰 <b>{name}'s HAREM</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🃏 Total Cards: <b>{total}</b>\n\n"
-        )
-
-        for index, item in enumerate(user_cards, 1):
-
-            card_name = safe_text(
-                item.get("card_name")
-                or item.get("name")
-                or "Unknown Card"
-            )
-
-            rarity = safe_text(
-                item.get("rarity", "Common")
-            )
-
-            edition = safe_text(
-                item.get("edition", "Normal")
-            )
-
-            card_id = safe_text(
-                item.get("card_id", item.get("_id", "N/A"))
-            )
-
-            text += (
-                f"{index}. 🎴 <b>{card_name}</b>\n"
-                f"   ✨ Rarity: {rarity}\n"
-                f"   💠 Edition: {edition}\n"
-                f"   🆔 ID: <code>{card_id}</code>\n\n"
-            )
-
-        if total > 10:
-            text += (
-                f"📄 Showing 10 / {total} Cards\n"
-                "💡 Pagination will be available in the Harem module."
-            )
-
-        text += "\n━━━━━━━━━━━━━━━━━━━━"
-
-        await message.reply_text(
-            text,
-            parse_mode=ParseMode.HTML,
-        )
-
-    except Exception:
-        logger.exception("Harem command error")
-
-        await message.reply_text(
-            "❌ Harem ကို ဖွင့်မရပါ။"
-        )
-
-
-# ==========================================
 # SEARCH COMMAND
 # ==========================================
 
@@ -229,7 +130,6 @@ async def search_command(
         return
 
     if not context.args:
-
         await message.reply_text(
             "🔍 <b>CHARACTER SEARCH</b>\n\n"
             "ရှာဖွေလိုသော Character အမည်ကို ထည့်ပါ။\n\n"
@@ -242,28 +142,19 @@ async def search_command(
 
     query = " ".join(context.args).strip()
 
-    if not query:
-        await message.reply_text(
-            "❌ ရှာဖွေလိုသော အမည်ထည့်ပါ။"
-        )
-        return
-
     try:
         regex_query = re.escape(query)
 
         results = list(
-            cards_col.find(
-                {
-                    "name": {
-                        "$regex": regex_query,
-                        "$options": "i",
-                    }
+            cards_col.find({
+                "name": {
+                    "$regex": regex_query,
+                    "$options": "i",
                 }
-            ).limit(10)
+            }).limit(10)
         )
 
         if not results:
-
             await message.reply_text(
                 f"❌ <b>{safe_text(query)}</b> အတွက် "
                 "Character မတွေ့ရှိပါ။",
@@ -362,7 +253,6 @@ async def top_command(
         )
 
         if not top_users:
-
             await message.reply_text(
                 "🏆 Collector စာရင်း မရှိသေးပါ။"
             )
@@ -429,7 +319,6 @@ async def market_command(
         )
 
         if not items:
-
             await message.reply_text(
                 "🏪 <b>CHARACTER MARKETPLACE</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -458,11 +347,17 @@ async def market_command(
             )
 
             listing_id = safe_text(
-                item.get("listing_id", item.get("_id", "N/A"))
+                item.get(
+                    "listing_id",
+                    item.get("_id", "N/A")
+                )
             )
 
             seller_id = safe_text(
-                item.get("seller_id", item.get("user_id", "N/A"))
+                item.get(
+                    "seller_id",
+                    item.get("user_id", "N/A")
+                )
             )
 
             text += (
@@ -498,7 +393,6 @@ def get_user_handlers():
 
     return [
         CommandHandler("profile", profile_command),
-        CommandHandler("harem", harem_command),
         CommandHandler("search", search_command),
         CommandHandler("top", top_command),
         CommandHandler("market", market_command),
