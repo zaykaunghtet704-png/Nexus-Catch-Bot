@@ -1,14 +1,34 @@
 import os
 import sys
 import logging
+
 from telegram import BotCommand
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+)
 
-# Current Working Directory နှင့် modules folder အား Python Path ထဲသို့ ထည့်သွင်းခြင်း
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules"))
+# ==========================================
+# PYTHON PATH
+# ==========================================
 
-# Safe Imports
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+MODULES_DIR = os.path.join(BASE_DIR, "modules")
+
+if MODULES_DIR not in sys.path:
+    sys.path.insert(0, MODULES_DIR)
+
+
+# ==========================================
+# IMPORT MODULES
+# ==========================================
+
 try:
     from modules.start import start_command, help_command
 except ImportError:
@@ -50,9 +70,22 @@ except ImportError:
     from spawn_settings import get_spawn_settings_handlers
 
 try:
-    from modules.admin import admin_panel_command, gban_command, admin_callback_handler
+    from modules.admin import (
+        admin_panel_command,
+        gban_command,
+        admin_callback_handler,
+    )
 except ImportError:
-    from admin import admin_panel_command, gban_command, admin_callback_handler
+    from admin import (
+        admin_panel_command,
+        gban_command,
+        admin_callback_handler,
+    )
+
+try:
+    from modules.handlers import get_user_handlers
+except ImportError:
+    from handlers import get_user_handlers
 
 try:
     from modules.owner_god_master import get_master_owner_handlers
@@ -60,7 +93,8 @@ except ImportError:
     try:
         from owner_god_master import get_master_owner_handlers
     except ImportError:
-        def get_master_owner_handlers(): return []
+        def get_master_owner_handlers():
+            return []
 
 try:
     from modules.extra_commands import get_extra_handlers
@@ -68,7 +102,8 @@ except ImportError:
     try:
         from extra_commands import get_extra_handlers
     except ImportError:
-        def get_extra_handlers(): return []
+        def get_extra_handlers():
+            return []
 
 try:
     from modules.inline_search import get_inline_search_handlers
@@ -76,22 +111,43 @@ except ImportError:
     try:
         from inline_search import get_inline_search_handlers
     except ImportError:
-        def get_inline_search_handlers(): return []
+        def get_inline_search_handlers():
+            return []
 
-# Logging Setup
+
+# ==========================================
+# LOGGING
+# ==========================================
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
 )
+
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Error Handler Function (Bot မရပ်သွားစေရန် ကာကွယ်ပေးသည်)
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error("Exception while handling an update:", exc_info=context.error)
 
-async def post_init(application: Application):
+# ==========================================
+# ERROR HANDLER
+# ==========================================
+
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    logger.error(
+        "Exception while handling an update:",
+        exc_info=context.error,
+    )
+
+
+# ==========================================
+# BOT COMMAND MENU
+# ==========================================
+
+async def post_init(application: Application) -> None:
     commands = [
         BotCommand("start", "Bot ကို စတင်ရန်"),
         BotCommand("help", "အကူအညီနှင့် Command များကြည့်ရန်"),
@@ -109,59 +165,142 @@ async def post_init(application: Application):
         BotCommand("gift", "အခြားသူထံ ကတ်လက်ဆောင်ပေးရန်"),
         BotCommand("check", "Character အချက်အလက် စစ်ရန်"),
     ]
-    await application.bot.set_my_commands(commands)
-    logger.info("✅ Bot Menu Commands set successfully!")
 
-def main():
+    await application.bot.set_my_commands(commands)
+    logger.info("Bot Menu Commands set successfully!")
+
+
+# ==========================================
+# MAIN
+# ==========================================
+
+def main() -> None:
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN environment variable မတွေ့ရှိပါ။")
+        logger.error(
+            "BOT_TOKEN environment variable မတွေ့ရှိပါ။"
+        )
         return
 
-    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
 
-    # Error Handler ထည့်သွင်းခြင်း
     app.add_error_handler(error_handler)
 
-    # Basic Commands
+    # --------------------------------------
+    # BASIC COMMANDS
+    # --------------------------------------
+
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("daily", daily_command))
     app.add_handler(CommandHandler("shop", shop_command))
 
-    # Modules Handlers
+    # --------------------------------------
+    # USER COMMANDS
+    # /profile, /search, /top
+    # /market ကို trade_market.py က ကိုင်တွယ်သည်
+    # --------------------------------------
+
+    for handler in get_user_handlers():
+        app.add_handler(handler)
+
+    # --------------------------------------
+    # GAME
+    # --------------------------------------
+
     for handler in get_game_handlers():
         app.add_handler(handler)
+
+    # --------------------------------------
+    # HAREM
+    # --------------------------------------
 
     for handler in get_harem_handlers():
         app.add_handler(handler)
 
+    # --------------------------------------
+    # UPLOAD
+    # --------------------------------------
+
     for handler in get_upload_handlers():
         app.add_handler(handler)
+
+    # --------------------------------------
+    # TRADE / MARKET
+    # --------------------------------------
 
     for handler in get_trade_market_handlers():
         app.add_handler(handler)
 
+    # --------------------------------------
+    # QUESTS / REDEEM
+    # --------------------------------------
+
     for handler in get_quests_redeem_handlers():
         app.add_handler(handler)
+
+    # --------------------------------------
+    # SPAWN SETTINGS
+    # --------------------------------------
 
     for handler in get_spawn_settings_handlers():
         app.add_handler(handler)
 
+    # --------------------------------------
+    # EXTRA COMMANDS
+    # --------------------------------------
+
     for handler in get_extra_handlers():
         app.add_handler(handler)
+
+    # --------------------------------------
+    # INLINE SEARCH
+    # --------------------------------------
 
     for handler in get_inline_search_handlers():
         app.add_handler(handler)
 
-    app.add_handler(CommandHandler("admin", admin_panel_command))
-    app.add_handler(CommandHandler("gban", gban_command))
-    app.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
+    # --------------------------------------
+    # ADMIN
+    # --------------------------------------
+
+    app.add_handler(
+        CommandHandler("admin", admin_panel_command)
+    )
+
+    app.add_handler(
+        CommandHandler("gban", gban_command)
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            admin_callback_handler,
+            pattern="^admin_",
+        )
+    )
+
+    # --------------------------------------
+    # OWNER MASTER
+    # --------------------------------------
 
     for handler in get_master_owner_handlers():
         app.add_handler(handler)
 
-    logger.info("🤖 Bot started successfully...")
-    app.run_polling(drop_pending_updates=True, allowed_updates=["message", "callback_query", "inline_query"])
+    logger.info("NEXUS CATCH BOT started successfully!")
+
+    app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=[
+            "message",
+            "callback_query",
+            "inline_query",
+        ],
+    )
+
 
 if __name__ == "__main__":
     main()
