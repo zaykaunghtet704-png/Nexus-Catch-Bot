@@ -3,3 +3,4 @@ pymongo[srv]
 dnspython
 aiohttp
 pillow
+psutil
