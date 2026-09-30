@@ -1,145 +1,531 @@
+"""
+NEXUS CATCH BOT
+modules/trade_market.py
+
+Commands:
+- /sell
+- /market
+- /buy
+- /fav
+"""
+
+import logging
 from html import escape
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from bson import ObjectId
+from pymongo import ReturnDocument
+
+from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler
+from telegram.ext import (
+    CommandHandler,
+    ContextTypes,
+)
 
-from database import inventory_col, market_col, users_col, db
+from database import (
+    inventory_col,
+    market_col,
+    users_col,
+)
 
-wishlist_col = db["wishlist"]
+logger = logging.getLogger(__name__)
 
-# ── 1. Marketplace & Selling ──────────────────────────────────────────────────
 
-async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/sell [Card ID] [Price in Coins]"""
-    user_id = int(update.effective_user.id)
+# ==========================================
+# HELPERS
+# ==========================================
 
-    if len(context.args) < 2 or not context.args[1].isdigit():
-        await update.message.reply_text(
-            "❌ <b>အသုံးပြုပုံ:</b> <code>/sell [Card ID] [Coins စျေးနှုန်း]</code>\nဥပမာ: <code>/sell 0001 5000</code>",
-            parse_mode=ParseMode.HTML
+def safe_text(value, default="Unknown"):
+    if value is None:
+        value = default
+    return escape(str(value))
+
+
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+# ==========================================
+# SELL COMMAND
+# ==========================================
+
+async def sell_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    message = update.effective_message
+    user = update.effective_user
+
+    if not message or not user:
+        return
+
+    if len(context.args) < 2:
+
+        await message.reply_text(
+            "🛒 <b>SELL CARD</b>\n\n"
+            "အသုံးပြုပုံ:\n"
+            "<code>/sell [Card ID] [Price]</code>\n\n"
+            "ဥပမာ:\n"
+            "<code>/sell 0001 5000</code>",
+            parse_mode=ParseMode.HTML,
         )
         return
 
     card_id = context.args[0]
-    price = int(context.args[1])
+
+    try:
+        price = int(context.args[1])
+    except ValueError:
+        await message.reply_text(
+            "❌ စျေးနှုန်းသည် နံပါတ်ဖြစ်ရပါမည်။"
+        )
+        return
 
     if price <= 0:
-        await update.message.reply_text("❌ စျေးနှုန်းသည် 0 ထက် ကြီးရပါမည်။")
-        return
-
-    item = inventory_col.find_one({"user_id": user_id, "card_id": card_id})
-    if not item:
-        await update.message.reply_text("❌ သင့်ထံတွင် ထို ID ဖြင့် ကတ်မရှိပါ။")
-        return
-
-    # Delete from seller inventory and put into market
-    inventory_col.delete_one({"_id": item["_id"]})
-    market_listing = {
-        "seller_id": user_id,
-        "seller_name": update.effective_user.first_name,
-        "card_id": item["card_id"],
-        "name": item["name"],
-        "anime": item["anime"],
-        "rarity": item["rarity"],
-        "img_url": item.get("img_url"),
-        "price": price
-    }
-    res = market_col.insert_one(market_listing)
-
-    await update.message.reply_text(
-        f"🛒 <b>{item['name']}</b> ကို Market တွင် <b>{price:,} Coins</b> ဖြင့် ရောင်းချရန် တင်လိုက်ပါပြီ!\n"
-        f"Market ID: <code>{res.inserted_id}</code>",
-        parse_mode=ParseMode.HTML
-    )
-
-async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/market - Global Marketplace ကြည့်ရန်"""
-    listings = list(market_col.find().limit(10))
-
-    if not listings:
-        await update.message.reply_text("🛒 <b>Marketplace တွင် လက်ရှိ ရောင်းရန် တင်ထားသော ကတ်များ မရှိသေးပါ။</b>", parse_mode=ParseMode.HTML)
-        return
-
-    text = "🛒 <b>GLOBAL MARKETPLACE</b>\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-    for item in listings:
-        text += (
-            f"🎴 <b>{escape(item['name'])}</b> ({item['rarity']})\n"
-            f"📺 {escape(item['anime'])}\n"
-            f"💰 Price: <b>{item['price']:,} Coins</b> | Seller: {escape(item['seller_name'])}\n"
-            f"🆔 Market ID: <code>{item['_id']}</code>\n\n"
+        await message.reply_text(
+            "❌ စျေးနှုန်းသည် 0 ထက် ကြီးရပါမည်။"
         )
-    text += "ဝယ်ယူရန် <code>/buy [Market ID]</code> ဟု ရိုက်ပါ။"
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-
-async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/buy [Market ID]"""
-    buyer_id = int(update.effective_user.id)
-    if not context.args:
-        await update.message.reply_text("❌ ဝယ်ယူလိုသော Market ID ကို ထည့်ပါ: <code>/buy [Market_ID]</code>", parse_mode=ParseMode.HTML)
         return
 
-    from bson import ObjectId
+    try:
+
+        item = inventory_col.find_one({
+            "user_id": user.id,
+            "card_id": card_id,
+        })
+
+        if not item:
+            await message.reply_text(
+                "❌ သင့် Inventory တွင် ထို Card မရှိပါ။"
+            )
+            return
+
+        # Prevent duplicate listing of same inventory item
+        existing = market_col.find_one({
+            "seller_id": user.id,
+            "inventory_id": item["_id"],
+        })
+
+        if existing:
+            await message.reply_text(
+                "❌ ဒီ Card ကို Market မှာ တင်ထားပြီးပါပြီ။"
+            )
+            return
+
+        listing = {
+            "seller_id": user.id,
+            "seller_name": user.first_name or "Unknown",
+            "inventory_id": item["_id"],
+            "card_id": item.get("card_id"),
+            "name": item.get(
+                "name",
+                item.get("card_name", "Unknown Card"),
+            ),
+            "anime": item.get("anime", "Unknown"),
+            "rarity": item.get("rarity", "Common"),
+            "edition": item.get("edition", "Normal"),
+            "img_url": item.get("img_url"),
+            "price": price,
+        }
+
+        # Insert listing first
+        result = market_col.insert_one(listing)
+
+        try:
+            deleted = inventory_col.delete_one({
+                "_id": item["_id"],
+                "user_id": user.id,
+            })
+
+            if deleted.deleted_count == 0:
+                market_col.delete_one({
+                    "_id": result.inserted_id
+                })
+
+                await message.reply_text(
+                    "❌ Card ပိုင်ဆိုင်မှုကို အတည်မပြုနိုင်ပါ။"
+                )
+                return
+
+        except Exception:
+            market_col.delete_one({
+                "_id": result.inserted_id
+            })
+            raise
+
+        await message.reply_text(
+            "🛒 <b>CARD LISTED SUCCESSFULLY</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🎴 Card: <b>{safe_text(listing['name'])}</b>\n"
+            f"✨ Rarity: {safe_text(listing['rarity'])}\n"
+            f"💰 Price: <b>{price:,} Coins</b>\n"
+            f"🆔 Market ID:\n"
+            f"<code>{result.inserted_id}</code>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━",
+            parse_mode=ParseMode.HTML,
+        )
+
+    except Exception:
+        logger.exception("Sell command error")
+
+        await message.reply_text(
+            "❌ Card ရောင်းချရာတွင် Error ဖြစ်နေပါသည်။"
+        )
+
+
+# ==========================================
+# MARKET COMMAND
+# ==========================================
+
+async def market_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    message = update.effective_message
+
+    if not message:
+        return
+
+    try:
+
+        listings = list(
+            market_col.find().sort("_id", -1).limit(10)
+        )
+
+        if not listings:
+            await message.reply_text(
+                "🛒 <b>GLOBAL MARKETPLACE</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "📭 လက်ရှိ ရောင်းရန်တင်ထားသော Card မရှိသေးပါ။",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        text = (
+            "🛒 <b>GLOBAL MARKETPLACE</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+        )
+
+        for index, item in enumerate(listings, 1):
+
+            name = safe_text(
+                item.get("name", "Unknown Card")
+            )
+
+            anime = safe_text(
+                item.get("anime", "Unknown")
+            )
+
+            rarity = safe_text(
+                item.get("rarity", "Common")
+            )
+
+            seller = safe_text(
+                item.get("seller_name", "Unknown")
+            )
+
+            price = safe_int(item.get("price", 0))
+
+            market_id = safe_text(
+                item.get("_id", "N/A")
+            )
+
+            text += (
+                f"{index}. 🎴 <b>{name}</b>\n"
+                f"📺 {anime}\n"
+                f"✨ {rarity}\n"
+                f"💰 Price: <b>{price:,} Coins</b>\n"
+                f"👤 Seller: {seller}\n"
+                f"🆔 ID: <code>{market_id}</code>\n\n"
+            )
+
+        text += (
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "💡 ဝယ်ယူရန်:\n"
+            "<code>/buy [Market ID]</code>\n\n"
+            "🎴 ရောင်းရန်:\n"
+            "<code>/sell [Card ID] [Price]</code>"
+        )
+
+        await message.reply_text(
+            text,
+            parse_mode=ParseMode.HTML,
+        )
+
+    except Exception:
+        logger.exception("Market command error")
+
+        await message.reply_text(
+            "❌ Market ကို ဖွင့်မရပါ။"
+        )
+
+
+# ==========================================
+# BUY COMMAND
+# ==========================================
+
+async def buy_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    message = update.effective_message
+    user = update.effective_user
+
+    if not message or not user:
+        return
+
+    if not context.args:
+        await message.reply_text(
+            "🛒 <b>BUY CARD</b>\n\n"
+            "အသုံးပြုပုံ:\n"
+            "<code>/buy [Market ID]</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
     try:
         market_id = ObjectId(context.args[0])
-        listing = market_col.find_one({"_id": market_id})
     except Exception:
-        listing = None
-
-    if not listing:
-        await update.message.reply_text("❌ ထို Market ID ဖြင့် ပစ္စည်း ရှာမတွေ့ပါ။")
+        await message.reply_text(
+            "❌ Market ID မှားယွင်းနေပါသည်။"
+        )
         return
 
-    if listing["seller_id"] == buyer_id:
-        await update.message.reply_text("❌ မိမိကိုယ်ပိုင် တင်ရောင်းထားသော ကတ်ကို ပြန်ဝယ်၍ မရပါ။")
+    try:
+
+        # Atomically reserve the listing.
+        # Only one buyer can successfully remove it.
+        listing = market_col.find_one_and_delete({
+            "_id": market_id,
+            "seller_id": {"$ne": user.id},
+        })
+
+        if not listing:
+
+            await message.reply_text(
+                "❌ Market ID မရှိတော့ပါ သို့မဟုတ် "
+                "မိမိ Card ကို ပြန်ဝယ်ရန် ကြိုးစားနေပါသည်။"
+            )
+            return
+
+        price = safe_int(listing.get("price", 0))
+        seller_id = listing.get("seller_id")
+
+        if price <= 0:
+            market_col.insert_one(listing)
+            await message.reply_text(
+                "❌ Listing စျေးနှုန်း မမှန်ပါ။"
+            )
+            return
+
+        buyer = users_col.find_one({
+            "user_id": user.id
+        }) or {}
+
+        # Support both existing balance and legacy coins
+        balance = safe_int(
+            buyer.get("balance", buyer.get("coins", 0))
+        )
+
+        if balance < price:
+
+            market_col.insert_one(listing)
+
+            await message.reply_text(
+                "❌ Coins မလုံလောက်ပါ။\n"
+                f"💰 လိုအပ်ချက်: {price:,}\n"
+                f"💰 လက်ကျန်: {balance:,}"
+            )
+            return
+
+        # Deduct using whichever field the account uses.
+        balance_field = (
+            "balance"
+            if "balance" in buyer
+            else "coins"
+        )
+
+        debit = users_col.update_one(
+            {
+                "user_id": user.id,
+                balance_field: {"$gte": price},
+            },
+            {
+                "$inc": {
+                    balance_field: -price
+                }
+            },
+        )
+
+        if debit.modified_count != 1:
+
+            market_col.insert_one(listing)
+
+            await message.reply_text(
+                "❌ Coins ဖြတ်တောက်မှု မအောင်မြင်ပါ။"
+            )
+            return
+
+        # Credit seller
+        seller = users_col.update_one(
+            {"user_id": seller_id},
+            {
+                "$inc": {
+                    balance_field: price
+                }
+            },
+        )
+
+        if seller.matched_count == 0:
+
+            users_col.update_one(
+                {"user_id": user.id},
+                {"$inc": {balance_field: price}},
+            )
+
+            market_col.insert_one(listing)
+
+            await message.reply_text(
+                "❌ Seller Account မတွေ့ရှိပါ။ "
+                "ငွေပြန်အမ်းပြီးပါပြီ။"
+            )
+            return
+
+        # Transfer card to buyer
+        card = {
+            "user_id": user.id,
+            "card_id": listing.get("card_id"),
+            "name": listing.get("name"),
+            "anime": listing.get("anime"),
+            "rarity": listing.get("rarity"),
+            "edition": listing.get("edition", "Normal"),
+            "img_url": listing.get("img_url"),
+        }
+
+        try:
+            inventory_col.insert_one(card)
+
+        except Exception:
+
+            # Refund buyer and seller
+            users_col.update_one(
+                {"user_id": user.id},
+                {"$inc": {balance_field: price}},
+            )
+
+            users_col.update_one(
+                {"user_id": seller_id},
+                {"$inc": {balance_field: -price}},
+            )
+
+            market_col.insert_one(listing)
+
+            raise
+
+        await message.reply_text(
+            "🎉 <b>PURCHASE SUCCESSFUL!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🎴 Card: <b>{safe_text(listing.get('name'))}</b>\n"
+            f"✨ Rarity: {safe_text(listing.get('rarity'))}\n"
+            f"💰 Paid: <b>{price:,} Coins</b>\n\n"
+            "🃏 Card ကို သင့် Inventory ထဲသို့ ထည့်သွင်းပြီးပါပြီ။\n"
+            "━━━━━━━━━━━━━━━━━━━━",
+            parse_mode=ParseMode.HTML,
+        )
+
+    except Exception:
+        logger.exception("Buy command error")
+
+        await message.reply_text(
+            "❌ ဝယ်ယူရာတွင် Error ဖြစ်နေပါသည်။ "
+            "Owner ထံ ဆက်သွယ်ပါ။"
+        )
+
+
+# ==========================================
+# FAVORITE COMMAND
+# ==========================================
+
+async def fav_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    message = update.effective_message
+    user = update.effective_user
+
+    if not message or not user:
         return
 
-    buyer = users_col.find_one({"user_id": buyer_id}) or {"coins": 0}
-    if buyer.get("coins", 0) < listing["price"]:
-        await update.message.reply_text("❌ သင့်ထံတွင် ဝယ်ယူရန် Coins မလုံလောက်ပါ။")
-        return
-
-    # Transaction
-    users_col.update_one({"user_id": buyer_id}, {"$inc": {"coins": -listing["price"]}})
-    users_col.update_one({"user_id": listing["seller_id"]}, {"$inc": {"coins": listing["price"]}})
-
-    # Add to Buyer Inventory & Remove from Market
-    inventory_col.insert_one({
-        "user_id": buyer_id,
-        "card_id": listing["card_id"],
-        "name": listing["name"],
-        "anime": listing["anime"],
-        "rarity": listing["rarity"],
-        "img_url": listing.get("img_url")
-    })
-    market_col.delete_one({"_id": market_id})
-
-    await update.message.reply_text(
-        f"🎉 <b>{listing['name']}</b> အား <b>{listing['price']:,} Coins</b> ဖြင့် အောင်မြင်စွာ ဝယ်ယူလိုက်ပါပြီ!",
-        parse_mode=ParseMode.HTML
-    )
-
-# ── 2. Favorite & Wishlist ─────────────────────────────────────────────────────
-
-async def fav_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/fav [Card ID] - Profile တွင် ပြသမည့် Favourite Character သတ်မှတ်ရန်"""
-    user_id = int(update.effective_user.id)
     if not context.args:
-        await update.message.reply_text("❌ <code>/fav [Card ID]</code> ဟု ရိုက်ပါ", parse_mode=ParseMode.HTML)
+        await message.reply_text(
+            "🌟 အသုံးပြုပုံ:\n"
+            "<code>/fav [Card ID]</code>",
+            parse_mode=ParseMode.HTML,
+        )
         return
 
     card_id = context.args[0]
-    item = inventory_col.find_one({"user_id": user_id, "card_id": card_id})
-    if not item:
-        await update.message.reply_text("❌ သင့် Inventory ထဲတွင် ထိုကတ် မရှိပါ။")
-        return
 
-    users_col.update_one({"user_id": user_id}, {"$set": {"favorite_card": item["name"]}}, upsert=True)
-    await update.message.reply_text(f"🌟 <b>{item['name']}</b> အား သင့် Favourite Character အဖြစ် သတ်မှတ်လိုက်ပါပြီ!", parse_mode=ParseMode.HTML)
+    try:
+
+        item = inventory_col.find_one({
+            "user_id": user.id,
+            "card_id": card_id,
+        })
+
+        if not item:
+            await message.reply_text(
+                "❌ သင့် Inventory ထဲတွင် ထို Card မရှိပါ။"
+            )
+            return
+
+        card_name = item.get(
+            "name",
+            item.get("card_name", "Unknown Card"),
+        )
+
+        users_col.update_one(
+            {"user_id": user.id},
+            {
+                "$set": {
+                    "favorite_card": card_name,
+                    "favorite_card_id": card_id,
+                }
+            },
+            upsert=True,
+        )
+
+        await message.reply_text(
+            "🌟 <b>FAVORITE UPDATED!</b>\n\n"
+            f"🎴 Character: <b>{safe_text(card_name)}</b>\n"
+            f"🆔 Card ID: <code>{safe_text(card_id)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    except Exception:
+        logger.exception("Favorite command error")
+
+        await message.reply_text(
+            "❌ Favourite ပြောင်းလဲရာတွင် Error ဖြစ်နေပါသည်။"
+        )
+
+
+# ==========================================
+# REGISTER HANDLERS
+# ==========================================
 
 def get_trade_market_handlers():
+
     return [
         CommandHandler("sell", sell_command, block=False),
         CommandHandler("market", market_command, block=False),
         CommandHandler("buy", buy_command, block=False),
-        CommandHandler("fav", fav_command, block=False)
+        CommandHandler("fav", fav_command, block=False),
     ]
