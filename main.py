@@ -2,13 +2,13 @@ import os
 import sys
 import logging
 from telegram import BotCommand
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 # Current Working Directory နှင့် modules folder အား Python Path ထဲသို့ ထည့်သွင်းခြင်း
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules"))
 
-# Modules များ Import ပြုလုပ်ခြင်း (Safe Loading)
+# Safe Imports
 try:
     from modules.start import start_command, help_command
 except ImportError:
@@ -62,7 +62,6 @@ except ImportError:
     except ImportError:
         def get_master_owner_handlers(): return []
 
-# Missing Command များအတွက် extra_commands module မှ Import လုပ်ခြင်း
 try:
     from modules.extra_commands import get_extra_handlers
 except ImportError:
@@ -71,7 +70,6 @@ except ImportError:
     except ImportError:
         def get_extra_handlers(): return []
 
-# Inline Gallery Search Module Import ပြုလုပ်ခြင်း
 try:
     from modules.inline_search import get_inline_search_handlers
 except ImportError:
@@ -89,7 +87,10 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Telegram Bot Menu စာရင်း အလိုအလျောက် သတ်မှတ်ခြင်း
+# Error Handler Function (Bot မရပ်သွားစေရန် ကာကွယ်ပေးသည်)
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Exception while handling an update:", exc_info=context.error)
+
 async def post_init(application: Application):
     commands = [
         BotCommand("start", "Bot ကို စတင်ရန်"),
@@ -116,15 +117,18 @@ def main():
         logger.error("❌ BOT_TOKEN environment variable မတွေ့ရှိပါ။")
         return
 
-    # Application Builder နှင့် post_init တပ်ဆင်ခြင်း
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
-    # Handlers Registrar
+    # Error Handler ထည့်သွင်းခြင်း
+    app.add_error_handler(error_handler)
+
+    # Basic Commands
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("daily", daily_command))
     app.add_handler(CommandHandler("shop", shop_command))
 
+    # Modules Handlers
     for handler in get_game_handlers():
         app.add_handler(handler)
 
@@ -143,11 +147,9 @@ def main():
     for handler in get_spawn_settings_handlers():
         app.add_handler(handler)
 
-    # Extra Commands (/profile, /balance, /top, /ctop, /ranking, /gift, /check)
     for handler in get_extra_handlers():
         app.add_handler(handler)
 
-    # Inline Card Gallery Search (/search & Inline Query)
     for handler in get_inline_search_handlers():
         app.add_handler(handler)
 
@@ -159,9 +161,7 @@ def main():
         app.add_handler(handler)
 
     logger.info("🤖 Bot started successfully...")
-    
-    # drop_pending_updates=True ထည့်သွင်းပေးခြင်းဖြင့် 409 Conflict သို့မဟုတ် Queue ငြိသည့် အမှားများ ကာကွယ်ပေးသည်
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, allowed_updates=["message", "callback_query", "inline_query"])
 
 if __name__ == "__main__":
     main()
