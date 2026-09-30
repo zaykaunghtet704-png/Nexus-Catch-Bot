@@ -36,14 +36,22 @@ RARITY_ICONS = {
     "Supreme": "🌌"
 }
 
+def get_user_doc(user_id: int):
+    """PyMongo Synchronous Safe User Fetch"""
+    try:
+        res = users_col.find_one({"user_id": user_id})
+        return res if res else {}
+    except Exception:
+        return {}
+
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. /chmode (HAREM PREFERENCES SETTINGS)
+# 1. /chmode & /hmode (HAREM PREFERENCES SETTINGS)
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def chmode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Harem Display Mode များကို ပြောင်းလဲသတ်မှတ်ရန် Command"""
     user_id = update.effective_user.id
-    user = await users_col.find_one({"user_id": user_id}) or {}
+    user = get_user_doc(user_id)
 
     mode = user.get("harem_mode", "DETAILED")
     rarity_pref = user.get("harem_rarity_filter", "ALL")
@@ -91,7 +99,10 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif data.startswith("chmode_set_mode_"):
         new_mode = data.split("_")[-1]
-        await users_col.update_one({"user_id": user_id}, {"$set": {"harem_mode": new_mode}}, upsert=True)
+        try:
+            users_col.update_one({"user_id": user_id}, {"$set": {"harem_mode": new_mode}}, upsert=True)
+        except Exception:
+            pass
         await query.edit_message_text(
             f"✅ <b>Harem Interface Set To: {new_mode}</b>",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="chmode_main")]]),
@@ -99,7 +110,6 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
     elif data == "chmode_menu_rarity":
-        # 13 Rarities Menu Layout
         keyboard = [
             [InlineKeyboardButton("♾️ Transcendent", callback_data="chmode_rarity_Transcendent"), InlineKeyboardButton("👁️ Omnipotent", callback_data="chmode_rarity_Omnipotent")],
             [InlineKeyboardButton("🔱 Primordial", callback_data="chmode_rarity_Primordial"), InlineKeyboardButton("🌌 Cosmic", callback_data="chmode_rarity_Cosmic")],
@@ -115,7 +125,10 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif data.startswith("chmode_rarity_"):
         selected_rarity = data.replace("chmode_rarity_", "")
-        await users_col.update_one({"user_id": user_id}, {"$set": {"harem_rarity_filter": selected_rarity}}, upsert=True)
+        try:
+            users_col.update_one({"user_id": user_id}, {"$set": {"harem_rarity_filter": selected_rarity}}, upsert=True)
+        except Exception:
+            pass
 
         keyboard = [
             [InlineKeyboardButton("🐰 Bunny", callback_data="chmode_event_Bunny"), InlineKeyboardButton("🧹 Maid", callback_data="chmode_event_Maid")],
@@ -128,11 +141,17 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif data.startswith("chmode_event_"):
         selected_event = data.replace("chmode_event_", "")
-        await users_col.update_one({"user_id": user_id}, {"$set": {"harem_event_filter": selected_event}}, upsert=True)
+        try:
+            users_col.update_one({"user_id": user_id}, {"$set": {"harem_event_filter": selected_event}}, upsert=True)
+        except Exception:
+            pass
         await query.edit_message_text("✅ <b>Preferences Updated Successfully!</b>\nType /harem to view your updated character list.", parse_mode=ParseMode.HTML)
 
     elif data == "chmode_reset":
-        await users_col.update_one({"user_id": user_id}, {"$set": {"harem_mode": "DETAILED", "harem_rarity_filter": "ALL", "harem_event_filter": "ALL"}}, upsert=True)
+        try:
+            users_col.update_one({"user_id": user_id}, {"$set": {"harem_mode": "DETAILED", "harem_rarity_filter": "ALL", "harem_event_filter": "ALL"}}, upsert=True)
+        except Exception:
+            pass
         await query.edit_message_text("🔄 <b>Preferences Reset To Default!</b>", parse_mode=ParseMode.HTML)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -171,14 +190,17 @@ async def harem_pagination_callback(update: Update, context: ContextTypes.DEFAUL
     await send_harem_page(query.message.chat_id, target_user_id, user_name, page, context, message_id=query.message.message_id)
 
 async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int, context: ContextTypes.DEFAULT_TYPE, message_id: int = None):
-    user_doc = await users_col.find_one({"user_id": user_id}) or {}
+    user_doc = get_user_doc(user_id)
     rarity_filter = user_doc.get("harem_rarity_filter", "ALL")
 
     query_filter = {"user_id": user_id}
     if rarity_filter != "ALL":
         query_filter["rarity"] = {"$regex": rarity_filter, "$options": "i"}
 
-    user_inventory = await inventory_col.find(query_filter).to_list(length=None)
+    try:
+        user_inventory = list(inventory_col.find(query_filter))
+    except Exception:
+        user_inventory = []
 
     if not user_inventory:
         text = "❌ <b>သင့်ထံတွင် Character/Card များ မရှိသေးပါ။</b>\n/claim သို့မဟုတ် /catch ဖြင့် စတင်ဖမ်းယူပါ!"
@@ -212,9 +234,12 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
 
     for anime in page_animes:
         items = anime_groups[anime]
-        total_in_db = await cards_col.count_documents({"anime": anime}) or len(items)
+        try:
+            total_in_db = cards_col.count_documents({"anime": anime}) or len(items)
+        except Exception:
+            total_in_db = len(items)
 
-        text_lines.append(f"☘️ <b>{escape(anime)} ({len(items)}/{total_in_db})</b>")
+        text_lines.append(f"☘️️ <b>{escape(anime)} ({len(items)}/{total_in_db})</b>")
         text_lines.append("--------------------")
 
         # Group duplicate cards
@@ -261,7 +286,7 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
 def get_harem_handlers():
     return [
         CommandHandler("harem", harem_command, block=False),
-        CommandHandler("chmode", chmode_command, block=False),
+        CommandHandler(["chmode", "hmode"], chmode_command, block=False),
         CallbackQueryHandler(chmode_callback, pattern="^chmode_"),
         CallbackQueryHandler(harem_pagination_callback, pattern="^harem_page_")
     ]
