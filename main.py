@@ -71,6 +71,15 @@ except ImportError:
     except ImportError:
         def get_extra_handlers(): return []
 
+# Inline Gallery Search Module Import ပြုလုပ်ခြင်း
+try:
+    from modules.inline_search import get_inline_search_handlers
+except ImportError:
+    try:
+        from inline_search import get_inline_search_handlers
+    except ImportError:
+        def get_inline_search_handlers(): return []
+
 # Logging Setup
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -134,8 +143,12 @@ def main():
     for handler in get_spawn_settings_handlers():
         app.add_handler(handler)
 
-    # Extra Commands (/profile, /balance, /top, /ctop, /ranking, /search, /gift, /check)
+    # Extra Commands (/profile, /balance, /top, /ctop, /ranking, /gift, /check)
     for handler in get_extra_handlers():
+        app.add_handler(handler)
+
+    # Inline Card Gallery Search (/search & Inline Query)
+    for handler in get_inline_search_handlers():
         app.add_handler(handler)
 
     app.add_handler(CommandHandler("admin", admin_panel_command))
