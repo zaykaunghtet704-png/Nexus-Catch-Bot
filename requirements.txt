@@ -1,3 +1,5 @@
-pymongo
-psutil
-python-telegram-bot
+python-telegram-bot>=20.0
+pymongo[srv]
+dnspython
+aiohttp
+pillow
