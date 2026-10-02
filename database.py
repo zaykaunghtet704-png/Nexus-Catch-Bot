@@ -8,7 +8,8 @@ if not MONGO_URI:
     print("⚠️ MONGO_URI မတွေ့ရှိပါ။ Local MongoDB ကို ချိတ်ဆက်ပါမည်။")
     MONGO_URI = "mongodb://localhost:27017"
 
-client = MongoClient(MONGO_URI)
+# 🛑 WriteConcernError မတက်စေရန် w=1 ထည့်သွင်းပေးခြင်း
+client = MongoClient(MONGO_URI, w=1)
 
 # Database Name
 db = client["nexus_catcher_db"]
