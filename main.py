@@ -164,6 +164,9 @@ async def post_init(application: Application) -> None:
         BotCommand("search", "Character ရှာဖွေရန်"),
         BotCommand("gift", "အခြားသူထံ ကတ်လက်ဆောင်ပေးရန်"),
         BotCommand("check", "Character အချက်အလက် စစ်ရန်"),
+        BotCommand("redeem", "Gift Code ထုတ်ယူရန်"),
+        BotCommand("ownerhelp", "Owner အကူအညီ Menu"),
+        BotCommand("adminhelp", "Admin အကူအညီ Menu"),
     ]
 
     await application.bot.set_my_commands(commands)
@@ -201,8 +204,6 @@ def main() -> None:
 
     # --------------------------------------
     # USER COMMANDS
-    # /profile, /search, /top
-    # /market ကို trade_market.py က ကိုင်တွယ်သည်
     # --------------------------------------
 
     for handler in get_user_handlers():
