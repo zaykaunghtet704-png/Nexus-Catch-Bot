@@ -30,9 +30,9 @@ if MODULES_DIR not in sys.path:
 # ==========================================
 
 try:
-    from modules.start import start_command, help_command
+    from modules.start import get_start_handlers
 except ImportError:
-    from start import start_command, help_command
+    from start import get_start_handlers
 
 try:
     from modules.game import get_game_handlers
@@ -100,7 +100,7 @@ try:
     from modules.extra_commands import get_extra_handlers
 except ImportError:
     try:
-        from extra_commands import get_extra_handlers
+        from extra_handlers import get_extra_handlers
     except ImportError:
         def get_extra_handlers():
             return []
@@ -194,11 +194,13 @@ def main() -> None:
     app.add_error_handler(error_handler)
 
     # --------------------------------------
-    # BASIC COMMANDS
+    # START / HELP HANDLERS (With Callbacks)
     # --------------------------------------
 
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("help", help_command))
+    for handler in get_start_handlers():
+        app.add_handler(handler)
+
+    # Basic extra commands (Daily, Shop direct commands)
     app.add_handler(CommandHandler("daily", daily_command))
     app.add_handler(CommandHandler("shop", shop_command))
 
