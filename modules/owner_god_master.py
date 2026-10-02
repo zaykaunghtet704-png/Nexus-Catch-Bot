@@ -205,8 +205,8 @@ async def owner_help_command(
         "<code>/blockgroup [chat_id]</code>\n"
         "<code>/lockdown</code>\n\n"
 
-        "📦 <b>MAINTENANCE</b>\n"
-        "<code>/gencode [code] [coins] [max_uses]</code>\n"
+        "📦 <b>MAINTENANCE & GIFTS</b>\n"
+        "<code>/gencode [code] [coins] [gems] [card_id/none] [max_uses]</code>\n"
         "<code>/cleanghost</code>\n"
         "<code>/dbstats</code>\n"
         "<code>/zipbackup</code>\n\n"
@@ -1096,7 +1096,7 @@ async def emergency_lockdown(
 
 
 # ==========================================
-# GIFT CODES
+# GIFT CODES (GENCODE & REDEEM)
 # ==========================================
 
 async def generate_gift_code(
@@ -1106,19 +1106,25 @@ async def generate_gift_code(
     if not await require_admin(update):
         return
 
-    if len(context.args) < 3:
+    if len(context.args) < 5:
         await send_html(
             update,
-            "အသုံးပြုပုံ: <code>/gencode [code] [coins] [max_uses]</code>",
+            "အသုံးပြုပုံ:\n"
+            "<code>/gencode [code] [coins] [gems] [card_id/none] [max_uses]</code>\n\n"
+            "ဥပမာ:\n"
+            "<code>/gencode BONUS 1000 50 c001 5</code>\n"
+            "(ကတ်မပေးလိုပါက <code>none</code> ဟု ထည့်ပါ)",
         )
         return
 
     try:
         code = context.args[0].upper()
         coins = int(context.args[1])
-        max_uses = int(context.args[2])
+        gems = int(context.args[2])
+        card_id = context.args[3].strip()
+        max_uses = int(context.args[4])
 
-        if coins <= 0 or max_uses <= 0:
+        if coins < 0 or gems < 0 or max_uses <= 0:
             raise ValueError
 
         codes_col.update_one(
@@ -1126,6 +1132,8 @@ async def generate_gift_code(
             {
                 "$set": {
                     "coins": coins,
+                    "gems": gems,
+                    "card_id": card_id if card_id.lower() != "none" else None,
                     "max_uses": max_uses,
                     "used_count": 0,
                     "used_by": [],
@@ -1137,16 +1145,100 @@ async def generate_gift_code(
 
         await send_html(
             update,
-            f"🎁 Code <code>{safe_html(code)}</code> ထုတ်ပြီးပါပြီ။\n"
-            f"💰 Coins: <b>{coins:,}</b>\n"
-            f"👥 Uses: <b>{max_uses}</b>",
+            f"🎁 <b>Gift Code Created!</b>\n\n"
+            f"🔑 Code: <code>{safe_html(code)}</code>\n"
+            f"🪙 Coins: <b>{coins:,}</b>\n"
+            f"💎 Gems: <b>{gems:,}</b>\n"
+            f"🎴 Card ID: <b>{card_id}</b>\n"
+            f"👥 Max Uses: <b>{max_uses}</b>",
         )
 
     except ValueError:
-        await send_html(update, "❌ Coins / Max Uses မှန်ကန်တဲ့ အပေါင်းကိန်းဖြစ်ရပါမည်။")
+        await send_html(update, "❌ ဂဏန်းပမာဏများ မှန်ကန်စွာ ထည့်ပါ။")
     except Exception:
         logger.exception("Generate code failed")
         await send_html(update, "❌ Code ထုတ်ရာတွင် Error ဖြစ်နေပါသည်။")
+
+
+async def redeem_gift_code(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if not context.args:
+        await send_html(
+            update,
+            "အသုံးပြုပုံ: <code>/redeem [code]</code>",
+        )
+        return
+
+    code_name = context.args[0].upper()
+    user_id = get_user_id(update)
+
+    if not user_id:
+        return
+
+    code_doc = codes_col.find_one({"code": code_name})
+    if not code_doc:
+        await send_html(update, "❌ ဤ Code မှာ မမှန်ကန်ပါ သို့မဟုတ် သက်တမ်းကုန်သွားပါပြီ။")
+        return
+
+    used_by_list = code_doc.get("used_by", [])
+    if user_id in used_by_list:
+        await send_html(update, "⚠️ သင်သည် ဤ Code ကို အသုံးပြုပြီးသား ဖြစ်ပါသည်။")
+        return
+
+    if code_doc.get("used_count", 0) >= code_doc.get("max_uses", 0):
+        await send_html(update, "❌ ဤ Code ၏ အသုံးပြုနိုင်သည့် အကြိမ်ရေ ကုန်ဆုံးသွားပါပြီ။")
+        return
+
+    coins = code_doc.get("coins", 0)
+    gems = code_doc.get("gems", 0)
+    card_id = code_doc.get("card_id")
+
+    # User ထံသို့ Coins နှင့် Gems ပေါင်းထည့်ပေးခြင်း
+    users_col.update_one(
+        {"user_id": user_id},
+        {"$inc": {"coins": coins, "gems": gems}},
+        upsert=True,
+    )
+
+    card_msg = ""
+    # ကတ်ပါရှိလျှင် User ၏ Inventory ထဲသို့ ထည့်ပေးခြင်း
+    if card_id:
+        card = cards_col.find_one({
+            "$or": [
+                {"card_id": card_id},
+                {"id": card_id},
+            ]
+        })
+        if card:
+            inventory_col.insert_one({
+                "user_id": user_id,
+                "card_id": card.get("card_id") or card.get("id"),
+                "name": card.get("name"),
+                "anime": card.get("anime"),
+                "rarity": card.get("rarity"),
+                "img_url": card.get("img_url") or card.get("image"),
+                "obtained_at": datetime.utcnow(),
+            })
+            card_msg = f"\n🎴 Card: <b>{safe_html(card.get('name'))} ({safe_html(card.get('rarity'))})</b>"
+
+    # Code သုံးပြီးကြောင်း မှတ်တမ်းတင်ခြင်း
+    codes_col.update_one(
+        {"code": code_name},
+        {
+            "$inc": {"used_count": 1},
+            "$push": {"used_by": user_id},
+        },
+    )
+
+    await send_html(
+        update,
+        f"🎉 <b>Success! Gift Code Redeemed!</b>\n\n"
+        f"🪙 Coins: <b>+{coins:,}</b>\n"
+        f"💎 Gems: <b>+{gems:,}</b>"
+        f"{card_msg}",
+    )
 
 
 # ==========================================
@@ -1453,8 +1545,9 @@ def get_master_owner_handlers():
         CommandHandler("blockgroup", blacklist_group),
         CommandHandler("lockdown", emergency_lockdown),
 
-        # Maintenance
+        # Maintenance & Gifts
         CommandHandler("gencode", generate_gift_code),
+        CommandHandler("redeem", redeem_gift_code),  # User များ redeem လုပ်ရန်
         CommandHandler("cleanghost", clean_ghost_data),
         CommandHandler("dbstats", db_stats_detailed),
         CommandHandler("zipbackup", full_zip_backup),
