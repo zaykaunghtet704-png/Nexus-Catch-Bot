@@ -4,7 +4,7 @@ modules/start.py - Start & Help Module
 from datetime import datetime, timezone
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 from database import chats_col, users_col
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -66,7 +66,65 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/leaderboard` - Top Collectors စာရင်းကြည့်ရန်\n"
         "• `/shop` - Item နှင့် Card Packs ဝယ်ရန်"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    
+    # Message မှ ခေါ်လျှင် သို့မဟုတ် Callback မှ ခေါ်လျှင် နှစ်မျိုးလုံး အလုပ်လုပ်စေရန်
+    if update.message:
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    elif update.callback_query:
+        await update.callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+
+async def start_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start Menu ရှိ Help Menu နှင့် Shop Menu ခလုတ်များအတွက် Handler"""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if data == "help_menu":
+        text = (
+            "📖 <b>NEXUS CATCH BOT - HELP MENU</b>\n"
+            "─────────────────────────\n"
+            "• `/start` - Bot ကို စတင်ရန်\n"
+            "• `/profile` - မိမိ Profile နှင့် Stats ကြည့်ရန်\n"
+            "• `/catch` - Group ထဲတွင် ကတ်ဖမ်းရန်\n"
+            "• `/collection` - ပိုင်ဆိုင်သမျှ ကတ်များကြည့်ရန်\n"
+            "• `/daily` - နေ့စဉ် ဆုလာဘ် (Coins/Gems) ရယူရန်\n"
+            "• `/leaderboard` - Top Collectors စာရင်းကြည့်ရန်\n"
+            "• `/shop` - Item နှင့် Card Packs ဝယ်ရန်"
+        )
+        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_start")]])
+        try:
+            await query.edit_message_text(text, reply_markup=back_keyboard, parse_mode=ParseMode.HTML)
+        except Exception:
+            pass
+
+    elif data == "shop_menu":
+        text = (
+            "💎 <b>NEXUS SHOP & PACKS</b>\n"
+            "─────────────────────────\n"
+            "ဆိုင်အတွင်းမှ Item များနှင့် Card Packs များကို ဝယ်ယူရန် <code>/shop</code> ကို အသုံးပြုပါ။"
+        )
+        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_start")]])
+        try:
+            await query.edit_message_text(text, reply_markup=back_keyboard, parse_mode=ParseMode.HTML)
+        except Exception:
+            pass
+
+    elif data == "back_start":
+        user = update.effective_user
+        bot_username = context.bot.username
+        keyboard = [
+            [InlineKeyboardButton("➕ Add Me To Group", url=f"https://t.me/{bot_username}?startgroup=true")],
+            [InlineKeyboardButton("📖 Help Menu", callback_data="help_menu"), InlineKeyboardButton("💎 Shop", callback_data="shop_menu")]
+        ]
+        text = (
+            f"👋 မင်္ဂလာပါ <b>{user.first_name}</b>!\n\n"
+            f"🃏 ဤသည်မှာ Anime Character ကတ်များ ဖမ်းဆီးခြင်း၊ စုဆောင်းခြင်းနှင့် "
+            f"Collector များ ယှဉ်ပြိုင်ကစားနိုင်သော <b>Nexus Catch Bot</b> ဖြစ်ပါသည်။"
+        )
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except Exception:
+            pass
 
 def get_start_handlers():
     return [
