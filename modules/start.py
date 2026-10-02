@@ -67,3 +67,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/shop` - Item နှင့် Card Packs ဝယ်ရန်"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+def get_start_handlers():
+    return [
+        CommandHandler("start", start_command),
+        CommandHandler("help", help_command),
+        CallbackQueryHandler(start_callback_handler, pattern="^(help_menu|shop_menu|back_start)$")
+    ]
