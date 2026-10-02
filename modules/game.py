@@ -1,15 +1,67 @@
+"""
+NEXUS CATCH BOT
+modules/game.py - Game Spawn, Catch & Collection Module
+"""
+
 import random
 from html import escape
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
 
-from database import cards_col, inventory_col, users_col
+from database import cards_col, inventory_col, users_col, chats_col
 
-# Group တစ်ခုစီ၏ စာရိုက်ရေတွက်မှု Counter
-CHAT_COUNTERS = {}
+# Runtime Memory Trackers
 SPAWNED_CARDS = {}
-SPAWN_THRESHOLD = 100  # စာစောင် ၁၀၀ ပြည့်တိုင်း ကတ်တစ်ကတ် ပေါ်မည်
+
+# Default Spawn Threshold (စာစောင် ၁၀၀ ပြည့်တိုင်း ပုံမှန်ထွက်မည်)
+DEFAULT_SPAWN_THRESHOLD = 100
+
+async def set_spawn_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Group တစ်ခုချင်းစီအတွက် ကတ်ထွက်မည့် စာစောင်ရေ သတ်မှတ်ရန် (/setspawn)"""
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not chat or chat.type == "private":
+        await update.message.reply_text("❌ ဤ Command ကို Group ထဲတွင်သာ အသုံးပြုနိုင်ပါသည်။")
+        return
+
+    # Admin ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+    try:
+        member = await chat.get_member(user.id)
+        if member.status not in ["creator", "administrator"] and user.id != 123456789: # Owner ID ထည့်နိုင်သည်
+            await update.message.reply_text("❌ ဤ Command ကို Group Admin များသာ အသုံးပြုနိုင်ပါသည်။")
+            return
+    except Exception:
+        pass
+
+    if not context.args:
+        await update.message.reply_text(
+            "အသုံးပြုပုံ: <code>/setspawn [number]</code>\n"
+            "ဥပမာ: <code>/setspawn 5</code> (စာ ၅ စောင်ပို့တိုင်း ကတ်ကျမည်)",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    try:
+        threshold = int(context.args[0])
+        if threshold < 1:
+            raise ValueError
+
+        # Database ထဲတွင် Group ၏ spawn_rate သို့မဟုတ် threshold ကို သိမ်းဆည်းခြင်း
+        chats_col.update_one(
+            {"chat_id": chat.id},
+            {"$set": {"spawn_threshold": threshold, "chat_title": chat.title or "Group Chat"}},
+            upsert=True
+        )
+
+        await update.message.reply_text(
+            f"✅ <b>Spawn Settings ပြောင်းလဲပြီးပါပြီ!</b>\n\n"
+            f"ယခု Group အတွက် စာစောင် <b>{threshold}</b> စောင်ပြည့်တိုင်း Character ကတ်တလတ်တလတ် အလိုအလျောက် ပေါ်လာလိမ့်မည်။",
+            parse_mode=ParseMode.HTML
+        )
+    except ValueError:
+        await update.message.reply_text("❌ ကျေးဇူးပြု၍ မှန်ကန်သော ဂဏန်းအပေါင်းကိုသာ ထည့်သွင်းပါ။")
 
 async def message_counter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Group ထဲတွင် စာရိုက်ပါက ကတ်အလိုအလျောက် ပေါ်စေမည့် Logic"""
@@ -17,10 +69,17 @@ async def message_counter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     chat_id = update.effective_chat.id
-    CHAT_COUNTERS[chat_id] = CHAT_COUNTERS.get(chat_id, 0) + 1
+    
+    # Database မှ Group ၏ သတ်မှတ်ထားသော Threshold ကို ယူခြင်း (မရှိလျှင် Default 100)
+    chat_doc = chats_col.find_one({"chat_id": chat_id}) or {}
+    threshold = chat_doc.get("spawn_threshold", DEFAULT_SPAWN_THRESHOLD)
 
-    if CHAT_COUNTERS[chat_id] >= SPAWN_THRESHOLD:
-        CHAT_COUNTERS[chat_id] = 0
+    # Counter တိုးမြှင့်ခြင်း
+    current_count = chat_doc.get("message_count", 0) + 1
+
+    if current_count >= threshold:
+        # Counter ကို 0 သို့ ပြန်ပြောင်းခြင်း
+        chats_col.update_one({"chat_id": chat_id}, {"$set": {"message_count": 0}}, upsert=True)
         
         try:
             pipeline = [{"$sample": {"size": 1}}]
@@ -42,14 +101,21 @@ async def message_counter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
         try:
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=card.get("img_url"),
-                caption=caption,
-                parse_mode=ParseMode.HTML
-            )
+            img_url = card.get("img_url") or card.get("image")
+            if img_url:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=img_url,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await context.bot.send_message(chat_id=chat_id, text=caption, parse_mode=ParseMode.HTML)
         except Exception:
             pass
+    else:
+        # လက်ရှိ Count ကို DB ထဲ ဆက်သိမ်းထားမည်
+        chats_col.update_one({"chat_id": chat_id}, {"$set": {"message_count": current_count}}, upsert=True)
 
 async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """ပေါ်နေသော ကတ်ကို ဖမ်းယူသည့် Command"""
@@ -72,17 +138,18 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if guess_name == actual_name:
         del SPAWNED_CARDS[chat_id]
 
+        card_id = actual_card.get("card_id") or actual_card.get("id")
         inv_item = {
             "user_id": user_id,
-            "card_id": actual_card.get("id"),
+            "card_id": card_id,
             "name": actual_card.get("name"),
             "anime": actual_card.get("anime"),
             "rarity": actual_card.get("rarity"),
-            "img_url": actual_card.get("img_url")
+            "img_url": actual_card.get("img_url") or actual_card.get("image")
         }
         try:
             inventory_col.insert_one(inv_item)
-            users_col.update_one({"user_id": user_id}, {"$inc": {"coins": 100, "xp": 10}}, upsert=True)
+            users_col.update_one({"user_id": user_id}, {"$inc": {"balance": 100, "xp": 10}}, upsert=True)
         except Exception:
             pass
 
@@ -124,8 +191,9 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 def get_game_handlers():
     return [
+        CommandHandler("setspawn", set_spawn_threshold, block=False),
         CommandHandler(["catch", "roll"], catch_command, block=False),
         CommandHandler("collection", collection_command, block=False),
         CommandHandler("leaderboard", leaderboard_command, block=False),
-        MessageHandler(filters.TEXT & (~filters.COMMAND), message_counter, block=False)
+        MessageHandler(filters.TEXT & (~filters.COMMAND) & (~filters.ChatType.PRIVATE), message_counter, block=False)
     ]
