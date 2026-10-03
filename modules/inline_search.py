@@ -66,18 +66,21 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Button Callbacks for Search"""
+    """Inline Messages Callback Handler"""
     query = update.callback_query
     await query.answer()
 
     data = query.data
-    chat_id = update.effective_chat.id if update.effective_chat else None
 
     if data.startswith("search_gc_"):
         cid = data.replace("search_gc_", "")
         card = cards_col.find_one({"$or": [{"card_id": cid}, {"id": cid}]}) or {}
         
-        chat_count = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}], "chat_id": chat_id}) if chat_id else 0
+        chat_id = update.effective_chat.id if update.effective_chat else None
+        if chat_id:
+            chat_count = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}], "chat_id": chat_id})
+        else:
+            chat_count = 0
         
         new_text = (
             f"<b>OwO! Check out this character!</b>\n\n"
@@ -86,7 +89,19 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             f"(✨ <b>RARITY: {card.get('rarity', 'Common')}</b>)\n\n"
             f"🏠 <b>CAUGHT IN THIS CHAT:</b> {chat_count} TIMES"
         )
-        await query.edit_message_caption(caption=new_text, parse_mode=ParseMode.HTML, reply_markup=query.message.reply_markup)
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🏠 GROUP CATCH", callback_data=f"search_gc_{cid}"),
+                InlineKeyboardButton("🌍 GLOBAL CATCH", callback_data=f"search_glob_{cid}")
+            ]
+        ])
+
+        await query.edit_message_caption(
+            caption=new_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
+        )
 
     elif data.startswith("search_glob_"):
         cid = data.replace("search_glob_", "")
@@ -94,7 +109,7 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         
         global_count = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}]})
 
-        # Top 10 Global Catchers စာရင်း ထုတ်ယူခြင်း
+        # Top 10 Global Catchers
         pipeline = [
             {"$match": {"$or": [{"card_id": cid}, {"id": cid}]}},
             {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
@@ -123,7 +138,19 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             f"🎖️ <b>TOP 10 GLOBAL CATCHERS OF THIS CHARACTER:</b>\n"
             f"{top_str}"
         )
-        await query.edit_message_caption(caption=new_text, parse_mode=ParseMode.HTML, reply_markup=query.message.reply_markup)
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🏠 GROUP CATCH", callback_data=f"search_gc_{cid}"),
+                InlineKeyboardButton("🌍 GLOBAL CATCH", callback_data=f"search_glob_{cid}")
+            ]
+        ])
+
+        await query.edit_message_caption(
+            caption=new_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
+        )
 
 
 def get_inline_search_handlers():
