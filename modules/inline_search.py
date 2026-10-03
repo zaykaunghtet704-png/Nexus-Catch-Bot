@@ -5,7 +5,7 @@ from html import escape
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultPhoto
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
-from database import cards_col, inventory_col, users_col
+from database import cards_col, inventory_col, users_col, chats_col
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,17 +71,45 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
 
     data = query.data
+    chat_instance = query.chat_instance
+
+    # Chat ID နှင့် Chat Instance တို့ကို Database တွင် ချိတ်ဆက်သိမ်းဆည်းခြင်း
+    chat_id = update.effective_chat.id if update.effective_chat else None
+
+    if chat_id and chat_instance:
+        chats_col.update_one(
+            {"chat_id": chat_id},
+            {"$set": {"chat_instance": chat_instance}},
+            upsert=True
+        )
+        chats_col.update_one(
+            {"chat_instance": chat_instance},
+            {"$set": {"chat_id": chat_id}},
+            upsert=True
+        )
+    elif not chat_id and chat_instance:
+        chat_doc = chats_col.find_one({"chat_instance": chat_instance})
+        if chat_doc:
+            chat_id = chat_doc.get("chat_id")
 
     if data.startswith("search_gc_"):
         cid = data.replace("search_gc_", "")
         card = cards_col.find_one({"$or": [{"card_id": cid}, {"id": cid}]}) or {}
         
-        chat_id = update.effective_chat.id if update.effective_chat else None
+        # Group အတွင်း ဖမ်းဆီးထားသော အရေအတွက်ကို စစ်ဆေးခြင်း
         if chat_id:
-            chat_count = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}], "chat_id": chat_id})
+            chat_count = inventory_col.count_documents({
+                "$or": [{"card_id": cid}, {"id": cid}],
+                "$or": [{"chat_id": chat_id}, {"chat_instance": chat_instance}]
+            })
+        elif chat_instance:
+            chat_count = inventory_col.count_documents({
+                "$or": [{"card_id": cid}, {"id": cid}],
+                "chat_instance": chat_instance
+            })
         else:
             chat_count = 0
-        
+
         new_text = (
             f"<b>OwO! Check out this character!</b>\n\n"
             f"<b>{escape(card.get('anime', 'N/A'))}</b>\n"
@@ -109,7 +137,7 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         
         global_count = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}]})
 
-        # Top 10 Global Catchers
+        # Top 10 Global Catchers စာရင်း
         pipeline = [
             {"$match": {"$or": [{"card_id": cid}, {"id": cid}]}},
             {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
