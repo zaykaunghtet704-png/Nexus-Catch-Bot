@@ -1,10 +1,11 @@
 """
 modules/inline_search.py - Inline Query & Search Functionality
 """
+from html import escape
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultPhoto
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
-from database import cards_col, inventory_col
+from database import cards_col, inventory_col, users_col
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -31,8 +32,8 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     results = []
     for card in cards:
         cid = str(card.get("card_id") or card.get("id") or card.get("_id"))
-        name = card.get("name", "Unknown")
-        anime = card.get("anime", "Unknown")
+        name = escape(card.get("name", "Unknown"))
+        anime = escape(card.get("anime", "Unknown"))
         rarity = card.get("rarity", "Common")
         img_url = card.get("img_url") or card.get("image") or "https://via.placeholder.com/300"
 
@@ -80,8 +81,8 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         
         new_text = (
             f"<b>OwO! Check out this character!</b>\n\n"
-            f"<b>{card.get('anime', 'N/A')}</b>\n"
-            f"<b>{cid}: {card.get('name', 'N/A')}</b>\n"
+            f"<b>{escape(card.get('anime', 'N/A'))}</b>\n"
+            f"<b>{cid}: {escape(card.get('name', 'N/A'))}</b>\n"
             f"(✨ <b>RARITY: {card.get('rarity', 'Common')}</b>)\n\n"
             f"🏠 <b>CAUGHT IN THIS CHAT:</b> {chat_count} TIMES"
         )
@@ -92,14 +93,35 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         card = cards_col.find_one({"$or": [{"card_id": cid}, {"id": cid}]}) or {}
         
         global_count = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}]})
-        
+
+        # Top 10 Global Catchers စာရင်း ထုတ်ယူခြင်း
+        pipeline = [
+            {"$match": {"$or": [{"card_id": cid}, {"id": cid}]}},
+            {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 10}
+        ]
+        top_catchers_raw = list(inventory_col.aggregate(pipeline))
+
+        top_lines = []
+        for item in top_catchers_raw:
+            uid = item["_id"]
+            cnt = item["count"]
+            u_doc = users_col.find_one({"user_id": uid}) or {}
+            uname = escape(u_doc.get("first_name", f"User {uid}"))
+            top_lines.append(f"⇒ {uname} (<code>{uid}</code>) x{cnt}")
+
+        top_str = "\n".join(top_lines) if top_lines else "မရှိသေးပါ။"
+
         new_text = (
             f"<b>OwO! Check out this character!</b>\n\n"
-            f"<b>{card.get('anime', 'N/A')}</b>\n"
-            f"<b>{cid}: {card.get('name', 'N/A')}</b>\n"
+            f"<b>{escape(card.get('anime', 'N/A'))}</b>\n"
+            f"<b>{cid}: {escape(card.get('name', 'N/A'))}</b>\n"
             f"(✨ <b>RARITY: {card.get('rarity', 'Common')}</b>)\n\n"
             f"💰 <b>VALUE:</b> 280 ~ 500 Coins\n"
-            f"🌍 <b>CAUGHT GLOBALLY:</b> {global_count} TIMES"
+            f"🌍 <b>CAUGHT GLOBALLY:</b> {global_count} TIMES\n\n"
+            f"🎖️ <b>TOP 10 GLOBAL CATCHERS OF THIS CHARACTER:</b>\n"
+            f"{top_str}"
         )
         await query.edit_message_caption(caption=new_text, parse_mode=ParseMode.HTML, reply_markup=query.message.reply_markup)
 
