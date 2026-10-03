@@ -2,16 +2,14 @@
 modules/handlers.py - User Profile, Check & Balance Handlers
 """
 import math
-from datetime import datetime
 from html import escape
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
-from database import users_col, inventory_col, cards_col, chats_col
+from database import users_col, inventory_col, cards_col
 
 
 def get_coins_and_gems(user_doc: dict):
-    """Coins နှင့် Balance နာမည်ကွဲပြားမှုများကို ပေါင်းစည်းစစ်ဆေးခြင်း"""
     coins = user_doc.get("coins")
     if coins is None:
         coins = user_doc.get("balance", 0)
@@ -20,7 +18,6 @@ def get_coins_and_gems(user_doc: dict):
 
 
 def calculate_level(xp: int):
-    """XP အလိုက် Level နှင့် Progress Bar တွက်ချက်ခြင်း"""
     level = int(math.sqrt(xp / 10)) if xp > 0 else 1
     current_level_xp = (level ** 2) * 10
     next_level_xp = ((level + 1) ** 2) * 10
@@ -33,12 +30,11 @@ def calculate_level(xp: int):
 
 
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/profile Command - Rarity Tier များအားလုံး အပြည့်အစုံဖြင့် ပြသခြင်း"""
+    """/profile Command - Rarity Tier (၁၃) ခု အစဉ်လိုက် ပြသခြင်း"""
     user = update.effective_user
     target_user_id = user.id
     target_first_name = user.first_name
 
-    # Reply လုပ်ထားသော User သို့မဟုတ် Arg မှ ID စစ်ဆေးခြင်း
     if update.message and update.message.reply_to_message:
         target_user_id = update.message.reply_to_message.from_user.id
         target_first_name = update.message.reply_to_message.from_user.first_name
@@ -55,30 +51,26 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     xp = user_doc.get("xp", 0)
     level, bar = calculate_level(xp)
 
-    # Collection Stats
     total_cards = inventory_col.count_documents({"user_id": target_user_id})
     unique_cards = len(inventory_col.distinct("card_id", {"user_id": target_user_id}))
     total_global_cards = cards_col.count_documents({}) or 1
     harem_pct = (unique_cards / total_global_cards) * 100
 
-    # Rarity List (သတ်မှတ်ထားသော Tier များ အားလုံး)
+    # Rarity (၁၃) ခု အမြင့်ဆုံးမှ အနိမ့်ဆုံး အစီအစဉ်အတိုင်း Emoji များနှင့်တကွ
     rarity_list = [
-        ("Transcendent", "♾️"),
-        ("Omnipotent", "👁️"),
-        ("Primordial", "🔱"),
-        ("Cosmic", "🌌"),
-        ("Immortal", "👑"),
-        ("Divine", "⚜️"),
+        ("Premium Edition", "👑"),
+        ("Supreme", "🌀"),
+        ("Cataphract", "⚔️"),
+        ("CrossVerse", "💎"),
+        ("Divine", "⚜️️"),
+        ("Mystical", "🔥"),
         ("Ancient", "📜"),
-        ("Mythic", "🔥"),
+        ("Mythic", "🔴"),
         ("Legendary", "🏆"),
         ("Epic", "✨"),
         ("Rare", "🎁"),
-        ("Uncommon", "🟣"),
-        ("Common", "⚪"),
-        ("CrossVerse", "🔮"),
-        ("Cataphract", "⚔️"),
-        ("Supreme", "🌀")
+        ("Uncommon", "🔮"),
+        ("Common", "🧊")
     ]
 
     rarity_lines = []
@@ -86,7 +78,6 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         count = inventory_col.count_documents({"user_id": target_user_id, "rarity": r_name})
         rarity_lines.append(f"├─► {r_emoji} <b>RARITY: {r_name}: {count}</b>")
 
-    # Global Position
     pipeline = [
         {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}}
@@ -118,7 +109,7 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/check [card_id] Command - Character အသေးစိတ် အချက်အလက်ကြည့်ရန်"""
+    """/check [card_id] Command"""
     if not context.args:
         await update.message.reply_text("အသုံးပြုပုံ: <code>/check [card_id]</code>", parse_mode=ParseMode.HTML)
         return
@@ -136,10 +127,8 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rarity = card.get("rarity", "Common")
     img_url = card.get("img_url") or card.get("image")
 
-    # Global Caught Count
     global_caught = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}]})
 
-    # Top 10 Catchers
     pipeline = [
         {"$match": {"$or": [{"card_id": cid}, {"id": cid}]}},
         {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
