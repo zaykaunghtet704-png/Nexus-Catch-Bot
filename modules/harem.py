@@ -8,33 +8,21 @@ from database import inventory_col, users_col, cards_col
 
 PAGE_SIZE = 10  # စာမျက်နှာတစ်ခုတွင် ပြသမည့် Anime / Rarity အရေအတွက်
 
-# ── Rarity Icons & Emoji Mapping (All 13 Rarities + Custom Tiers) ────────────
+# ── Rarity Icons & Emoji Mapping (Exact 13 Rarities) ────────────
 RARITY_ICONS = {
-    "⚪ Common": "🧊",
-    "🟢 Uncommon": "🔮",
-    "🔵 Rare": "🎁",
-    "🟣 Epic": "✨",
-    "🟡 Legendary": "🏆",
-    "🔴 Mythic": "🔥",
-    "🟠 Ancient": "📜",
-    "Divine": "⚜️",
-    "Immortal": "👑",
-    "Cosmic": "🌌",
-    "Primordial": "🔱",
-    "Omnipotent": "👁️",
-    "Transcendent": "♾️",
-    # Fallback / Custom Matching
-    "Common": "🧊",
-    "Uncommon": "🔮",
-    "Rare": "🎁",
-    "Epic": "✨",
-    "Legendary": "🏆",
-    "Mythic": "🔥",
-    "Ancient": "📜",
+    "Premium Edition": "👑",
+    "Supreme": "🌀",
+    "Cataphract": "⚔️",
     "CrossVerse": "💎",
-    "Cataphract": "⚔️️",
-    "Supreme": "🔮",
-    "Mystical": "🔥"
+    "Divine": "⚜️",
+    "Mystical": "🔥",
+    "Ancient": "📜",
+    "Mythic": "🔴",
+    "Legendary": "🏆",
+    "Epic": "✨",
+    "Rare": "🎁",
+    "Uncommon": "🔮",
+    "Common": "🧊"
 }
 
 def get_user_doc(user_id: int):
@@ -126,21 +114,29 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     header = get_header(context)
 
     if data == "chmode_close":
-        await query.message.delete()
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
         return
 
     elif data == "chmode_menu_rarity":
         text = f"{header}<b>❄️ CHOOSE YOUR PREFERRED RARITY</b>"
-        # Rarity အဆင့် (၁၃) မျိုးစလုံး အပြည့်အစုံ ပါဝင်သော Keyboard Grid Layout
+        # Rarity (၁၃) မျိုး အထက်မှ အောက် အစဉ်လိုက် တစ်တန်းစီ ပြသသော Buttons
         keyboard = [
-            [InlineKeyboardButton("♾️ Transcendent", callback_data="chmode_rarity_Transcendent"), InlineKeyboardButton("👁️ Omnipotent", callback_data="chmode_rarity_Omnipotent")],
-            [InlineKeyboardButton("🔱 Primordial", callback_data="chmode_rarity_Primordial"), InlineKeyboardButton("🌌 Cosmic", callback_data="chmode_rarity_Cosmic")],
-            [InlineKeyboardButton("👑 Immortal", callback_data="chmode_rarity_Immortal"), InlineKeyboardButton("⚜️ Divine", callback_data="chmode_rarity_Divine")],
-            [InlineKeyboardButton("📜 Ancient", callback_data="chmode_rarity_Ancient"), InlineKeyboardButton("🔥 Mythic", callback_data="chmode_rarity_Mythic")],
-            [InlineKeyboardButton("🏆 Legendary", callback_data="chmode_rarity_Legendary"), InlineKeyboardButton("✨ Epic", callback_data="chmode_rarity_Epic")],
-            [InlineKeyboardButton("🎁 Rare", callback_data="chmode_rarity_Rare"), InlineKeyboardButton("🔮 Uncommon", callback_data="chmode_rarity_Uncommon")],
-            [InlineKeyboardButton("🧊 Common", callback_data="chmode_rarity_Common"), InlineKeyboardButton("💎 CrossVerse", callback_data="chmode_rarity_CrossVerse")],
-            [InlineKeyboardButton("⚔️ Cataphract", callback_data="chmode_rarity_Cataphract"), InlineKeyboardButton("🔮 Supreme", callback_data="chmode_rarity_Supreme")],
+            [InlineKeyboardButton("👑 RARITY: Premium Edition", callback_data="chmode_rarity_Premium Edition")],
+            [InlineKeyboardButton("🌀 RARITY: Supreme", callback_data="chmode_rarity_Supreme")],
+            [InlineKeyboardButton("⚔️ RARITY: Cataphract", callback_data="chmode_rarity_Cataphract")],
+            [InlineKeyboardButton("💎 RARITY: CrossVerse", callback_data="chmode_rarity_CrossVerse")],
+            [InlineKeyboardButton("⚜️ RARITY: Divine", callback_data="chmode_rarity_Divine")],
+            [InlineKeyboardButton("🔥 RARITY: Mystical", callback_data="chmode_rarity_Mystical")],
+            [InlineKeyboardButton("📜 RARITY: Ancient", callback_data="chmode_rarity_Ancient")],
+            [InlineKeyboardButton("🔴 RARITY: Mythic", callback_data="chmode_rarity_Mythic")],
+            [InlineKeyboardButton("🏆 RARITY: Legendary", callback_data="chmode_rarity_Legendary")],
+            [InlineKeyboardButton("✨ RARITY: Epic", callback_data="chmode_rarity_Epic")],
+            [InlineKeyboardButton("🎁 RARITY: Rare", callback_data="chmode_rarity_Rare")],
+            [InlineKeyboardButton("🔮 RARITY: Uncommon", callback_data="chmode_rarity_Uncommon")],
+            [InlineKeyboardButton("🧊 RARITY: Common", callback_data="chmode_rarity_Common")],
             [InlineKeyboardButton("⏩ Skip Rarity", callback_data="chmode_rarity_ALL")],
             [InlineKeyboardButton("📊 CLOSE", callback_data="chmode_close")]
         ]
@@ -196,10 +192,13 @@ async def harem_pagination_callback(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     data = query.data
 
+    if data == "harem_count_info":
+        await query.answer("⛩️ ဤသည်မှာ သင်ပိုင်ဆိုင်သော စုစုပေါင်း Character အရေအတွက် ဖြစ်ပါသည်။", show_alert=True)
+        return
+
     if not data.startswith("harem_page_"):
         return
 
-    await query.answer()
     parts = data.split("_")
     target_user_id = int(parts[2])
     page = int(parts[3])
@@ -208,6 +207,7 @@ async def harem_pagination_callback(update: Update, context: ContextTypes.DEFAUL
         await query.answer("❌ ဤ Harem သည် အခြားသူ၏ Inventory ဖြစ်ပါသည်။", show_alert=True)
         return
 
+    await query.answer()
     user_name = escape(query.from_user.first_name)
     await send_harem_page(query.message.chat_id, target_user_id, user_name, page, context, message_id=query.message.message_id)
 
@@ -227,7 +227,10 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
     if not user_inventory:
         text = "❌ <b>သင့်ထံတွင် Character/Card များ မရှိသေးပါ။</b>\n/claim သို့မဟုတ် /catch ဖြင့် စတင်ဖမ်းယူပါ!"
         if message_id:
-            await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode=ParseMode.HTML)
+            try:
+                await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
         else:
             await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
         return
@@ -274,7 +277,7 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
             card_counts[key] = card_counts.get(key, 0) + 1
 
         for (c_id, c_name, c_rarity), count in card_counts.items():
-            icon = RARITY_ICONS.get(c_rarity, "⚜️")
+            icon = RARITY_ICONS.get(c_rarity, "🧊")
             text_lines.append(f"<code>{c_id}</code> | {icon} | <b>{escape(c_name)}</b> (x{count})")
 
         text_lines.append("")
@@ -297,7 +300,10 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
     keyboard = InlineKeyboardMarkup(buttons)
 
     if message_id:
-        await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text_body, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        try:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text_body, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        except Exception:
+            pass
     else:
         await context.bot.send_message(chat_id=chat_id, text=text_body, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
@@ -310,5 +316,5 @@ def get_harem_handlers():
         CommandHandler("harem", harem_command, block=False),
         CommandHandler(["chmode", "hmode"], chmode_command, block=False),
         CallbackQueryHandler(chmode_callback, pattern="^chmode_"),
-        CallbackQueryHandler(harem_pagination_callback, pattern="^harem_page_")
+        CallbackQueryHandler(harem_pagination_callback, pattern="^(harem_page_|harem_count_info)")
     ]
