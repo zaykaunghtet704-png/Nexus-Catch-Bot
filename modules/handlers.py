@@ -33,7 +33,7 @@ def calculate_level(xp: int):
 
 
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/profile Command - ပုံစံသစ်ဖြင့် ပြသခြင်း"""
+    """/profile Command - Rarity Tier များအားလုံး အပြည့်အစုံဖြင့် ပြသခြင်း"""
     user = update.effective_user
     target_user_id = user.id
     target_first_name = user.first_name
@@ -61,24 +61,30 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_global_cards = cards_col.count_documents({}) or 1
     harem_pct = (unique_cards / total_global_cards) * 100
 
-    # Rarity Breakdown
+    # Rarity List (သတ်မှတ်ထားသော Tier များ အားလုံး)
     rarity_list = [
-        ("Supreme", "🌀"),
-        ("Cataphract", "🦁"),
-        ("CrossVerse", "🔮"),
-        ("Divine", "🦅"),
-        ("Mystical", "🐉"),
-        ("Legendary", "📦"),
+        ("Transcendent", "♾️"),
+        ("Omnipotent", "👁️"),
+        ("Primordial", "🔱"),
+        ("Cosmic", "🌌"),
+        ("Immortal", "👑"),
+        ("Divine", "⚜️"),
+        ("Ancient", "📜"),
+        ("Mythic", "🔥"),
+        ("Legendary", "🏆"),
+        ("Epic", "✨"),
         ("Rare", "🎁"),
         ("Uncommon", "🟣"),
-        ("Common", "⚪")
+        ("Common", "⚪"),
+        ("CrossVerse", "🔮"),
+        ("Cataphract", "⚔️"),
+        ("Supreme", "🌀")
     ]
 
     rarity_lines = []
     for r_name, r_emoji in rarity_list:
         count = inventory_col.count_documents({"user_id": target_user_id, "rarity": r_name})
-        if count > 0 or r_name in ["Common", "Uncommon", "Rare", "Legendary"]:
-            rarity_lines.append(f"├─► {r_emoji} <b>RARITY: {r_name}: {count}</b>")
+        rarity_lines.append(f"├─► {r_emoji} <b>RARITY: {r_name}: {count}</b>")
 
     # Global Position
     pipeline = [
