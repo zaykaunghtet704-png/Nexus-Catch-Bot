@@ -4,10 +4,11 @@ modules/inline_search.py - Inline Query & Search Functionality
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultPhoto
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
-from database import cards_col, inventory_col  # သင့် database connection အတိုင်း ပြင်ပါ
+from database import cards_col, inventory_col
+
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/search ရိုက်ပါက Inline Search Button ပြပေးခြင်း"""
+    """/search Command"""
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔎 SEARCH CHARACTERS", switch_inline_query_current_chat="")]
     ])
@@ -17,11 +18,11 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML
     )
 
+
 async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inline Mode တွင် ကတ်များ Gallery ပုံစံ ပြသပေးခြင်း"""
+    """Inline Mode Search Logic"""
     query = update.inline_query.query.strip()
     
-    # Query အလိုက် ရှာခြင်း (ဘာမှမရိုက်ထားလျှင် အကုန်ပြမည်)
     if query:
         cards = list(cards_col.find({"name": {"$regex": query, "$options": "i"}}).limit(50))
     else:
@@ -29,7 +30,7 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     results = []
     for card in cards:
-        card_id = str(card.get("_id"))
+        cid = str(card.get("card_id") or card.get("id") or card.get("_id"))
         name = card.get("name", "Unknown")
         anime = card.get("anime", "Unknown")
         rarity = card.get("rarity", "Common")
@@ -38,20 +39,20 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         caption = (
             f"<b>OwO! Check out this character!</b>\n\n"
             f"<b>{anime}</b>\n"
-            f"<b>{name}</b>\n"
+            f"<b>{cid}: {name}</b>\n"
             f"(✨ <b>RARITY: {rarity}</b>)"
         )
 
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🏠 GROUP CATCH", callback_data=f"search_gc_{card_id}"),
-                InlineKeyboardButton("🌍 GLOBAL CATCH", callback_data=f"search_glob_{card_id}")
+                InlineKeyboardButton("🏠 GROUP CATCH", callback_data=f"search_gc_{cid}"),
+                InlineKeyboardButton("🌍 GLOBAL CATCH", callback_data=f"search_glob_{cid}")
             ]
         ])
 
         results.append(
             InlineQueryResultPhoto(
-                id=card_id,
+                id=cid,
                 photo_url=img_url,
                 thumbnail_url=img_url,
                 caption=caption,
@@ -62,8 +63,9 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await update.inline_query.answer(results, cache_time=1)
 
+
 async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """GROUP CATCH နှင့် GLOBAL CATCH Button များ နှိပ်သည့်အခါ စာသားပြောင်းပေးခြင်း"""
+    """Button Callbacks for Search"""
     query = update.callback_query
     await query.answer()
 
@@ -71,36 +73,36 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     chat_id = update.effective_chat.id if update.effective_chat else None
 
     if data.startswith("search_gc_"):
-        card_id = data.replace("search_gc_", "")
-        card = cards_col.find_one({"_id": card_id}) or {}
+        cid = data.replace("search_gc_", "")
+        card = cards_col.find_one({"$or": [{"card_id": cid}, {"id": cid}]}) or {}
         
-        # Chat အလိုက် Catch စာရင်း စစ်ဆေးခြင်း
-        chat_count = inventory_col.count_documents({"card_id": card_id, "chat_id": chat_id}) if chat_id else 0
+        chat_count = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}], "chat_id": chat_id}) if chat_id else 0
         
         new_text = (
             f"<b>OwO! Check out this character!</b>\n\n"
             f"<b>{card.get('anime', 'N/A')}</b>\n"
-            f"<b>{card.get('name', 'N/A')}</b>\n"
+            f"<b>{cid}: {card.get('name', 'N/A')}</b>\n"
             f"(✨ <b>RARITY: {card.get('rarity', 'Common')}</b>)\n\n"
             f"🏠 <b>CAUGHT IN THIS CHAT:</b> {chat_count} TIMES"
         )
         await query.edit_message_caption(caption=new_text, parse_mode=ParseMode.HTML, reply_markup=query.message.reply_markup)
 
     elif data.startswith("search_glob_"):
-        card_id = data.replace("search_glob_", "")
-        card = cards_col.find_one({"_id": card_id}) or {}
+        cid = data.replace("search_glob_", "")
+        card = cards_col.find_one({"$or": [{"card_id": cid}, {"id": cid}]}) or {}
         
-        global_count = inventory_col.count_documents({"card_id": card_id})
+        global_count = inventory_col.count_documents({"$or": [{"card_id": cid}, {"id": cid}]})
         
         new_text = (
             f"<b>OwO! Check out this character!</b>\n\n"
             f"<b>{card.get('anime', 'N/A')}</b>\n"
-            f"<b>{card.get('name', 'N/A')}</b>\n"
+            f"<b>{cid}: {card.get('name', 'N/A')}</b>\n"
             f"(✨ <b>RARITY: {card.get('rarity', 'Common')}</b>)\n\n"
-            f"💰 <b>VALUE:</b> 280 ~ 500 CCT\n"
+            f"💰 <b>VALUE:</b> 280 ~ 500 Coins\n"
             f"🌍 <b>CAUGHT GLOBALLY:</b> {global_count} TIMES"
         )
         await query.edit_message_caption(caption=new_text, parse_mode=ParseMode.HTML, reply_markup=query.message.reply_markup)
+
 
 def get_inline_search_handlers():
     return [
