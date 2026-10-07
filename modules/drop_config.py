@@ -1,6 +1,5 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from modules.drop_config import get_current_drop_rates
 
 # ---------------------------------------------------------
 # Admin User ID များ ထည့်ပါ
@@ -97,9 +96,6 @@ async def set_drop_rate(bot: Client, message: Message):
 
         # ရာခိုင်နှုန်း ပြောင်းလဲခြင်း
         CURRENT_DROP_RATES[matched_rarity] = new_rate
-        
-        # MongoDB သို့မဟုတ် Database သုံးပါက ဒီနေရာတွင် DB ထဲ Save လုပ်ပါ:
-        # await db.config.update_one({"type": "drop_rates"}, {"$set": {matched_rarity: new_rate}}, upsert=True)
 
         total_percentage = sum(CURRENT_DROP_RATES.values())
 
