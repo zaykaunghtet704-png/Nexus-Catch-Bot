@@ -1,5 +1,6 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
+from modules.drop_config import get_current_drop_rates
 
 # ---------------------------------------------------------
 # Admin User ID များ ထည့်ပါ
