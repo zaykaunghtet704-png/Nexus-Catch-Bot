@@ -7,6 +7,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
 from database import users_col, inventory_col, cards_col
+from modules.force_join import check_must_join
 
 
 def get_coins_and_gems(user_doc: dict):
