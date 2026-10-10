@@ -69,6 +69,16 @@ try:
 except ImportError:
     from spawn_settings import get_spawn_settings_handlers
 
+# Force Join (Must Join) Handler Import
+try:
+    from modules.force_join import get_force_join_handlers
+except ImportError:
+    try:
+        from force_join import get_force_join_handlers
+    except ImportError:
+        def get_force_join_handlers():
+            return []
+
 try:
     from modules.admin import (
         admin_panel_command,
@@ -165,6 +175,9 @@ async def post_init(application: Application) -> None:
         BotCommand("gift", "အခြားသူထံ ကတ်လက်ဆောင်ပေးရန်"),
         BotCommand("check", "Character အချက်အလက် စစ်ရန်"),
         BotCommand("redeem", "Gift Code ထုတ်ယူရန်"),
+        BotCommand("addjoin", "Must Join လင့်ခ်အသစ်ထည့်ရန်"),
+        BotCommand("setdrop", "ကတ်ကျနှုန်း ရာခိုင်နှုန်းပြင်ရန်"),
+        BotCommand("droprates", "ကတ်ကျနှုန်းများကြည့်ရန်"),
         BotCommand("ownerhelp", "Owner အကူအညီ Menu"),
         BotCommand("adminhelp", "Admin အကူအညီ Menu"),
     ]
@@ -247,10 +260,17 @@ def main() -> None:
         app.add_handler(handler)
 
     # --------------------------------------
-    # SPAWN SETTINGS
+    # SPAWN SETTINGS (/setdrop, /droprates)
     # --------------------------------------
 
     for handler in get_spawn_settings_handlers():
+        app.add_handler(handler)
+
+    # --------------------------------------
+    # FORCE JOIN (/addjoin)
+    # --------------------------------------
+
+    for handler in get_force_join_handlers():
         app.add_handler(handler)
 
     # --------------------------------------
