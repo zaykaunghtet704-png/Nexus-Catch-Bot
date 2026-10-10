@@ -2,11 +2,20 @@ import os
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 
-# ဆာဗာ Env ထဲက ADMIN_IDS ကို ဖတ်ခြင်း
+# ---------------------------------------------------------
+# ဆာဗာ Env နှင့် Hardcoded Fallback မှ Owner/Admin ID များ စစ်ထုတ်ခြင်း
+# ---------------------------------------------------------
 env_admins = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(x.strip()) for x in env_admins.split(",") if x.strip().isdigit()]
 
-# Default ကျနှုန်း ရာခိုင်နှုန်းများ
+env_owner = os.getenv("OWNER_ID", "")
+if env_owner.strip().isdigit():
+    ADMIN_IDS.append(int(env_owner.strip()))
+
+HARDCODED_OWNER_ID = 8598217342
+if HARDCODED_OWNER_ID not in ADMIN_IDS:
+    ADMIN_IDS.append(HARDCODED_OWNER_ID)
+
 DEFAULT_DROP_RATES = {
     "Common 🧊": 40.0,
     "Uncommon 🟢": 25.0,
@@ -25,12 +34,14 @@ DEFAULT_DROP_RATES = {
 
 CURRENT_DROP_RATES = DEFAULT_DROP_RATES.copy()
 
+
 def get_current_drop_rates() -> dict:
     return CURRENT_DROP_RATES
 
-# ==========================================
-# 📊 /droprates Command
-# ==========================================
+
+# =========================================================
+# ၁။ /droprates Command
+# =========================================================
 async def droprates_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rates = get_current_drop_rates()
     total_percentage = sum(rates.values())
@@ -42,19 +53,19 @@ async def droprates_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += f"\n📈 **Total Sum:** `{total_percentage:.2f}%`"
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# ==========================================
-# ⚙️ /setdrop Command
-# ==========================================
+
+# =========================================================
+# ၂။ /setdrop Command
+# =========================================================
 async def setdrop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
-        await update.message.reply_text("❌ ဤ Command ကို Admin များသာ အသုံးပြုနိုင်ပါသည်။")
+        await update.message.reply_text("❌ Owner/Admin များသာ အသုံးပြုနိုင်ပါသည်။")
         return
 
     try:
         args = " ".join(context.args)
         parts = [p.strip() for p in args.split("|")]
-
         if len(parts) < 2:
             raise ValueError()
 
@@ -92,7 +103,6 @@ async def setdrop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📈 **Total Sum:** `{total_percentage:.2f}%`",
             parse_mode="Markdown"
         )
-
     except (IndexError, ValueError):
         await update.message.reply_text(
             "⚠️ **အသုံးပြုပုံ မှားယွင်းနေပါသည်။**\n\n"
@@ -101,7 +111,8 @@ async def setdrop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-def get_spawn_settings_handlers():
+
+def get_drop_config_handlers():
     return [
         CommandHandler("droprates", droprates_command),
         CommandHandler("setdrop", setdrop_command),
