@@ -2,11 +2,27 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler
 
+# ---------------------------------------------------------
+# ဆာဗာ Env နှင့် Hardcoded Fallback မှ Owner/Admin ID များ စစ်ထုတ်ခြင်း
+# ---------------------------------------------------------
 env_admins = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(x.strip()) for x in env_admins.split(",") if x.strip().isdigit()]
 
+env_owner = os.getenv("OWNER_ID", "")
+if env_owner.strip().isdigit():
+    ADMIN_IDS.append(int(env_owner.strip()))
+
+# Fallback Owner ID (Zay Kaung Htet)
+HARDCODED_OWNER_ID = 7974865879 
+if HARDCODED_OWNER_ID not in ADMIN_IDS:
+    ADMIN_IDS.append(HARDCODED_OWNER_ID)
+
 MUST_JOIN_CHATS = []
 
+
+# =========================================================
+# ၁။ Force Join စစ်ဆေးသည့် Function
+# =========================================================
 async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if not MUST_JOIN_CHATS:
         return True
@@ -40,9 +56,14 @@ async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     return True
 
+
+# =========================================================
+# ၂။ /addjoin Command
+# =========================================================
 async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin များသာ အသုံးပြုနိုင်ပါသည်။")
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Owner/Admin များသာ အသုံးပြုနိုင်ပါသည်။")
         return
 
     try:
@@ -57,9 +78,21 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = int(chat_id_input) if (chat_id_input.startswith("-") and chat_id_input[1:].isdigit()) else chat_id_input
 
         MUST_JOIN_CHATS.append({"chat_id": chat_id, "title": title, "link": link})
-        await update.message.reply_text(f"✅ Must Join လင့်ခ် အောင်မြင်စွာ ထည့်ပြီးပါပြီ!\nTitle: {title}")
+        await update.message.reply_text(
+            f"✅ **Must Join လင့်ခ် အောင်မြင်စွာ ထည့်ပြီးပါပြီ!**\n\n"
+            f"📢 **Chat ID:** `{chat_id}`\n"
+            f"🏷️ **Title:** `{title}`\n"
+            f"🔗 **Link:** `{link}`",
+            parse_mode="Markdown"
+        )
     except Exception:
-        await update.message.reply_text("⚠️ Format: `/addjoin @Channel | Title | Link`", parse_mode="Markdown")
+        await update.message.reply_text(
+            "⚠️ **အသုံးပြုပုံ မှားယွင်းနေပါသည်။**\n\n"
+            "**Format:** `/addjoin [Chat ID သို့မဟုတ် @Username] | [Title] | [Link]`\n"
+            "**ဥပမာ:** `/addjoin @NexusCatchNews | 📢 News Channel | https://t.me/NexusCatchNews`",
+            parse_mode="Markdown"
+        )
+
 
 def get_force_join_handlers():
     return [
