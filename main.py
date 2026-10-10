@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import time  # 👈 Connection ဟောင်းများ ရှင်းလင်းရန် အချိန်ဆိုင်းရန် ထည့်သွင်းသည်
 
 from telegram import BotCommand
 from telegram.ext import (
@@ -191,6 +192,9 @@ async def post_init(application: Application) -> None:
 # ==========================================
 
 def main() -> None:
+    print("Bot is starting, waiting 5 seconds for old connections to clear...")
+    time.sleep(5)  # 👈 Conflict Error မဖြစ်စေရန် ၅ စက္ကန့် စောင့်ပေးမည်
+
     if not BOT_TOKEN:
         logger.error(
             "BOT_TOKEN environment variable မတွေ့ရှိပါ။"
