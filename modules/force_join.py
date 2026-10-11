@@ -1,6 +1,6 @@
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, CommandHandler
+from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters, ApplicationHandlerStop
 
 # ---------------------------------------------------------
 # ဆာဗာ Env နှင့် Hardcoded Fallback မှ Owner/Admin ID များ စစ်ထုတ်ခြင်း
@@ -12,7 +12,7 @@ env_owner = os.getenv("OWNER_ID", "")
 if env_owner.strip().isdigit():
     ADMIN_IDS.append(int(env_owner.strip()))
 
-# Fallback Owner ID (Zay Kaung Htet)
+# Fallback Owner ID
 HARDCODED_OWNER_ID = 7974865879 
 if HARDCODED_OWNER_ID not in ADMIN_IDS:
     ADMIN_IDS.append(HARDCODED_OWNER_ID)
@@ -92,6 +92,24 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "**ဥပမာ:** `/addjoin @NexusCatchNews | 📢 News Channel | https://t.me/NexusCatchNews`",
             parse_mode="Markdown"
         )
+
+
+# =========================================================
+# ၃။ Force Join Middleware (အသုံးပြုသူများ မဖြစ်မနေ Join ရان စစ်ဆေးခြင်း)
+# =========================================================
+async def force_join_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.effective_user or not update.effective_message:
+        return
+    
+    user_id = update.effective_user.id
+    # Admin နှင့် Owner များအတွက် Force Join စစ်ဆေးမှုကို ကျော်သွားမည်
+    if user_id in ADMIN_IDS:
+        return
+
+    joined = await check_must_join(update, context)
+    if not joined:
+        # ချန်နယ် မဂျွိုင်းရသေးပါက အခြား Command များ အလုပ်မလုပ်အောင် ရပ်တန့်မည်
+        raise ApplicationHandlerStop()
 
 
 def get_force_join_handlers():
