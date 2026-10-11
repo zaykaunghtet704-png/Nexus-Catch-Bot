@@ -9,6 +9,8 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 # ==========================================
@@ -70,15 +72,17 @@ try:
 except ImportError:
     from spawn_settings import get_spawn_settings_handlers
 
-# Force Join (Must Join) Handler Import
+# Force Join (Must Join) Handler & Middleware Import
 try:
-    from modules.force_join import get_force_join_handlers
+    from modules.force_join import get_force_join_handlers, force_join_middleware
 except ImportError:
     try:
-        from force_join import get_force_join_handlers
+        from force_join import get_force_join_handlers, force_join_middleware
     except ImportError:
         def get_force_join_handlers():
             return []
+        async def force_join_middleware(update, context):
+            pass
 
 try:
     from modules.admin import (
@@ -209,6 +213,14 @@ def main() -> None:
     )
 
     app.add_error_handler(error_handler)
+
+    # --------------------------------------
+    # FORCE JOIN MIDDLEWARE (ပထမဆုံး အမြဲစစ်ဆေးမည်)
+    # --------------------------------------
+    app.add_handler(
+        MessageHandler(filters.ALL & ~filters.StatusUpdate.ALL, force_join_middleware),
+        group=-1
+    )
 
     # --------------------------------------
     # START / HELP HANDLERS (With Callbacks)
