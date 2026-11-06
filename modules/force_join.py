@@ -4,19 +4,22 @@ from telegram.ext import ContextTypes, CommandHandler, ApplicationHandlerStop
 from pymongo import MongoClient
 
 # ---------------------------------------------------------
-# MongoDB Connection (ကတ်တွေ သိမ်းတဲ့ Database နဲ့ ချိတ်ဆက်ပုံစံတူညီစေရန်)
+# MongoDB Connection (Error မတက်အောင် တိုက်ရိုက်ချိတ်ဆက်ခြင်း)
 # ---------------------------------------------------------
 MONGO_URL = os.getenv("MONGO_URL")
-db = None
 force_join_col = None
 
 if MONGO_URL:
     try:
         client = MongoClient(MONGO_URL)
-        # Default Database ကို ယူမည်၊ URI ထဲတွင် နာမည်မပါပါက 'nexus_catch_db' ကို သုံးမည်
-        db = client.get_default_database()
-        if db is None or db.name == "test":
+        # Database နာမည်ကို တိုက်ရိုက်သတ်မှတ်ပေးခြင်း (URI ထဲတွင် မပါလျှင် 'nexus_catch_db' ကိုသုံးမည်)
+        try:
+            db = client.get_default_database()
+            if db is None or db.name == "test":
+                db = client["nexus_catch_db"]
+        except Exception:
             db = client["nexus_catch_db"]
+            
         force_join_col = db["force_joins"]
         print("✅ Force Join Module: MongoDB Connected Successfully!")
     except Exception as e:
@@ -39,7 +42,7 @@ if HARDCODED_OWNER_ID not in ADMIN_IDS:
 
 
 # =========================================================
-# ၁။ Force Join စစ်ဆေးသည့် Function (Database မှ ဖတ်မည်)
+# ၁။ Force Join စစ်ဆေးသည့် Function
 # =========================================================
 async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if force_join_col is None:
@@ -83,7 +86,7 @@ async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 # =========================================================
-# ၂။ /addjoin Command (Database ထဲသို့ သိမ်းမည်)
+# ၂။ /addjoin Command
 # =========================================================
 async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -135,7 +138,7 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================================================
-# ၃။ Force Join Middleware (အသုံးပြုသူများ မဖြစ်မနေ Join ရန် စစ်ဆေးခြင်း)
+# ၃။ Force Join Middleware
 # =========================================================
 async def force_join_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.effective_message:
