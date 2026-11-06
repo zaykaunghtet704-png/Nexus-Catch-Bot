@@ -4,29 +4,26 @@ from telegram.ext import ContextTypes, CommandHandler, ApplicationHandlerStop
 from pymongo import MongoClient
 
 # ---------------------------------------------------------
-# MongoDB Connection (Error မတက်အောင် တိုက်ရိုက်ချိတ်ဆက်ခြင်း)
+# MongoDB Connection (Env နာမည် အမျိုးမျိုးကို အလိုအလျောက် စစ်ဆေးပေးမည်)
 # ---------------------------------------------------------
-MONGO_URL = os.getenv("MONGO_URL")
+MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URL") or os.getenv("MONGO_URI")
 force_join_col = None
 
 if MONGO_URL:
     try:
-        client = MongoClient(MONGO_URL)
-        # Database နာမည်ကို တိုက်ရိုက်သတ်မှတ်ပေးခြင်း (URI ထဲတွင် မပါလျှင် 'nexus_catch_db' ကိုသုံးမည်)
-        try:
-            db = client.get_default_database()
-            if db is None or db.name == "test":
-                db = client["nexus_catch_db"]
-        except Exception:
+        client = MongoClient(MONGO_URL.strip(), serverSelectionTimeoutMS=5000)
+        db = client.get_default_database()
+        if db is None or db.name == "test":
             db = client["nexus_catch_db"]
-            
         force_join_col = db["force_joins"]
         print("✅ Force Join Module: MongoDB Connected Successfully!")
     except Exception as e:
-        print(f"❌ MongoDB Connection Error in Force Join Module: {e}")
+        print(f"❌ Force Join MongoDB Connection Error: {e}")
+else:
+    print("❌ WARNING: MONGO_URL environment variable is missing or empty!")
 
 # ---------------------------------------------------------
-# ဆာဗာ Env နှင့် Hardcoded Fallback မှ Owner/Admin ID များ စစ်ထုတ်ခြင်း
+# Admin များ သတ်မှတ်ခြင်း
 # ---------------------------------------------------------
 env_admins = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(x.strip()) for x in env_admins.split(",") if x.strip().isdigit()]
@@ -35,7 +32,6 @@ env_owner = os.getenv("OWNER_ID", "")
 if env_owner.strip().isdigit():
     ADMIN_IDS.append(int(env_owner.strip()))
 
-# Fallback Owner ID
 HARDCODED_OWNER_ID = 7974865879 
 if HARDCODED_OWNER_ID not in ADMIN_IDS:
     ADMIN_IDS.append(HARDCODED_OWNER_ID)
@@ -48,7 +44,11 @@ async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if force_join_col is None:
         return True
 
-    must_join_chats = list(force_join_col.find({}))
+    try:
+        must_join_chats = list(force_join_col.find({}))
+    except Exception:
+        return True
+
     if not must_join_chats:
         return True
 
@@ -95,7 +95,7 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if force_join_col is None:
-        await update.message.reply_text("❌ Database ချိတ်ဆက်မှု မရှိသေးပါ။ MONGO_URL ကို စစ်ဆေးပါ။")
+        await update.message.reply_text("❌ Database ချိတ်ဆက်မှု မရှိသေးပါ။ Render တွင် MONGO_URL ကို စစ်ဆေးပါ။")
         return
 
     try:
