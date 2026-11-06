@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, CommandHandler, ApplicationHandlerStop
 from pymongo import MongoClient
 
 # ---------------------------------------------------------
-# MongoDB Connection
+# MongoDB Connection (ကတ်တွေ သိမ်းတဲ့ Database နဲ့ ချိတ်ဆက်ပုံစံတူညီစေရန်)
 # ---------------------------------------------------------
 MONGO_URL = os.getenv("MONGO_URL")
 db = None
@@ -13,10 +13,14 @@ force_join_col = None
 if MONGO_URL:
     try:
         client = MongoClient(MONGO_URL)
+        # Default Database ကို ယူမည်၊ URI ထဲတွင် နာမည်မပါပါက 'nexus_catch_db' ကို သုံးမည်
         db = client.get_default_database()
+        if db is None or db.name == "test":
+            db = client["nexus_catch_db"]
         force_join_col = db["force_joins"]
+        print("✅ Force Join Module: MongoDB Connected Successfully!")
     except Exception as e:
-        print(f"MongoDB Connection Error in Force Join Module: {e}")
+        print(f"❌ MongoDB Connection Error in Force Join Module: {e}")
 
 # ---------------------------------------------------------
 # ဆာဗာ Env နှင့် Hardcoded Fallback မှ Owner/Admin ID များ စစ်ထုတ်ခြင်း
@@ -41,7 +45,6 @@ async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if force_join_col is None:
         return True
 
-    # Database ထဲတွင် သိမ်းထားသော Must Join ချန်နယ်များကို ယူမည်
     must_join_chats = list(force_join_col.find({}))
     if not must_join_chats:
         return True
@@ -89,7 +92,7 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if force_join_col is None:
-        await update.message.reply_text("❌ Database ချိတ်ဆက်မှု မရှိသေးပါ။")
+        await update.message.reply_text("❌ Database ချိတ်ဆက်မှု မရှိသေးပါ။ MONGO_URL ကို စစ်ဆေးပါ။")
         return
 
     try:
@@ -103,7 +106,6 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link = parts[2]
         chat_id = int(chat_id_input) if (chat_id_input.startswith("-") and chat_id_input[1:].isdigit()) else chat_id_input
 
-        # MongoDB ထဲသို့ upsert ဖြင့် သိမ်းဆည်းခြင်း (Duplicate မဖြစ်စေရန်)
         force_join_col.update_one(
             {"chat_id": chat_id},
             {
@@ -140,13 +142,11 @@ async def force_join_middleware(update: Update, context: ContextTypes.DEFAULT_TY
         return
     
     user_id = update.effective_user.id
-    # Admin နှင့် Owner များအတွက် Force Join စစ်ဆေးမှုကို ကျော်သွားမည်
     if user_id in ADMIN_IDS:
         return
 
     joined = await check_must_join(update, context)
     if not joined:
-        # ချန်နယ် မဂျွိုင်းရသေးပါက အခြား Command များ အလုပ်မလုပ်အောင် ရပ်တန့်မည်
         raise ApplicationHandlerStop()
 
 
