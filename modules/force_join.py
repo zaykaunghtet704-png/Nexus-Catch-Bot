@@ -1,6 +1,22 @@
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters, ApplicationHandlerStop
+from telegram.ext import ContextTypes, CommandHandler, ApplicationHandlerStop
+from pymongo import MongoClient
+
+# ---------------------------------------------------------
+# MongoDB Connection
+# ---------------------------------------------------------
+MONGO_URL = os.getenv("MONGO_URL")
+db = None
+force_join_col = None
+
+if MONGO_URL:
+    try:
+        client = MongoClient(MONGO_URL)
+        db = client.get_default_database()
+        force_join_col = db["force_joins"]
+    except Exception as e:
+        print(f"MongoDB Connection Error in Force Join Module: {e}")
 
 # ---------------------------------------------------------
 # ဆာဗာ Env နှင့် Hardcoded Fallback မှ Owner/Admin ID များ စစ်ထုတ်ခြင်း
@@ -17,29 +33,35 @@ HARDCODED_OWNER_ID = 7974865879
 if HARDCODED_OWNER_ID not in ADMIN_IDS:
     ADMIN_IDS.append(HARDCODED_OWNER_ID)
 
-MUST_JOIN_CHATS = []
-
 
 # =========================================================
-# ၁။ Force Join စစ်ဆေးသည့် Function
+# ၁။ Force Join စစ်ဆေးသည့် Function (Database မှ ဖတ်မည်)
 # =========================================================
 async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    if not MUST_JOIN_CHATS:
+    if force_join_col is None:
+        return True
+
+    # Database ထဲတွင် သိမ်းထားသော Must Join ချန်နယ်များကို ယူမည်
+    must_join_chats = list(force_join_col.find({}))
+    if not must_join_chats:
         return True
 
     user_id = update.effective_user.id
     bot = context.bot
     not_joined_buttons = []
 
-    for chat in MUST_JOIN_CHATS:
+    for chat in must_join_chats:
+        chat_id = chat["chat_id"]
+        title = chat["title"]
+        link = chat["link"]
         try:
-            member = await bot.get_chat_member(chat["chat_id"], user_id)
+            member = await bot.get_chat_member(chat_id, user_id)
             if member.status in ["banned", "kicked"]:
                 await update.message.reply_text("❌ သင်သည် လိုအပ်သော Channel မှ Ban ခံထားရသဖြင့် Bot သုံးခွင့်မရှိပါ။")
                 return False
         except Exception:
             not_joined_buttons.append([
-                InlineKeyboardButton(chat["title"], url=chat["link"])
+                InlineKeyboardButton(title, url=link)
             ])
 
     if not_joined_buttons:
@@ -58,12 +80,16 @@ async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 # =========================================================
-# ၂။ /addjoin Command
+# ၂။ /addjoin Command (Database ထဲသို့ သိမ်းမည်)
 # =========================================================
 async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
         await update.message.reply_text("❌ Owner/Admin များသာ အသုံးပြုနိုင်ပါသည်။")
+        return
+
+    if force_join_col is None:
+        await update.message.reply_text("❌ Database ချိတ်ဆက်မှု မရှိသေးပါ။")
         return
 
     try:
@@ -77,9 +103,21 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link = parts[2]
         chat_id = int(chat_id_input) if (chat_id_input.startswith("-") and chat_id_input[1:].isdigit()) else chat_id_input
 
-        MUST_JOIN_CHATS.append({"chat_id": chat_id, "title": title, "link": link})
+        # MongoDB ထဲသို့ upsert ဖြင့် သိမ်းဆည်းခြင်း (Duplicate မဖြစ်စေရန်)
+        force_join_col.update_one(
+            {"chat_id": chat_id},
+            {
+                "$set": {
+                    "chat_id": chat_id,
+                    "title": title,
+                    "link": link
+                }
+            },
+            upsert=True
+        )
+
         await update.message.reply_text(
-            f"✅ **Must Join လင့်ခ် အောင်မြင်စွာ ထည့်ပြီးပါပြီ!**\n\n"
+            f"✅ **Must Join လင့်ခ် အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!**\n\n"
             f"📢 **Chat ID:** `{chat_id}`\n"
             f"🏷️ **Title:** `{title}`\n"
             f"🔗 **Link:** `{link}`",
@@ -95,7 +133,7 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================================================
-# ၃။ Force Join Middleware (အသုံးပြုသူများ မဖြစ်မနေ Join ရان စစ်ဆေးခြင်း)
+# ၃။ Force Join Middleware (အသုံးပြုသူများ မဖြစ်မနေ Join ရန် စစ်ဆေးခြင်း)
 # =========================================================
 async def force_join_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.effective_message:
