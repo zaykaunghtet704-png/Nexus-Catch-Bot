@@ -329,6 +329,16 @@ def main() -> None:
     for handler in get_master_owner_handlers():
         app.add_handler(handler)
 
+    # --------------------------------------
+    # GENERAL CALLBACK HANDLER (အခြား Button များကို ဖမ်းယူရန်)
+    # --------------------------------------
+    # မော်ဂျူးများမှ Callback Query များကို လက်ခံရန် (Admin မှလွဲ၍ ကျန်သည့်ဟာများ)
+    try:
+        from modules.game import game_callback_handler
+        app.add_handler(CallbackQueryHandler(game_callback_handler))
+    except ImportError:
+        pass
+
     logger.info("NEXUS CATCH BOT started successfully!")
 
     app.run_polling(
