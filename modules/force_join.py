@@ -1,26 +1,31 @@
 import os
+import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, ApplicationHandlerStop
-from pymongo import MongoClient
 
 # ---------------------------------------------------------
-# MongoDB Connection (Env နာမည် အမျိုးမျိုးကို အလိုအလျောက် စစ်ဆေးပေးမည်)
+# SQLite Database Setup (Local ဖိုင်ဖြင့် သိမ်းဆည်းမည်)
 # ---------------------------------------------------------
-MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URL") or os.getenv("MONGO_URI")
-force_join_col = None
+DB_FILE = "bot_database.db"
 
-if MONGO_URL:
+def init_db():
     try:
-        client = MongoClient(MONGO_URL.strip(), serverSelectionTimeoutMS=5000)
-        db = client.get_default_database()
-        if db is None or db.name == "test":
-            db = client["nexus_catch_db"]
-        force_join_col = db["force_joins"]
-        print("✅ Force Join Module: MongoDB Connected Successfully!")
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS force_joins (
+                chat_id TEXT PRIMARY KEY,
+                title TEXT,
+                link TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        print("✅ Force Join Module: SQLite Database Connected Successfully!")
     except Exception as e:
-        print(f"❌ Force Join MongoDB Connection Error: {e}")
-else:
-    print("❌ WARNING: MONGO_URL environment variable is missing or empty!")
+        print(f"❌ SQLite Initialization Error: {e}")
+
+init_db()
 
 # ---------------------------------------------------------
 # Admin များ သတ်မှတ်ခြင်း
@@ -41,27 +46,26 @@ if HARDCODED_OWNER_ID not in ADMIN_IDS:
 # ၁။ Force Join စစ်ဆေးသည့် Function
 # =========================================================
 async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    if force_join_col is None:
-        return True
-
     try:
-        must_join_chats = list(force_join_col.find({}))
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT chat_id, title, link FROM force_joins")
+        rows = cursor.fetchall()
+        conn.close()
     except Exception:
         return True
 
-    if not must_join_chats:
+    if not rows:
         return True
 
     user_id = update.effective_user.id
     bot = context.bot
     not_joined_buttons = []
 
-    for chat in must_join_chats:
-        chat_id = chat["chat_id"]
-        title = chat["title"]
-        link = chat["link"]
+    for chat_id_val, title, link in rows:
         try:
-            member = await bot.get_chat_member(chat_id, user_id)
+            target_chat = int(chat_id_val) if (chat_id_val.startswith("-") or chat_id_val.isdigit()) else chat_id_val
+            member = await bot.get_chat_member(target_chat, user_id)
             if member.status in ["banned", "kicked"]:
                 await update.message.reply_text("❌ သင်သည် လိုအပ်သော Channel မှ Ban ခံထားရသဖြင့် Bot သုံးခွင့်မရှိပါ။")
                 return False
@@ -94,10 +98,6 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Owner/Admin များသာ အသုံးပြုနိုင်ပါသည်။")
         return
 
-    if force_join_col is None:
-        await update.message.reply_text("❌ Database ချိတ်ဆက်မှု မရှိသေးပါ။ Render တွင် MONGO_URL ကို စစ်ဆေးပါ။")
-        return
-
     try:
         args = " ".join(context.args)
         parts = [p.strip() for p in args.split("|")]
@@ -107,23 +107,19 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id_input = parts[0]
         title = parts[1]
         link = parts[2]
-        chat_id = int(chat_id_input) if (chat_id_input.startswith("-") and chat_id_input[1:].isdigit()) else chat_id_input
 
-        force_join_col.update_one(
-            {"chat_id": chat_id},
-            {
-                "$set": {
-                    "chat_id": chat_id,
-                    "title": title,
-                    "link": link
-                }
-            },
-            upsert=True
-        )
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO force_joins (chat_id, title, link)
+            VALUES (?, ?, ?)
+        ''', (str(chat_id_input), title, link))
+        conn.commit()
+        conn.close()
 
         await update.message.reply_text(
             f"✅ **Must Join လင့်ခ် အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!**\n\n"
-            f"📢 **Chat ID:** `{chat_id}`\n"
+            f"📢 **Chat ID:** `{chat_id_input}`\n"
             f"🏷️ **Title:** `{title}`\n"
             f"🔗 **Link:** `{link}`",
             parse_mode="Markdown"
