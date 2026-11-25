@@ -12,8 +12,6 @@ Commands:
 import logging
 from html import escape
 
-from bson import ObjectId
-from pymongo import ReturnDocument
 
 from telegram import Update
 from telegram.constants import ParseMode
@@ -290,7 +288,7 @@ async def buy_command(
         return
 
     try:
-        market_id = ObjectId(context.args[0])
+        market_id = context.args[0]
     except Exception:
         await message.reply_text(
             "❌ Market ID မှားယွင်းနေပါသည်။"
