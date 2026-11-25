@@ -403,6 +403,8 @@ class PostgresCollection:
                 for doc in docs:
                     key_expr = spec.get("_id")
                     key = _path(doc, key_expr[1:]) if isinstance(key_expr, str) and key_expr.startswith("$") else key_expr
+                    if key is _MISSING:
+                        key = None
                     bucket = grouped.setdefault(key, {"_id": key})
                     for field, expression in spec.items():
                         if field == "_id":
@@ -410,7 +412,9 @@ class PostgresCollection:
                         if isinstance(expression, dict) and "$sum" in expression:
                             amount = expression["$sum"]
                             value = _path(doc, amount[1:]) if isinstance(amount, str) and amount.startswith("$") else amount
-                            bucket[field] = bucket.get(field, 0) + (value or 0)
+                            if value is _MISSING or value is None:
+                                value = 0
+                            bucket[field] = bucket.get(field, 0) + value
                 docs = list(grouped.values())
             elif "$sort" in stage:
                 for field, direction in reversed(list(stage["$sort"].items())):
