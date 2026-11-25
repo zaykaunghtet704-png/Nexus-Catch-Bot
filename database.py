@@ -59,7 +59,7 @@ def _path(document, path):
     value = document
     for part in path.split("."):
         if not isinstance(value, dict) or part not in value:
-            return None
+            return _MISSING
         value = value[part]
     return value
 
