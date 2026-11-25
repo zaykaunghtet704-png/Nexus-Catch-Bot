@@ -5,6 +5,7 @@ JSONB in PostgreSQL, allowing the database engine to change without rewriting
 all game and economy features.
 """
 import copy
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -36,6 +37,16 @@ def _connect():
     if "localhost" not in url and "127.0.0.1" not in url and "sslmode=" not in url:
         kwargs["sslmode"] = "require"
     return psycopg2.connect(url, **kwargs)
+
+
+@contextmanager
+def _session():
+    connection = _connect()
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 
 def _json_default(value):
@@ -199,7 +210,7 @@ class PostgresCollection:
     def insert_one(self, document):
         doc = copy.deepcopy(document)
         doc_id = str(doc.pop("_id", None) or uuid.uuid4().hex)
-        with _connect() as conn:
+        with _session() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO nexus_documents(collection_name, document_id, document) "
@@ -415,7 +426,7 @@ class PostgresDatabase:
 
 
 # Initialize schema and lightweight indexes once at process start.
-with _connect() as _conn:
+with _session() as _conn:
     with _conn.cursor() as _cur:
         _cur.execute("""
             CREATE TABLE IF NOT EXISTS nexus_documents (
