@@ -1,6 +1,5 @@
 python-telegram-bot>=20.0
-pymongo
-dnspython
+psycopg2-binary>=2.9.9
 aiohttp
 pillow
 psutil
