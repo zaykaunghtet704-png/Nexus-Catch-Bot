@@ -220,7 +220,7 @@ class PostgresCollection:
         return InsertOneResult(doc_id)
 
     def find(self, query=None, projection=None):
-        with _connect() as conn:
+        with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 docs = self._load(cur)
         return Cursor(_project(d, projection) for d in docs if _matches(d, query or {}))
@@ -279,7 +279,7 @@ class PostgresCollection:
         return result
 
     def update_one(self, query, update, upsert=False):
-        with _connect() as conn:
+        with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 docs = self._load(cur, for_update=True)
                 target = next((d for d in docs if _matches(d, query or {})), None)
@@ -306,7 +306,7 @@ class PostgresCollection:
 
     def update_many(self, query, update):
         matched = modified = 0
-        with _connect() as conn:
+        with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 docs = self._load(cur, for_update=True)
                 for target in docs:
@@ -323,7 +323,7 @@ class PostgresCollection:
         return UpdateResult(matched, modified)
 
     def delete_one(self, query):
-        with _connect() as conn:
+        with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 docs = self._load(cur, for_update=True)
                 target = next((d for d in docs if _matches(d, query or {})), None)
@@ -337,7 +337,7 @@ class PostgresCollection:
 
     def delete_many(self, query):
         deleted = 0
-        with _connect() as conn:
+        with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 docs = self._load(cur, for_update=True)
                 ids = [str(d["_id"]) for d in docs if _matches(d, query or {})]
@@ -350,7 +350,7 @@ class PostgresCollection:
         return DeleteResult(deleted)
 
     def find_one_and_delete(self, query):
-        with _connect() as conn:
+        with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 docs = self._load(cur, for_update=True)
                 target = next((d for d in docs if _matches(d, query or {})), None)
@@ -363,7 +363,7 @@ class PostgresCollection:
                 return target
 
     def find_one_and_update(self, query, update, upsert=False, return_document=ReturnDocument.BEFORE):
-        with _connect() as conn:
+        with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 docs = self._load(cur, for_update=True)
                 target = next((d for d in docs if _matches(d, query or {})), None)
