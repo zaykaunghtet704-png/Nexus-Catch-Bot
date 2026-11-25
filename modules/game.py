@@ -11,6 +11,11 @@ from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
 
 from database import cards_col, inventory_col, users_col, chats_col
 
+try:
+    from config import OWNER_ID
+except ImportError:
+    OWNER_ID = 0
+
 # Runtime Memory Trackers
 SPAWNED_CARDS = {}
 
@@ -26,14 +31,16 @@ async def set_spawn_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ ဤ Command ကို Group ထဲတွင်သာ အသုံးပြုနိုင်ပါသည်။")
         return
 
-    # Admin ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-    try:
-        member = await chat.get_member(user.id)
-        if member.status not in ["creator", "administrator"] and user.id != 123456789: # Owner ID ထည့်နိုင်သည်
+    # Admin permission check: fail closed if Telegram cannot verify membership.
+    if user.id != OWNER_ID:
+        try:
+            member = await chat.get_member(user.id)
+        except Exception:
+            await update.message.reply_text("❌ Admin ခွင့်ပြုချက်ကို စစ်ဆေးမရပါ။ ခဏနေ ပြန်ကြိုးစားပါ။")
+            return
+        if member.status not in ("creator", "administrator"):
             await update.message.reply_text("❌ ဤ Command ကို Group Admin များသာ အသုံးပြုနိုင်ပါသည်။")
             return
-    except Exception:
-        pass
 
     if not context.args:
         await update.message.reply_text(
