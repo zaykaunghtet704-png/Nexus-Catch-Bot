@@ -23,3 +23,7 @@ wishlist_col = db["wishlist"]
 sudo_col = db["sudo"]
 codes_col = db["codes"]
 chats_col = db["chats"]
+
+# Collections referenced by the optional drop.py module
+group_user_totals_col = db["group_user_totals"]
+top_global_groups_col = db["top_global_groups"]
