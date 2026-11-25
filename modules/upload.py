@@ -1,6 +1,6 @@
 import re
 import aiohttp
-from pymongo import ReturnDocument
+from database import ReturnDocument
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, CommandHandler
