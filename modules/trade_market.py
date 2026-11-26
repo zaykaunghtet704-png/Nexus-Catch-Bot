@@ -448,7 +448,7 @@ async def buy_command(
 
                 users_col.update_one(
                     {"user_id": seller_id},
-                    {"$inc": {balance_field: -price}},
+                    {"$inc": {seller_balance_field: -price}},
                 )
 
                 market_col.insert_one(listing)
