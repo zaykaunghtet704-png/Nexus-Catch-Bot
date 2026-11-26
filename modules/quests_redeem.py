@@ -1,4 +1,5 @@
 from datetime import datetime
+from html import escape
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
