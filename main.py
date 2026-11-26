@@ -190,6 +190,7 @@ async def post_init(application: Application) -> None:
         BotCommand("weekly", "အပတ်စဉ်ဆုယူရန်"),
         BotCommand("streak", "Daily Streak ကြည့်ရန်"),
         BotCommand("chest", "Card Chest ဖွင့်ရန်"),
+        BotCommand("booster", "Lucky Booster ဝယ်ရန်/ကြည့်ရန်"),
         BotCommand("findowner", "Card ပိုင်ရှင်ရှာရန်"),
         BotCommand("auction", "Card Auction စနစ်"),
         BotCommand("weeklyranking", "Weekly Catch Ranking"),
