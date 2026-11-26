@@ -3,33 +3,45 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
 
-from database import atomic, codes_col, inventory_col, users_col
+from database import atomic, cards_col, codes_col, inventory_col, users_col
 
 # ── 1. Redeem Code System ─────────────────────────────────────────────────────
 
 async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/redeem [Code] - Atomic one-time reward claim."""
+    """/redeem [Code] - one-time, max-use-aware atomic reward claim."""
     user_id = int(update.effective_user.id)
-
     if not context.args:
         await update.message.reply_text("❌ <code>/redeem [Code]</code> ဟု အသုံးပြုပါ", parse_mode=ParseMode.HTML)
         return
 
     code_str = context.args[0].strip().upper()
+    card_to_award = None
     try:
         with atomic():
-            # Conditional update prevents two simultaneous claims by the same user.
-            claim = codes_col.update_one(
-                {"code": code_str, "used_by": {"$nin": [user_id]}},
-                {"$addToSet": {"used_by": user_id}},
-            )
-            if claim.modified_count != 1:
-                code_doc = codes_col.find_one({"code": code_str})
-                reason = "သင် ဤ Code ကို အသုံးပြုပြီးဖြစ်ပါသည်။" if code_doc else "Code မှားယွင်းနေပါသည် (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ။"
-                await update.message.reply_text("❌ " + reason)
+            code_doc = codes_col.find_one_for_update({"code": code_str})
+            if not code_doc:
+                await update.message.reply_text("❌ Code မှားယွင်းနေပါသည် (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ။")
                 return
 
-            code_doc = codes_col.find_one({"code": code_str}) or {}
+            used_by = code_doc.get("used_by", []) or []
+            if user_id in used_by:
+                await update.message.reply_text("❌ သင် ဤ Code ကို အသုံးပြုပြီးဖြစ်ပါသည်။")
+                return
+
+            max_uses = int(code_doc.get("max_uses", 0) or 0)
+            used_count = int(code_doc.get("used_count", len(used_by)) or 0)
+            if max_uses > 0 and used_count >= max_uses:
+                await update.message.reply_text("❌ ဤ Code ၏ အသုံးပြုနိုင်သည့် အကြိမ်ရေ ကုန်ဆုံးသွားပါပြီ။")
+                return
+
+            claim = codes_col.update_one(
+                {"code": code_str, "used_by": {"$nin": [user_id]}},
+                {"$addToSet": {"used_by": user_id}, "$inc": {"used_count": 1}},
+            )
+            if claim.modified_count != 1:
+                await update.message.reply_text("❌ Code ကို အသုံးပြု၍မရတော့ပါ။")
+                return
+
             coins_reward = max(0, int(code_doc.get("coins", 0) or 0))
             gems_reward = max(0, int(code_doc.get("gems", 0) or 0))
             users_col.update_one(
@@ -37,17 +49,35 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 {"$inc": {"coins": coins_reward, "gems": gems_reward}},
                 upsert=True,
             )
+
+            card_id = code_doc.get("card_id")
+            if card_id:
+                card_to_award = cards_col.find_one({
+                    "$or": [{"card_id": card_id}, {"id": card_id}]
+                })
+                if card_to_award:
+                    inventory_col.insert_one({
+                        "user_id": user_id,
+                        "card_id": card_to_award.get("card_id") or card_to_award.get("id"),
+                        "name": card_to_award.get("name"),
+                        "anime": card_to_award.get("anime"),
+                        "rarity": card_to_award.get("rarity"),
+                        "img_url": card_to_award.get("img_url") or card_to_award.get("image"),
+                    })
     except Exception:
         await update.message.reply_text("❌ Code ထုတ်ယူရာတွင် Error ဖြစ်နေပါသည်။ ထပ်မံမကြိုးစားမီ Owner ကို အသိပေးပါ။")
         return
 
+    card_line = ""
+    if card_to_award:
+        card_line = f"\n🎴 Card: <b>{card_to_award.get('name', 'Unknown')}</b>"
     await update.message.reply_text(
         f"╭━━━━━━━━━━━━━━━━━━╮\n"
         f"       🎉 <b>REDEEM SUCCESS</b>\n"
         f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
-        f"🎁 ဆုလက်ဆောင် ရရှိပါပြီ!\n"
+        f"🎁 သင့်ဆုလက်ဆောင်ကို လက်ခံရရှိပါပြီ!\n"
         f"🪙 Coins: <b>+{coins_reward:,}</b>\n"
-        f"💎 Gems: <b>+{gems_reward}</b>",
+        f"💎 Gems: <b>+{gems_reward}</b>{card_line}",
         parse_mode=ParseMode.HTML
     )
 
