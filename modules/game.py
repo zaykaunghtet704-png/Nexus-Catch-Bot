@@ -154,7 +154,8 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "name": actual_card.get("name"),
             "anime": actual_card.get("anime"),
             "rarity": actual_card.get("rarity"),
-            "img_url": actual_card.get("img_url") or actual_card.get("image")
+            "img_url": actual_card.get("img_url") or actual_card.get("image"),
+            "chat_id": chat_id if update.effective_chat.type != "private" else None,
         }
         catch_bonus = 0
         try:
