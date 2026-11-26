@@ -207,23 +207,42 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not auction or datetime.fromisoformat(auction["expires_at"]) <= datetime.now(timezone.utc):
                     await msg.reply_text("❌ Auction မရှိတော့ပါ သို့မဟုတ် သက်တမ်းကုန်ပါပြီ။")
                     return
-                if auction["seller_id"] == user.id or amount < max(int(auction["min_bid"]), int(auction.get("highest_bid", 0)) + 1):
+                old_bid = int(auction.get("highest_bid", 0))
+                if auction["seller_id"] == user.id or amount < max(int(auction["min_bid"]), old_bid + 1):
                     await msg.reply_text("❌ Bid ပမာဏ မမှန်ပါ သို့မဟုတ် ကိုယ့် Auction ကို Bid မလုပ်နိုင်ပါ။")
                     return
                 bidder = users_col.find_one({"user_id": user.id}) or {}
                 field = _balance_field(bidder)
-                debit = users_col.update_one({"user_id": user.id, field: {"$gte": amount}}, {"$inc": {field: -amount}})
+                debit = users_col.update_one(
+                    {"user_id": user.id, field: {"$gte": amount}},
+                    {"$inc": {field: -amount}},
+                )
                 if debit.modified_count != 1:
                     await msg.reply_text("❌ Coins မလုံလောက်ပါ။")
                     return
+
+                # Compare-and-set prevents concurrent bids overwriting a higher bid.
+                changed = auctions_col.update_one(
+                    {"_id": auction_id, "highest_bid": old_bid},
+                    {"$set": {
+                        "highest_bid": amount,
+                        "highest_bidder": user.id,
+                        "bid_currency_field": field,
+                    }},
+                )
+                if changed.modified_count != 1:
+                    users_col.update_one({"user_id": user.id}, {"$inc": {field: amount}})
+                    await msg.reply_text("⚠️ အခြားသူတစ်ဦးက ပိုမြင့်သော Bid တင်ပြီးပါပြီ။ Auction ကို ပြန်စစ်ပါ။")
+                    return
+
                 previous = auction.get("highest_bidder")
                 if previous:
                     prev_doc = users_col.find_one({"user_id": previous}) or {}
                     prev_field = auction.get("bid_currency_field") or _balance_field(prev_doc)
-                    users_col.update_one({"user_id": previous}, {"$inc": {prev_field: int(auction.get("highest_bid", 0))}})
-                auctions_col.update_one({"_id": auction_id}, {"$set": {
-                    "highest_bid": amount, "highest_bidder": user.id, "bid_currency_field": field,
-                }})
+                    users_col.update_one(
+                        {"user_id": previous},
+                        {"$inc": {prev_field: old_bid}},
+                    )
             await msg.reply_text(f"✅ Bid အောင်မြင်ပါပြီ! <b>{amount:,} Coins</b>", parse_mode=ParseMode.HTML)
             return
 
