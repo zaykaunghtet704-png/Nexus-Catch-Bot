@@ -4,7 +4,7 @@ modules/extra_commands.py - Cleaned Extra Handlers
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
-from database import users_col, inventory_col, cards_col
+from database import atomic, users_col, inventory_col, cards_col
 
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -58,7 +58,7 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ctop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pipeline = [
-        {"$group": {"_id": "$card_name", "count": {"$sum": 1}}},
+        {"$group": {"_id": "$name", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 10}
     ]
@@ -75,18 +75,107 @@ async def ctop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 async def ranking_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top_users = list(users_col.find().sort("balance", -1).limit(10))
+    top_users = list(users_col.find().sort("coins", -1).limit(10))
     
     text = "🌐 <b>GLOBAL COIN RANKING</b>\n─────────────────────────\n"
     for idx, u in enumerate(top_users, 1):
         name = u.get("first_name", "User")
-        bal = u.get("balance", 0)
+        bal = u.get("coins", u.get("balance", 0))
         text += f"{idx}. <b>{name}</b> — 💰 {bal:,} Coins\n"
         
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 async def gift_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎁 <b>Gift Feature:</b>\nအခြားသူအား ကတ် သို့မဟုတ် Coins ပေးပို့ရန် Reply ရိုက်၍ <code>/gift &lt;amount/card_id&gt;</code> ဟု အသုံးပြုပါ၊", parse_mode=ParseMode.HTML)
+    """Gift coins or one owned card to the user being replied to."""
+    message = update.effective_message
+    sender = update.effective_user
+    target_message = message.reply_to_message if message else None
+    if not message or not sender:
+        return
+    if not target_message or not target_message.from_user:
+        await message.reply_text(
+            "🎁 လက်ဆောင်ပေးမည့်သူ၏ Message ကို Reply လုပ်ပြီး\n"
+            "<code>/gift [Coins ပမာဏ သို့မဟုတ် Card ID]</code> ဟု ရိုက်ပါ။",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    recipient = target_message.from_user
+    if recipient.is_bot or recipient.id == sender.id:
+        await message.reply_text("❌ Bot သို့မဟုတ် မိမိကိုယ်တိုင်ထံ လက်ဆောင်မပေးနိုင်ပါ။")
+        return
+    if not context.args:
+        await message.reply_text("❌ <code>/gift [Coins ပမာဏ သို့မဟုတ် Card ID]</code>", parse_mode=ParseMode.HTML)
+        return
+
+    value = " ".join(context.args).strip()
+    try:
+        amount = int(value)
+    except ValueError:
+        amount = None
+
+    try:
+        with atomic():
+            sender_doc = users_col.find_one({"user_id": sender.id}) or {}
+            recipient_doc = users_col.find_one({"user_id": recipient.id}) or {}
+            sender_wallet = "coins" if "coins" in sender_doc else "balance"
+            recipient_wallet = "coins" if "coins" in recipient_doc else "balance"
+
+            if amount is not None:
+                if amount <= 0:
+                    await message.reply_text("❌ Coins ပမာဏသည် 0 ထက် ကြီးရပါမည်။")
+                    return
+                debit = users_col.update_one(
+                    {"user_id": sender.id, sender_wallet: {"$gte": amount}},
+                    {"$inc": {sender_wallet: -amount}},
+                )
+                if debit.modified_count != 1:
+                    await message.reply_text("❌ သင့်တွင် Coins မလုံလောက်ပါ။")
+                    return
+                if recipient_doc:
+                    users_col.update_one(
+                        {"user_id": recipient.id},
+                        {"$inc": {recipient_wallet: amount}},
+                    )
+                else:
+                    users_col.insert_one({
+                        "user_id": recipient.id,
+                        "first_name": recipient.first_name,
+                        "username": recipient.username,
+                        "coins": amount,
+                        "gems": 0,
+                        "xp": 0,
+                    })
+                gift_label = f"🪙 {amount:,} Coins"
+            else:
+                card = inventory_col.find_one({
+                    "user_id": sender.id,
+                    "$or": [{"card_id": value}, {"id": value}],
+                })
+                if not card:
+                    await message.reply_text("❌ သင့် Inventory ထဲတွင် ဒီ Card မရှိပါ။")
+                    return
+                removed = inventory_col.delete_one({
+                    "_id": card["_id"],
+                    "user_id": sender.id,
+                })
+                if removed.deleted_count != 1:
+                    await message.reply_text("❌ Card ပိုင်ဆိုင်မှုကို အတည်မပြုနိုင်ပါ။")
+                    return
+                new_card = {k: v for k, v in card.items() if k != "_id"}
+                new_card["user_id"] = recipient.id
+                inventory_col.insert_one(new_card)
+                gift_label = f"🎴 {escape(str(card.get('name') or value))} (ID: {escape(value)})"
+    except Exception:
+        await message.reply_text("❌ Gift ပေးပို့ရာတွင် Error ဖြစ်နေပါသည်။")
+        return
+
+    await message.reply_text(
+        "🎁 <b>GIFT SENT SUCCESSFULLY!</b>\n\n"
+        f"👤 ပေးပို့သူ: {escape(sender.first_name or 'Collector')}\n"
+        f"🎀 လက်ခံသူ: {escape(recipient.first_name or 'Collector')}\n"
+        f"🎁 လက်ဆောင်: <b>{gift_label}</b>",
+        parse_mode=ParseMode.HTML,
+    )
 
 async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
