@@ -109,10 +109,16 @@ def _compare(value, condition):
             if value == expected:
                 return False
         elif op == "$in":
-            if value not in expected:
+            if isinstance(value, list):
+                if not any(item in expected for item in value):
+                    return False
+            elif value not in expected:
                 return False
         elif op == "$nin":
-            if value in expected:
+            if isinstance(value, list):
+                if any(item in expected for item in value):
+                    return False
+            elif value in expected:
                 return False
         elif op == "$gte":
             if value is _MISSING or value is None or value < expected:
