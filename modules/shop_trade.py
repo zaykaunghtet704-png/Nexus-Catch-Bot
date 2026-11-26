@@ -137,8 +137,10 @@ async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"🎁 <b>AVAILABLE ITEMS</b>\n"
         f"├ 📦 <b>Common Chest</b> — 500 Coins\n"
         f"├ 🎀 <b>Rare Chest</b> — 2,000 Coins\n"
-        f"└ 👑 <b>Legendary Crate</b> — 50 Gems\n\n"
+        f"├ 👑 <b>Legendary Crate</b> — 50 Gems\n"
+        f"└ ⚡ <b>Lucky Booster</b> — 3,000 Coins\n\n"
         f"📦 Chest ဖွင့်ရန် <code>/chest common</code>, <code>/chest rare</code> သို့မဟုတ် <code>/chest legendary</code> ကို သုံးပါ။\n"
+        f"⚡ Booster ဝယ်ရန် <code>/booster buy</code> ကို အသုံးပြုပါ။\n"
         f"🏪 Market ကြည့်ရန် <code>/market</code> ကို အသုံးပြုပါ။\n"
         f"💫 <i>Choose your next treasure!</i>"
     )
