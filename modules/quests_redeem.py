@@ -34,8 +34,13 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     codes_col.update_one({"code": code_str}, {"$push": {"used_by": user_id}})
 
     await update.message.reply_text(
-        f"🎉 <b>REDEEM SUCCESSFUL!</b>\n\n"
-        f"🎁 +<b>{coins_reward:,}</b> Coins | 💎 +<b>{gems_reward}</b> Gems ရရှိသွားပါပြီ!",
+        f"╭━━━━━━━━━━━━━━━━━━╮\n"
+        f"       🎉 <b>REDEEM SUCCESS</b>\n"
+        f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        f"🎁 သင့်ဆုလက်ဆောင်ကို လက်ခံရရှိပါပြီ!\n\n"
+        f"🪙 Coins: <b>+{coins_reward:,}</b>\n"
+        f"💎 Gems: <b>+{gems_reward}</b>\n\n"
+        f"✨ <i>Enjoy your rewards, Collector!</i>",
         parse_mode=ParseMode.HTML
     )
 
