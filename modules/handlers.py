@@ -155,13 +155,15 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_str = "\n".join(top_lines) if top_lines else "မရှိသေးပါ။"
 
     caption = (
-        f"<b>OwO! Check out this character!</b>\n\n"
-        f"<b>{anime}</b>\n"
-        f"<b>{cid}: {name}</b>\n"
-        f"(✨ <b>RARITY: {rarity}</b>)\n\n"
-        f"💰 <b>VALUE:</b> 280 ~ 500 Coins\n"
-        f"🌍 <b>CAUGHT GLOBALLY:</b> {global_caught} TIMES\n\n"
-        f"🎖️ <b>TOP 10 GLOBAL CATCHERS OF THIS CHARACTER:</b>\n"
+        f"╭━━━━━━━━━━━━━━━━━━╮\n"
+        f"       🃏 <b>CARD INSPECTION</b>\n"
+        f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        f"🎬 <b>{anime}</b>\n"
+        f"🌸 <b>{cid}: {name}</b>\n"
+        f"💠 <b>RARITY:</b> {rarity}\n\n"
+        f"💰 <b>ESTIMATED VALUE:</b> 280 ~ 500 Coins\n"
+        f"🌍 <b>GLOBAL CATCHES:</b> {global_caught}\n\n"
+        f"🏆 <b>TOP 10 COLLECTORS</b>\n"
         f"{top_str}"
     )
 
