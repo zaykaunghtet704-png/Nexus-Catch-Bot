@@ -135,7 +135,7 @@ async def quest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def get_quests_redeem_handlers():
     return [
-        CommandHandler("redeem", redeem_command, block=False),
+        CommandHandler(["redeem", "promo"], redeem_command, block=False),
         CommandHandler(["recycle", "disassemble", "exchange"], recycle_command, block=False),
         CommandHandler("quest", quest_command, block=False)
     ]
