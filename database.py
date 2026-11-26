@@ -266,6 +266,14 @@ class PostgresCollection:
         docs = self.find(query, projection).limit(1)
         return docs.documents[0] if docs.documents else None
 
+    def find_one_for_update(self, query=None):
+        """Fetch a matching document while locking its collection rows."""
+        with _session() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                docs = self._load(cur, for_update=True)
+                target = next((d for d in docs if _matches(d, query or {})), None)
+                return copy.deepcopy(target) if target else None
+
     def count_documents(self, query=None):
         return sum(1 for d in self.find(query))
 
