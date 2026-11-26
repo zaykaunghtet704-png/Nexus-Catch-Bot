@@ -121,6 +121,11 @@ except ImportError:
             return []
 
 try:
+    from modules.collection_upgrade import get_collection_upgrade_handlers
+except ImportError:
+    from collection_upgrade import get_collection_upgrade_handlers
+
+try:
     from modules.inline_search import get_inline_search_handlers
 except ImportError:
     try:
@@ -294,6 +299,12 @@ def main() -> None:
     # --------------------------------------
 
     for handler in get_extra_handlers():
+        app.add_handler(handler)
+
+    # --------------------------------------
+    # COLLECTION / WEEKLY / AUCTION UPGRADES
+    # --------------------------------------
+    for handler in get_collection_upgrade_handlers():
         app.add_handler(handler)
 
     # --------------------------------------
