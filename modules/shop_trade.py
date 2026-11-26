@@ -6,6 +6,26 @@ from telegram.ext import ContextTypes
 
 from database import atomic, users_col, inventory_col
 
+def _as_utc_datetime(value):
+    """Accept legacy Unix timestamps and ISO strings from migrated databases."""
+    if value in (None, "", 0):
+        return None
+    try:
+        if isinstance(value, (int, float)):
+            parsed = datetime.fromtimestamp(value, timezone.utc)
+        elif isinstance(value, str):
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        elif isinstance(value, datetime):
+            parsed = value
+        else:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
 def get_user(user_id: int):
     """PyMongo Safe User Fetch"""
     user_id = int(user_id)
@@ -33,27 +53,20 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = int(user.id)
     user_data = get_user(user_id)
 
-    last_daily = user_data.get("last_daily")
+    last_daily_raw = user_data.get("last_daily")
+    last_daily = _as_utc_datetime(last_daily_raw)
     now = datetime.now(timezone.utc)
 
     # Race-safe 24-hour claim with consecutive-day streak tracking.
-    if last_daily:
-        if isinstance(last_daily, str):
-            try:
-                last_daily = datetime.fromisoformat(last_daily)
-            except Exception:
-                last_daily = None
-        if last_daily and last_daily.tzinfo is None:
-            last_daily = last_daily.replace(tzinfo=timezone.utc)
-        if last_daily and (now - last_daily) < timedelta(hours=24):
-            remaining = timedelta(hours=24) - (now - last_daily)
-            hours, remainder = divmod(int(remaining.total_seconds()), 3600)
-            minutes, _ = divmod(remainder, 60)
-            await update.message.reply_text(
-                f"⏳ Daily Reward ရယူထားပြီးပါပြီ။ နောက်တစ်ကြိမ်: <b>{hours} နာရီ {minutes} မိနစ်</b>",
-                parse_mode=ParseMode.HTML,
-            )
-            return
+    if last_daily and (now - last_daily) < timedelta(hours=24):
+        remaining = timedelta(hours=24) - (now - last_daily)
+        hours, remainder = divmod(int(remaining.total_seconds()), 3600)
+        minutes, _ = divmod(remainder, 60)
+        await update.message.reply_text(
+            f"⏳ Daily Reward ရယူထားပြီးပါပြီ။ နောက်တစ်ကြိမ်: <b>{hours} နာရီ {minutes} မိနစ်</b>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
     bonus_coins = 1000
     bonus_gems = 5
@@ -69,14 +82,7 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         with atomic():
             fresh = users_col.find_one({"user_id": user_id}) or {}
-            fresh_last = fresh.get("last_daily")
-            if isinstance(fresh_last, str):
-                try:
-                    fresh_last = datetime.fromisoformat(fresh_last)
-                except Exception:
-                    fresh_last = None
-            if fresh_last and fresh_last.tzinfo is None:
-                fresh_last = fresh_last.replace(tzinfo=timezone.utc)
+            fresh_last = _as_utc_datetime(fresh.get("last_daily"))
             if fresh_last and (now - fresh_last) < timedelta(hours=24):
                 await update.message.reply_text("⏳ Daily Reward ကို ရယူပြီးပါပြီ။")
                 return
