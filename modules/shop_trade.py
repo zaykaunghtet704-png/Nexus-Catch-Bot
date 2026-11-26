@@ -81,9 +81,16 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     total_gems = updated_user.get("gems", bonus_gems)
 
     await update.message.reply_text(
-        f"🎁 <b>Daily Bonus Received!</b>\n"
-        f"+<b>{bonus_coins:,}</b> Coins နှင့် +<b>{bonus_gems}</b> Gems ရရှိသွားပါပြီ။\n\n"
-        f"💰 လက်ရှိစုစုပေါင်း: <b>{total_coins:,}</b> Coins | 💎 <b>{total_gems}</b> Gems",
+        f"╭━━━━━━━━━━━━━━━━━━╮\n"
+        f"      🎁 <b>DAILY REWARD</b>\n"
+        f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        f"🎉 ဒီနေ့ရဲ့ ဆုလက်ဆောင် ရရှိပါပြီ!\n\n"
+        f"🪙 Coins: <b>+{bonus_coins:,}</b>\n"
+        f"💎 Gems: <b>+{bonus_gems}</b>\n\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"💰 လက်ကျန် Coins: <b>{total_coins:,}</b>\n"
+        f"💎 လက်ကျန် Gems: <b>{total_gems}</b>\n\n"
+        f"✨ မနက်ဖြန်လည်း ပြန်လာခဲ့ပါဦး!",
         parse_mode=ParseMode.HTML
     )
 
@@ -97,14 +104,17 @@ async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     gems = user_data.get("gems", 0)
 
     text = (
-        f"🏪 <b>NEXUS ITEM SHOP</b>\n"
-        f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        f"💰 <b>Your Coins:</b> {coins:,}\n"
-        f"💎 <b>Your Gems:</b> {gems:,}\n\n"
-        f"<b>ရရှိနိုင်သော ပစ္စည်းများ:</b>\n"
-        f"1. 📦 <b>Common Chest</b> - 500 Coins\n"
-        f"2. 🎁 <b>Rare Chest</b> - 2,000 Coins\n"
-        f"3. 👑 <b>Legendary Crate</b> - 50 Gems\n\n"
-        f"<i>Marketplace ကိုကြည့်ရန် <code>/market</code> ကို အသုံးပြုပါ။</i>"
+        f"╭━━━━━━━━━━━━━━━━━━╮\n"
+        f"        🛍️ <b>NEXUS SHOP</b>\n"
+        f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        f"👛 <b>YOUR WALLET</b>\n"
+        f"├ 🪙 Coins: <b>{coins:,}</b>\n"
+        f"└ 💎 Gems: <b>{gems:,}</b>\n\n"
+        f"🎁 <b>AVAILABLE ITEMS</b>\n"
+        f"├ 📦 <b>Common Chest</b> — 500 Coins\n"
+        f"├ 🎀 <b>Rare Chest</b> — 2,000 Coins\n"
+        f"└ 👑 <b>Legendary Crate</b> — 50 Gems\n\n"
+        f"🏪 Market ကြည့်ရန် <code>/market</code> ကို အသုံးပြုပါ။\n"
+        f"💫 <i>Choose your next treasure!</i>"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
