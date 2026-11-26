@@ -99,8 +99,10 @@ async def search_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         # Group အတွင်း ဖမ်းဆီးထားသော အရေအတွက်ကို စစ်ဆေးခြင်း
         if chat_id:
             chat_count = inventory_col.count_documents({
-                "$or": [{"card_id": cid}, {"id": cid}],
-                "$or": [{"chat_id": chat_id}, {"chat_instance": chat_instance}]
+                "$and": [
+                    {"$or": [{"card_id": cid}, {"id": cid}]},
+                    {"$or": [{"chat_id": chat_id}, {"chat_instance": chat_instance}]},
+                ]
             })
         elif chat_instance:
             chat_count = inventory_col.count_documents({
