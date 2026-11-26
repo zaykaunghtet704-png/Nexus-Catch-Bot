@@ -68,7 +68,7 @@ async def streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def find_owner_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.effective_message.reply_text("အသုံးပြုပုံ: <code>/owner [Card ID]</code>", parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text("အသုံးပြုပုံ: <code>/findowner [Card ID]</code>", parse_mode=ParseMode.HTML)
         return
     card_id = context.args[0].strip()
     holders = list(inventory_col.find({"card_id": card_id}))
@@ -315,7 +315,7 @@ def get_collection_upgrade_handlers():
     return [
         CommandHandler("weekly", weekly_command),
         CommandHandler("streak", streak_command),
-        CommandHandler(["owner", "findowner"], find_owner_command),
+        CommandHandler(["findowner", "cardowner"], find_owner_command),
         CommandHandler("chest", chest_command),
         CommandHandler("auction", auction_command),
         CommandHandler(["weeklytop", "weeklyranking"], weekly_ranking_command),
