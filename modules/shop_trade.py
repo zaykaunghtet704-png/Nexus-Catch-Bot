@@ -79,10 +79,11 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             if fresh_last and (now - fresh_last) <= timedelta(hours=48):
                 streak = int(fresh.get("daily_streak", 0) or 0) + 1
             milestone_bonus = 100 if streak % 7 == 0 else 0
+            wallet_field = "coins" if "coins" in fresh else "balance"
             result = users_col.update_one(
                 condition,
                 {
-                    "$inc": {"coins": bonus_coins + milestone_bonus, "gems": bonus_gems},
+                    "$inc": {wallet_field: bonus_coins + milestone_bonus, "gems": bonus_gems},
                     "$set": {
                         "last_daily": now,
                         "daily_streak": streak,
@@ -99,7 +100,7 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     updated_user = get_user(user_id)
-    total_coins = updated_user.get("coins", bonus_coins)
+    total_coins = updated_user.get("coins", updated_user.get("balance", bonus_coins))
     total_gems = updated_user.get("gems", bonus_gems)
 
     await update.message.reply_text(
