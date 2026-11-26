@@ -33,15 +33,25 @@ async def weekly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with atomic():
             current_user = users_col.find_one({"user_id": uid}) or {}
             currency_field = _balance_field(current_user)
-            result = users_col.update_one(
-                {"user_id": uid, "weekly_claim_week": {"$ne": week}},
-                {"$inc": {currency_field: coins, "gems": gems},
-                 "$set": {"weekly_claim_week": week}},
-                upsert=True,
-            )
-            if result.modified_count != 1 and result.upserted_id is None:
+            if current_user.get("weekly_claim_week") == week:
                 await update.effective_message.reply_text("⏳ ဒီအပတ် Weekly Reward ကို ရယူပြီးပါပြီ။ နောက်အပတ်မှ ပြန်လာခဲ့ပါ။")
                 return
+            if current_user:
+                result = users_col.update_one(
+                    {"user_id": uid, "weekly_claim_week": {"$ne": week}},
+                    {"$inc": {currency_field: coins, "gems": gems},
+                     "$set": {"weekly_claim_week": week}},
+                )
+                if result.modified_count != 1:
+                    await update.effective_message.reply_text("⏳ Weekly Reward ကို တစ်ကြိမ်သာ ရယူနိုင်ပါသည်။")
+                    return
+            else:
+                users_col.insert_one({
+                    "user_id": uid,
+                    currency_field: coins,
+                    "gems": gems,
+                    "weekly_claim_week": week,
+                })
     except Exception:
         await update.effective_message.reply_text("❌ Weekly Reward ရယူရာတွင် Error ဖြစ်နေပါသည်။")
         return
