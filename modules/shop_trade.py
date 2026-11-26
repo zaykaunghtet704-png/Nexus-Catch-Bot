@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from database import users_col, inventory_col
+from database import atomic, users_col, inventory_col
 
 def get_user(user_id: int):
     """PyMongo Safe User Fetch"""
@@ -36,44 +36,62 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     last_daily = user_data.get("last_daily")
     now = datetime.utcnow()
 
-    # 24 Hours Cooldown Check
+    # Race-safe 24-hour claim with consecutive-day streak tracking.
     if last_daily:
         if isinstance(last_daily, str):
             try:
                 last_daily = datetime.fromisoformat(last_daily)
             except Exception:
                 last_daily = None
-
         if last_daily and (now - last_daily) < timedelta(hours=24):
             remaining = timedelta(hours=24) - (now - last_daily)
             hours, remainder = divmod(int(remaining.total_seconds()), 3600)
-            minutes, seconds = divmod(remainder, 60)
-            
+            minutes, _ = divmod(remainder, 60)
             await update.message.reply_text(
-                f"⏳ <b>{escape(user.first_name)}</b>၊ သင် Daily Bonus ရယူထားပြီးပါပြီ!\n\n"
-                f"နောက်တစ်ကြိမ် ရယူနိုင်ရန် <b>{hours} နာရီ {minutes} မိနစ်</b> စောင့်ဆိုင်းပေးပါ။",
-                parse_mode=ParseMode.HTML
+                f"⏳ Daily Reward ရယူထားပြီးပါပြီ။ နောက်တစ်ကြိမ်: <b>{hours} နာရီ {minutes} မိနစ်</b>",
+                parse_mode=ParseMode.HTML,
             )
             return
 
     bonus_coins = 1000
     bonus_gems = 5
+    streak = 1
+    milestone_bonus = 0
+    previous_stamp = user_data.get("last_daily")
+    condition = {"user_id": user_id, "last_daily": previous_stamp}
 
     try:
-        users_col.update_one(
-            {"user_id": user_id},
-            {
-                "$inc": {"coins": bonus_coins, "gems": bonus_gems},
-                "$set": {
-                    "last_daily": now,
-                    "first_name": user.first_name,
-                    "username": user.username
-                }
-            },
-            upsert=True
-        )
-    except Exception as e:
-        await update.message.reply_text(f"❌ Daily Bonus ရယူရာတွင် Error ဖြစ်ပေါ်ခဲ့သည်: {e}")
+        with atomic():
+            fresh = users_col.find_one({"user_id": user_id}) or {}
+            fresh_last = fresh.get("last_daily")
+            if isinstance(fresh_last, str):
+                try:
+                    fresh_last = datetime.fromisoformat(fresh_last)
+                except Exception:
+                    fresh_last = None
+            if fresh_last and (now - fresh_last) < timedelta(hours=24):
+                await update.message.reply_text("⏳ Daily Reward ကို ရယူပြီးပါပြီ။")
+                return
+            if fresh_last and (now - fresh_last) <= timedelta(hours=48):
+                streak = int(fresh.get("daily_streak", 0) or 0) + 1
+            milestone_bonus = 100 if streak % 7 == 0 else 0
+            result = users_col.update_one(
+                condition,
+                {
+                    "$inc": {"coins": bonus_coins + milestone_bonus, "gems": bonus_gems},
+                    "$set": {
+                        "last_daily": now,
+                        "daily_streak": streak,
+                        "first_name": user.first_name,
+                        "username": user.username,
+                    },
+                },
+            )
+            if result.modified_count != 1:
+                await update.message.reply_text("⏳ Daily Reward တစ်ကြိမ်သာ ရယူနိုင်ပါသည်။")
+                return
+    except Exception:
+        await update.message.reply_text("❌ Daily Bonus ရယူရာတွင် Error ဖြစ်နေပါသည်။")
         return
 
     updated_user = get_user(user_id)
