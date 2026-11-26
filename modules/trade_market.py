@@ -191,9 +191,41 @@ async def market_command(
 
     try:
 
-        listings = list(
-            market_col.find().sort("_id", -1).limit(10)
-        )
+        # Optional filters: /market rarity=Legendary anime=Naruto min=100 max=5000
+        rarity_filter = None
+        anime_filter = None
+        min_price = None
+        max_price = None
+        for arg in context.args:
+            key, sep, value = arg.partition("=")
+            if not sep:
+                rarity_filter = arg.strip().lower()
+                continue
+            key, value = key.lower(), value.strip()
+            if key == "rarity":
+                rarity_filter = value.lower()
+            elif key == "anime":
+                anime_filter = value.lower()
+            elif key == "min":
+                min_price = safe_int(value, -1)
+            elif key == "max":
+                max_price = safe_int(value, -1)
+
+        all_listings = list(market_col.find().sort("_id", -1))
+        listings = []
+        for entry in all_listings:
+            price_value = safe_int(entry.get("price", 0))
+            if rarity_filter and rarity_filter not in str(entry.get("rarity", "")).lower():
+                continue
+            if anime_filter and anime_filter not in str(entry.get("anime", "")).lower():
+                continue
+            if min_price is not None and (min_price < 0 or price_value < min_price):
+                continue
+            if max_price is not None and (max_price < 0 or price_value > max_price):
+                continue
+            listings.append(entry)
+            if len(listings) >= 10:
+                break
 
         if not listings:
             await message.reply_text(
