@@ -96,7 +96,10 @@ async def recycle_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     card_id = context.args[0]
     try:
         with atomic():
-            copies = list(inventory_col.find({"user_id": user_id, "card_id": card_id}))
+            copies = list(inventory_col.find({
+                "user_id": user_id,
+                "$or": [{"card_id": card_id}, {"id": card_id}],
+            }))
             if len(copies) < 2:
                 await update.message.reply_text("❌ Duplicate ကတ်မဟုတ်ပါ။ မူရင်းကတ်တစ်ကတ်ကို အမြဲချန်ထားရပါမည်။")
                 return
