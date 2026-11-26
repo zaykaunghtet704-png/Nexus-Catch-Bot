@@ -1,6 +1,7 @@
 """
 modules/extra_commands.py - Cleaned Extra Handlers
 """
+from html import escape
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
@@ -75,11 +76,11 @@ async def ctop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 async def ranking_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top_users = list(users_col.find().sort("coins", -1).limit(10))
+    top_users = sorted(list(users_col.find()), key=lambda u: int(u.get("coins", u.get("balance", 0)) or 0), reverse=True)[:10]
     
     text = "🌐 <b>GLOBAL COIN RANKING</b>\n─────────────────────────\n"
     for idx, u in enumerate(top_users, 1):
-        name = u.get("first_name", "User")
+        name = escape(str(u.get("first_name", "User")))
         bal = u.get("coins", u.get("balance", 0))
         text += f"{idx}. <b>{name}</b> — 💰 {bal:,} Coins\n"
         
@@ -164,6 +165,15 @@ async def gift_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 new_card = {k: v for k, v in card.items() if k != "_id"}
                 new_card["user_id"] = recipient.id
                 inventory_col.insert_one(new_card)
+                if not recipient_doc:
+                    users_col.insert_one({
+                        "user_id": recipient.id,
+                        "first_name": recipient.first_name,
+                        "username": recipient.username,
+                        "coins": 0,
+                        "gems": 0,
+                        "xp": 0,
+                    })
                 gift_label = f"🎴 {escape(str(card.get('name') or value))} (ID: {escape(value)})"
     except Exception:
         await message.reply_text("❌ Gift ပေးပို့ရာတွင် Error ဖြစ်နေပါသည်။")
