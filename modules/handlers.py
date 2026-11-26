@@ -103,6 +103,8 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"├ 🎴 Total Cards: <b>{total_cards}</b>\n"
         f"├ ✨ Unique Cards: <b>{unique_cards}</b>\n"
         f"└ 🌸 Completion: <b>{harem_pct:.2f}%</b>\n\n"
+        f"🌟 <b>FAVORITE SHOWCASE</b>\n"
+        f"└ 🎴 {escape(str(user_doc.get('favorite_card') or 'Not selected'))}\n\n"
         f"⚡ <b>LEVEL {level}</b>\n"
         f"<code>[{bar}]</code>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
