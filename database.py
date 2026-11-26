@@ -10,6 +10,7 @@ import json
 import os
 import re
 import uuid
+import threading
 from enum import Enum
 
 import psycopg2
@@ -39,12 +40,42 @@ def _connect():
     return psycopg2.connect(url, **kwargs)
 
 
+_ACTIVE_TRANSACTION = threading.local()
+
+
 @contextmanager
 def _session():
+    # Reuse an active transaction so operations across collections can commit
+    # or roll back together. Outside atomic(), preserve the original behavior.
+    active = getattr(_ACTIVE_TRANSACTION, "connection", None)
+    if active is not None:
+        yield active
+        return
+
     connection = _connect()
     try:
         with connection:
             yield connection
+    finally:
+        connection.close()
+
+
+@contextmanager
+def atomic():
+    """Run multiple collection operations in one PostgreSQL transaction."""
+    active = getattr(_ACTIVE_TRANSACTION, "connection", None)
+    if active is not None:
+        yield active
+        return
+
+    connection = _connect()
+    try:
+        with connection:
+            _ACTIVE_TRANSACTION.connection = connection
+            try:
+                yield connection
+            finally:
+                del _ACTIVE_TRANSACTION.connection
     finally:
         connection.close()
 
