@@ -91,19 +91,25 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
 
     profile_text = (
-        f"🎗 <b>CATCHER PROFILE</b>\n"
-        f"👤 <b>USER:</b> {escape(target_first_name)}\n"
-        f"🆔 <b>USER ID:</b> <code>{target_user_id}</code>\n"
-        f"🪙 <b>COINS:</b> <b>{coins:,}</b> | 💎 <b>GEMS:</b> <b>{gems:,}</b>\n"
-        f"⚡ <b>TOTAL CHARACTER:</b> {total_cards} ({unique_cards})\n"
-        f"🫧 <b>HAREM:</b> {unique_cards}/{total_global_cards} ({harem_pct:.2f}%)\n"
-        f"ℹ️ <b>EXPERIENCE LEVEL:</b> {level}\n"
-        f"📈 <b>PROGRESS BAR:</b>\n"
+        f"╭━━━━━━━━━━━━━━━━━━╮\n"
+        f"      👑 <b>COLLECTOR PROFILE</b>\n"
+        f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        f"👤 <b>Collector:</b> {escape(target_first_name)}\n"
+        f"🆔 <b>ID:</b> <code>{target_user_id}</code>\n\n"
+        f"💰 <b>WALLET</b>\n"
+        f"├ 🪙 Coins: <b>{coins:,}</b>\n"
+        f"└ 💎 Gems: <b>{gems:,}</b>\n\n"
+        f"🃏 <b>COLLECTION</b>\n"
+        f"├ 🎴 Total Cards: <b>{total_cards}</b>\n"
+        f"├ ✨ Unique Cards: <b>{unique_cards}</b>\n"
+        f"└ 🌸 Completion: <b>{harem_pct:.2f}%</b>\n\n"
+        f"⚡ <b>LEVEL {level}</b>\n"
         f"<code>[{bar}]</code>\n"
-        f"─────────────────────────\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
         + "\n".join(rarity_lines) +
         f"\n─────────────────────────\n"
-        f"🌍 <b>GLOBAL POSITION:</b> {global_pos}\n"
+        f"🏆 <b>GLOBAL COLLECTOR RANK:</b> #{global_pos}\n"
+        f"💫 <i>Keep collecting and climb the ranks!</i>\n"
     )
 
     await update.message.reply_text(profile_text, parse_mode=ParseMode.HTML)
@@ -119,7 +125,7 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     card = cards_col.find_one({"$or": [{"card_id": card_id}, {"id": card_id}]})
 
     if not card:
-        await update.message.reply_text("❌ ဤ Card ID ကို ရှာမတွေ့ပါ။")
+        await update.message.reply_text("🔎 <b>CARD NOT FOUND</b>\n\nဒီ Card ID ကို မတွေ့ပါ။ ID ကို ပြန်စစ်ပေးပါ။", parse_mode=ParseMode.HTML)
         return
 
     cid = card.get("card_id") or card.get("id")
@@ -176,9 +182,12 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     coins, gems = get_coins_and_gems(user_doc)
 
     await update.message.reply_text(
-        f"💰 <b>YOUR BALANCE</b>\n\n"
-        f"🪙 Coins: <b>{coins:,}</b>\n"
-        f"💎 Gems: <b>{gems:,}</b>",
+        f"╭━━━━━━━━━━━━━━━━━━╮\n"
+        f"       💰 <b>MY WALLET</b>\n"
+        f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        f"🪙 <b>Coins</b>  ·  <code>{coins:,}</code>\n"
+        f"💎 <b>Gems</b>   ·  <code>{gems:,}</code>\n\n"
+        f"✨ <i>Manage your collection wisely!</i>",
         parse_mode=ParseMode.HTML
     )
 
