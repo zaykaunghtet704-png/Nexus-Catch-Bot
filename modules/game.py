@@ -162,7 +162,9 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             week_key = f"{week_info.year}-W{week_info.week:02d}"
             with atomic():
                 inventory_col.insert_one(inv_item)
-                users_col.update_one({"user_id": user_id}, {"$inc": {"balance": 100, "xp": 10}}, upsert=True)
+                account = users_col.find_one({"user_id": user_id}) or {}
+                wallet_field = "coins" if "coins" in account else "balance"
+                users_col.update_one({"user_id": user_id}, {"$inc": {wallet_field: 100, "xp": 10}}, upsert=True)
                 weekly_catches_col.insert_one({
                     "user_id": user_id,
                     "chat_id": chat_id if update.effective_chat.type != "private" else None,
