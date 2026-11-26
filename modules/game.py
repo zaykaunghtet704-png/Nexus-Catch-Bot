@@ -104,8 +104,8 @@ async def message_counter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         caption = (
             f"🍁 <b>A WILD CHARACTER APPEARED!</b>\n\n"
-            f"📺 <b>Anime:</b> {escape(card.get('anime', 'Unknown'))}\n"
-            f"🎴 <b>Rarity:</b> {card.get('rarity', 'Common')}\n\n"
+            f"📺 <b>Anime:</b> {escape(str(card.get('anime', 'Unknown')))}\n"
+            f"🎴 <b>Rarity:</b> {escape(str(card.get('rarity', 'Common')))}\n\n"
             f"ဖမ်းယူရန် <code>/catch [Character Name]</code> ကို ရိုက်ပါ။"
         )
 
@@ -199,7 +199,7 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         await update.message.reply_text(
             f"🎉 <b>ဂုဏ်ယူပါတယ် {escape(user.first_name)}!</b>\n\n"
-            f"<b>{actual_card['name']}</b> ({actual_card['rarity']}) ကို အောင်မြင်စွာ ဖမ်းယူနိုင်ခဲ့ပါပြီ!\n"
+            f"<b>{escape(str(actual_card.get('name', 'Unknown')))}</b> ({escape(str(actual_card.get('rarity', 'Common')))}) ကို အောင်မြင်စွာ ဖမ်းယူနိုင်ခဲ့ပါပြီ!\n"
             f"💰 +{100 + catch_bonus} Coins | ⚡ +10 XP ရရှိသည်။",
             parse_mode=ParseMode.HTML
         )
