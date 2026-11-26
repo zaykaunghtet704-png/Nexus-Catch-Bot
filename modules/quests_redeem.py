@@ -30,7 +30,7 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 return
 
             max_uses = int(code_doc.get("max_uses", 0) or 0)
-            used_count = int(code_doc.get("used_count", len(used_by)) or 0)
+            used_count = max(int(code_doc.get("used_count", 0) or 0), len(used_by))
             if max_uses > 0 and used_count >= max_uses:
                 await update.message.reply_text("❌ ဤ Code ၏ အသုံးပြုနိုင်သည့် အကြိမ်ရေ ကုန်ဆုံးသွားပါပြီ။")
                 return
@@ -45,9 +45,11 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
             coins_reward = max(0, int(code_doc.get("coins", 0) or 0))
             gems_reward = max(0, int(code_doc.get("gems", 0) or 0))
+            account = users_col.find_one({"user_id": user_id}) or {}
+            wallet_field = "coins" if "coins" in account else "balance"
             users_col.update_one(
                 {"user_id": user_id},
-                {"$inc": {"coins": coins_reward, "gems": gems_reward}},
+                {"$inc": {wallet_field: coins_reward, "gems": gems_reward}},
                 upsert=True,
             )
 
