@@ -359,9 +359,12 @@ async def buy_command(
         }) or {}
 
         # Support both existing balance and legacy coins
-        balance = safe_int(
-            buyer.get("balance", buyer.get("coins", 0))
+        balance_field = (
+            "balance"
+            if "balance" in buyer
+            else "coins"
         )
+        balance = safe_int(buyer.get(balance_field, 0))
 
         if balance < price:
 
@@ -374,13 +377,7 @@ async def buy_command(
             )
             return
 
-        # Deduct using whichever field the account uses.
-        balance_field = (
-            "balance"
-            if "balance" in buyer
-            else "coins"
-        )
-
+        # Deduct using the same wallet field displayed by the profile.
         debit = users_col.update_one(
             {
                 "user_id": user.id,
@@ -403,13 +400,11 @@ async def buy_command(
             return
 
         # Credit seller
+        seller_doc = users_col.find_one({"user_id": seller_id}) or {}
+        seller_balance_field = "balance" if "balance" in seller_doc else "coins"
         seller = users_col.update_one(
             {"user_id": seller_id},
-            {
-                "$inc": {
-                    balance_field: price
-                }
-            },
+            {"$inc": {seller_balance_field: price}},
         )
 
         if seller.matched_count == 0:
