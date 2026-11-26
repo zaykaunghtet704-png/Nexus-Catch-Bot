@@ -1547,7 +1547,6 @@ def get_master_owner_handlers():
 
         # Maintenance & Gifts
         CommandHandler("gencode", generate_gift_code),
-        CommandHandler("redeem", redeem_gift_code),  # User များ redeem လုပ်ရန်
         CommandHandler("cleanghost", clean_ghost_data),
         CommandHandler("dbstats", db_stats_detailed),
         CommandHandler("zipbackup", full_zip_backup),
