@@ -75,6 +75,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "└ 🛍️ `/shop` — ဆိုင်ဖွင့်ရန်\n\n"
         "🏆 <b>COMMUNITY</b>\n"
         "└ 🌍 `/ranking` — ထိပ်တန်းစာရင်း\n\n"
+        "✨ <b>NEW FEATURES</b>\n"
+        "├ 🎨 `/haremstyle compact` — Harem ပုံစံ\n"
+        "├ ♻️ `/exchange [CardID]` — Duplicate လဲရန်\n"
+        "├ 🎁 `/weekly` — Weekly Reward\n"
+        "├ 🔥 `/streak` — Daily Streak\n"
+        "├ 📦 `/chest` — Card Chest\n"
+        "├ 🔎 `/findowner [CardID]` — Card ပိုင်ရှင်\n"
+        "├ 🔨 `/auction` — Auction\n"
+        "├ 🛒 `/market rarity=...` — Market Filter\n"
+        "├ 🏆 `/weeklyranking` — Weekly Ranking\n"
+        "└ 🏘️ `/topgroups` — Top Groups\n\n"
         "💫 <i>Collect • Trade • Become a Legend</i>"
     )
     
