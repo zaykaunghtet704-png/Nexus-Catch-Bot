@@ -9,7 +9,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
 
-from database import cards_col, inventory_col, users_col, chats_col
+from database import atomic, cards_col, inventory_col, users_col, chats_col, db
 
 try:
     from config import OWNER_ID
@@ -18,6 +18,8 @@ except ImportError:
 
 # Runtime Memory Trackers
 SPAWNED_CARDS = {}
+weekly_catches_col = db['weekly_catches']
+group_stats_col = db['group_stats']
 
 # Default Spawn Threshold (စာစောင် ၁၀၀ ပြည့်တိုင်း ပုံမှန်ထွက်မည်)
 DEFAULT_SPAWN_THRESHOLD = 100
@@ -155,10 +157,29 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "img_url": actual_card.get("img_url") or actual_card.get("image")
         }
         try:
-            inventory_col.insert_one(inv_item)
-            users_col.update_one({"user_id": user_id}, {"$inc": {"balance": 100, "xp": 10}}, upsert=True)
+            from datetime import datetime, timezone
+            week_info = datetime.now(timezone.utc).isocalendar()
+            week_key = f"{week_info.year}-W{week_info.week:02d}"
+            with atomic():
+                inventory_col.insert_one(inv_item)
+                users_col.update_one({"user_id": user_id}, {"$inc": {"balance": 100, "xp": 10}}, upsert=True)
+                weekly_catches_col.insert_one({
+                    "user_id": user_id,
+                    "chat_id": chat_id if update.effective_chat.type != "private" else None,
+                    "week": week_key,
+                    "caught_at": datetime.now(timezone.utc).isoformat(),
+                })
+                if update.effective_chat.type != "private":
+                    group_stats_col.update_one(
+                        {"chat_id": chat_id, "week": week_key},
+                        {"$set": {"title": update.effective_chat.title or "Group"},
+                         "$inc": {"weekly_catches": 1}},
+                        upsert=True,
+                    )
         except Exception:
-            pass
+            SPAWNED_CARDS[chat_id] = actual_card
+            await update.message.reply_text("❌ Catch သိမ်းဆည်းရာတွင် Error ဖြစ်နေပါသည်။ ထပ်မံကြိုးစားပါ။")
+            return
 
         await update.message.reply_text(
             f"🎉 <b>ဂုဏ်ယူပါတယ် {escape(user.first_name)}!</b>\n\n"
