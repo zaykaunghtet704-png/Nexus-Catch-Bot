@@ -92,15 +92,21 @@ async def start_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     data = query.data
     if data == "help_menu":
         text = (
-            "📖 <b>NEXUS CATCH BOT - HELP MENU</b>\n"
-            "─────────────────────────\n"
-            "• `/start` - Bot ကို စတင်ရန်\n"
-            "• `/profile` - မိမိ Profile နှင့် Stats ကြည့်ရန်\n"
-            "• `/catch` - Group ထဲတွင် ကတ်ဖမ်းရန်\n"
-            "• `/collection` - ပိုင်ဆိုင်သမျှ ကတ်များကြည့်ရန်\n"
-            "• `/daily` - နေ့စဉ် ဆုလာဘ် (Coins/Gems) ရယူရန်\n"
-            "• `/leaderboard` - Top Collectors စာရင်းကြည့်ရန်\n"
-            "• `/shop` - Item နှင့် Card Packs ဝယ်ရန်"
+            "╭━━━━━━━━━━━━━━━━━━╮\n"
+            "       📚 <b>NEXUS CATCH • HELP</b>\n"
+            "╰━━━━━━━━━━━━━━━━━━╯\n\n"
+            "🌟 <b>COLLECTION</b>\n"
+            "├ 🃏 `/catch` — ကတ်ဖမ်းရန်\n"
+            "├ 📚 `/harem` — ကတ်စုဆောင်းမှုကြည့်ရန်\n"
+            "├ 🔎 `/check` — Card ID စစ်ရန်\n"
+            "└ 👤 `/profile` — ကိုယ်ရေးအချက်အလက်\n\n"
+            "🪙 <b>ECONOMY</b>\n"
+            "├ 🎁 `/daily` — နေ့စဉ်ဆုယူရန်\n"
+            "├ 💰 `/balance` — လက်ကျန်ကြည့်ရန်\n"
+            "└ 🛍️ `/shop` — ဆိုင်ဖွင့်ရန်\n\n"
+            "🏆 <b>COMMUNITY</b>\n"
+            "└ 🌍 `/leaderboard` — ထိပ်တန်းစာရင်း\n\n"
+            "💫 <i>Collect • Trade • Become a Legend</i>"
         )
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ 𝗕𝗔𝗖𝗞", callback_data="back_start")]])
         try:
@@ -114,7 +120,7 @@ async def start_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             "─────────────────────────\n"
             "ဆိုင်အတွင်းမှ Item များနှင့် Card Packs များကို ဝယ်ယူရန် <code>/shop</code> ကို အသုံးပြုပါ။"
         )
-        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="back_start")]])
+        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ 𝗕𝗔𝗖𝗞", callback_data="back_start")]])
         try:
             await query.edit_message_text(text, reply_markup=back_keyboard, parse_mode=ParseMode.HTML)
         except Exception:
@@ -124,13 +130,17 @@ async def start_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         user = update.effective_user
         bot_username = context.bot.username
         keyboard = [
-            [InlineKeyboardButton("➕ Add Me To Group", url=f"https://t.me/{bot_username}?startgroup=true")],
-            [InlineKeyboardButton("📖 Help Menu", callback_data="help_menu"), InlineKeyboardButton("💎 Shop", callback_data="shop_menu")]
+            [InlineKeyboardButton("➕ 𝗔𝗗𝗗 𝗧𝗢 𝗚𝗥𝗢𝗨𝗣", url=f"https://t.me/{bot_username}?startgroup=true")],
+            [InlineKeyboardButton("📚 𝗛𝗘𝗟𝗣", callback_data="help_menu"), InlineKeyboardButton("🛍️ 𝗦𝗛𝗢𝗣", callback_data="shop_menu")]
         ]
         text = (
-            f"👋 မင်္ဂလာပါ <b>{user.first_name}</b>!\n\n"
-            f"🃏 ဤသည်မှာ Anime Character ကတ်များ ဖမ်းဆီးခြင်း၊ စုဆောင်းခြင်းနှင့် "
-            f"Collector များ ယှဉ်ပြိုင်ကစားနိုင်သော <b>Nexus Catch Bot</b> ဖြစ်ပါသည်။"
+            f"🌸 မင်္ဂလာပါ <b>{escape(user.first_name or 'Collector')}</b>!\n\n"
+            f"╭━━━━━━━━━━━━━━━━━━╮\n"
+            f"       🃏 <b>NEXUS CATCH</b>\n"
+            f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
+            f"✨ Anime Character ကတ်များကို ဖမ်းယူ၊ စုဆောင်းပြီး\n"
+            f"🏆 အခြား Collector များနှင့် ယှဉ်ပြိုင်လိုက်ပါ!\n\n"
+            f"💫 <i>Your collection journey starts here.</i>"
         )
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
