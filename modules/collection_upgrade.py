@@ -22,7 +22,7 @@ def _week_key():
 
 
 def _balance_field(user_doc):
-    return "balance" if "balance" in user_doc else "coins"
+    return "coins" if "coins" in user_doc else "balance"
 
 
 async def weekly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
