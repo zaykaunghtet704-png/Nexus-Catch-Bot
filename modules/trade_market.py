@@ -360,9 +360,9 @@ async def buy_command(
 
         # Support both existing balance and legacy coins
         balance_field = (
-            "balance"
-            if "balance" in buyer
-            else "coins"
+            "coins"
+            if "coins" in buyer
+            else "balance"
         )
         balance = safe_int(buyer.get(balance_field, 0))
 
@@ -401,7 +401,7 @@ async def buy_command(
 
         # Credit seller
         seller_doc = users_col.find_one({"user_id": seller_id}) or {}
-        seller_balance_field = "balance" if "balance" in seller_doc else "coins"
+        seller_balance_field = "coins" if "coins" in seller_doc else "balance"
         seller = users_col.update_one(
             {"user_id": seller_id},
             {"$inc": {seller_balance_field: price}},
