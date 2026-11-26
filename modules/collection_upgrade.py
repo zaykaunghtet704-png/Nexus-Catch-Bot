@@ -81,7 +81,9 @@ async def find_owner_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.effective_message.reply_text("အသုံးပြုပုံ: <code>/findowner [Card ID]</code>", parse_mode=ParseMode.HTML)
         return
     card_id = context.args[0].strip()
-    holders = list(inventory_col.find({"card_id": card_id}))
+    holders = list(inventory_col.find({
+        "$or": [{"card_id": card_id}, {"id": card_id}]
+    }))
     if not holders:
         await update.effective_message.reply_text("🔎 ဒီ Card ကို လက်ရှိ ဘယ်သူမှ မပိုင်ဆိုင်သေးပါ။")
         return
@@ -235,7 +237,10 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.reply_text("❌ MinBid သည် 1 အထက်၊ ကြာချိန်သည် 1–168 နာရီ ဖြစ်ရပါမည်။")
                 return
             with atomic():
-                card = inventory_col.find_one({"user_id": user.id, "card_id": card_id})
+                card = inventory_col.find_one({
+                    "user_id": user.id,
+                    "$or": [{"card_id": card_id}, {"id": card_id}],
+                })
                 if not card:
                     await msg.reply_text("❌ သင့်ထံတွင် ထို Card မရှိပါ။")
                     return
