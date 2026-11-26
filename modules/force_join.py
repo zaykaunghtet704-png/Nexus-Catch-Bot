@@ -2,6 +2,9 @@ import os
 import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, ApplicationHandlerStop
+from database import atomic, db
+
+force_joins_col = db["force_joins"]
 
 # ---------------------------------------------------------
 # SQLite Database Setup (Local ဖိုင်ဖြင့် သိမ်းဆည်းမည်)
@@ -20,8 +23,19 @@ def init_db():
             )
         ''')
         conn.commit()
+        cursor.execute("SELECT chat_id, title, link FROM force_joins")
+        legacy_rows = cursor.fetchall()
         conn.close()
-        print("✅ Force Join Module: SQLite Database Connected Successfully!")
+        # One-time, non-destructive migration: copy legacy local settings to PostgreSQL.
+        if legacy_rows:
+            with atomic():
+                for chat_id, title, link in legacy_rows:
+                    force_joins_col.update_one(
+                        {"chat_id": str(chat_id)},
+                        {"$set": {"chat_id": str(chat_id), "title": title, "link": link}},
+                        upsert=True,
+                    )
+        print("✅ Force Join settings are available in PostgreSQL.")
     except Exception as e:
         print(f"❌ SQLite Initialization Error: {e}")
 
@@ -47,11 +61,10 @@ if HARDCODED_OWNER_ID not in ADMIN_IDS:
 # =========================================================
 async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT chat_id, title, link FROM force_joins")
-        rows = cursor.fetchall()
-        conn.close()
+        rows = [
+            (item.get("chat_id"), item.get("title"), item.get("link"))
+            for item in force_joins_col.find({})
+        ]
     except Exception:
         return True
 
@@ -108,14 +121,17 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title = parts[1]
         link = parts[2]
 
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT OR REPLACE INTO force_joins (chat_id, title, link)
-            VALUES (?, ?, ?)
-        ''', (str(chat_id_input), title, link))
-        conn.commit()
-        conn.close()
+        with atomic():
+            force_joins_col.update_one(
+                {"chat_id": str(chat_id_input)},
+                {"$set": {
+                    "chat_id": str(chat_id_input),
+                    "title": title,
+                    "link": link,
+                    "updated_at": __import__("datetime").datetime.utcnow().isoformat(),
+                }},
+                upsert=True,
+            )
 
         await update.message.reply_text(
             f"✅ **Must Join လင့်ခ် အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!**\n\n"
