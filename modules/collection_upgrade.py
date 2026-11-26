@@ -169,7 +169,7 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not rows:
                 await msg.reply_text("🔨 လက်ရှိ Auction မရှိသေးပါ။")
                 return
-            lines = [f"🆔 <code>{escape(str(a['_id']))}</code> | {escape(str(a.get('name')))} | Bid: {int(a.get('highest_bid', a.get('min_bid', 0))):,}" for a in rows[:15]]
+            lines = [f"🆔 <code>{escape(str(a['_id']))}</code> | {escape(str((a.get('card') or {}).get('name', 'Card')))} | Bid: {int(a.get('highest_bid', a.get('min_bid', 0))):,}" for a in rows[:15]]
             await msg.reply_text("🔨 <b>LIVE AUCTIONS</b>\n\n" + "\n".join(lines), parse_mode=ParseMode.HTML)
             return
 
@@ -254,7 +254,7 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             auction_id = context.args[1]
             with atomic():
-                auction = auctions_col.find_one({"_id": auction_id})
+                auction = auctions_col.find_one_for_update({"_id": auction_id})
                 if not auction:
                     await msg.reply_text("❌ Auction မတွေ့ပါ။")
                     return
@@ -302,7 +302,7 @@ async def weekly_ranking_command(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def top_groups_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    rows = list(group_stats_col.find())
+    rows = list(group_stats_col.find({"week": _week_key()}))
     rows.sort(key=lambda x: int(x.get("weekly_catches", 0)), reverse=True)
     if not rows:
         await update.effective_message.reply_text("🏘️ Group Catch စာရင်း မရှိသေးပါ။")
