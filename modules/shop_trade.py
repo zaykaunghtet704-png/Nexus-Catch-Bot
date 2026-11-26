@@ -124,7 +124,7 @@ async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_id = int(update.effective_user.id)
     user_data = get_user(user_id)
     
-    coins = user_data.get("coins", 0)
+    coins = user_data.get("coins", user_data.get("balance", 0))
     gems = user_data.get("gems", 0)
 
     text = (
