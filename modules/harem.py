@@ -47,6 +47,27 @@ def get_header(context: ContextTypes.DEFAULT_TYPE) -> str:
 # 1. /chmode & /hmode (HAREM PREFERENCES SETTINGS)
 # ══════════════════════════════════════════════════════════════════════════════
 
+async def haremstyle_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Choose compact or detailed harem list presentation."""
+    uid = update.effective_user.id
+    if not context.args or context.args[0].lower() not in ("compact", "detailed"):
+        await update.effective_message.reply_text(
+            "အသုံးပြုပုံ: <code>/haremstyle compact</code> သို့မဟုတ် <code>/haremstyle detailed</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    style = context.args[0].lower()
+    users_col.update_one(
+        {"user_id": uid},
+        {"$set": {"harem_display_style": style}},
+        upsert=True,
+    )
+    await update.effective_message.reply_text(
+        f"✅ Harem Display Style ကို <b>{style.title()}</b> သို့ ပြောင်းပြီးပါပြီ။",
+        parse_mode=ParseMode.HTML,
+    )
+
+
 async def chmode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Harem Display Mode များကို ပြောင်းလဲသတ်မှတ်ရန် Command"""
     user_id = update.effective_user.id
@@ -276,9 +297,13 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
             key = (c_id, c_name, c_rarity)
             card_counts[key] = card_counts.get(key, 0) + 1
 
+        display_style = user_doc.get("harem_display_style", "detailed")
         for (c_id, c_name, c_rarity), count in card_counts.items():
             icon = RARITY_ICONS.get(c_rarity, "🧊")
-            text_lines.append(f"<code>{c_id}</code> | {icon} | <b>{escape(c_name)}</b> (x{count})")
+            if display_style == "compact":
+                text_lines.append(f"{icon} <code>{c_id}</code> <b>{escape(c_name)}</b> ×{count}")
+            else:
+                text_lines.append(f"<code>{c_id}</code> | {icon} | <b>{escape(c_name)}</b> (x{count})")
 
         text_lines.append("")
 
@@ -314,6 +339,7 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
 def get_harem_handlers():
     return [
         CommandHandler("harem", harem_command, block=False),
+        CommandHandler("haremstyle", haremstyle_command, block=False),
         CommandHandler(["chmode", "hmode"], chmode_command, block=False),
         CallbackQueryHandler(chmode_callback, pattern="^chmode_"),
         CallbackQueryHandler(harem_pagination_callback, pattern="^(harem_page_|harem_count_info)")
