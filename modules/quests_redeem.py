@@ -71,7 +71,7 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     card_line = ""
     if card_to_award:
-        card_line = f"\n🎴 Card: <b>{card_to_award.get('name', 'Unknown')}</b>"
+        card_line = f"\n🎴 Card: <b>{escape(str(card_to_award.get('name', 'Unknown')))}</b>"
     await update.message.reply_text(
         f"╭━━━━━━━━━━━━━━━━━━╮\n"
         f"       🎉 <b>REDEEM SUCCESS</b>\n"
