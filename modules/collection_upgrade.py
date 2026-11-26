@@ -159,6 +159,49 @@ async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def booster_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    action = context.args[0].lower() if context.args else "status"
+    if action == "buy":
+        now = datetime.now(timezone.utc)
+        try:
+            with atomic():
+                user_doc = users_col.find_one({"user_id": uid}) or {}
+                active_until = user_doc.get("booster_until")
+                if active_until:
+                    try:
+                        if datetime.fromisoformat(active_until) > now and int(user_doc.get("booster_uses", 0)) > 0:
+                            await update.effective_message.reply_text("⚡ Booster အသက်ဝင်နေဆဲပါ။ ကျန်အသုံးပြုခွင့်ကို /booster status ဖြင့်ကြည့်ပါ။")
+                            return
+                    except (TypeError, ValueError):
+                        pass
+                field = _balance_field(user_doc)
+                debit = users_col.update_one(
+                    {"user_id": uid, field: {"$gte": 3000}},
+                    {"$inc": {field: -3000},
+                     "$set": {"booster_uses": 5, "booster_until": (now + timedelta(hours=24)).isoformat()}},
+                )
+                if debit.modified_count != 1:
+                    await update.effective_message.reply_text("❌ Lucky Booster ဝယ်ရန် 3,000 Coins မလုံလောက်ပါ။")
+                    return
+        except Exception:
+            await update.effective_message.reply_text("❌ Booster ဝယ်ယူရာတွင် Error ဖြစ်နေပါသည်။")
+            return
+        await update.effective_message.reply_text("⚡ <b>LUCKY BOOSTER ACTIVATED!</b>\n\n🎯 နောက် Catch ၅ ကြိမ်အတွက် +50 Coins စီ Bonus ရမည်။\n⏳ သက်တမ်း: 24 နာရီ", parse_mode=ParseMode.HTML)
+        return
+
+    doc = users_col.find_one({"user_id": uid}) or {}
+    uses = int(doc.get("booster_uses", 0) or 0)
+    expiry = doc.get("booster_until") or "မရှိသေးပါ"
+    await update.effective_message.reply_text(
+        "⚡ <b>LUCKY BOOSTER</b>\n\n"
+        f"🎯 ကျန်အသုံးပြုခွင့်: <b>{uses}/5</b>\n"
+        f"⏳ သက်တမ်းကုန်ချိန်: <code>{escape(str(expiry))}</code>\n"
+        "🛒 ဝယ်ယူရန် <code>/booster buy</code> — 3,000 Coins",
+        parse_mode=ParseMode.HTML,
+    )
+
+
 async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     user = update.effective_user
@@ -327,6 +370,7 @@ def get_collection_upgrade_handlers():
         CommandHandler("streak", streak_command),
         CommandHandler(["findowner", "cardowner"], find_owner_command),
         CommandHandler("chest", chest_command),
+        CommandHandler("booster", booster_command),
         CommandHandler("auction", auction_command),
         CommandHandler(["weeklytop", "weeklyranking"], weekly_ranking_command),
         CommandHandler("topgroups", top_groups_command),
