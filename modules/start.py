@@ -74,7 +74,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "├ 💰 `/balance` — လက်ကျန်ကြည့်ရန်\n"
         "└ 🛍️ `/shop` — ဆိုင်ဖွင့်ရန်\n\n"
         "🏆 <b>COMMUNITY</b>\n"
-        "└ 🌍 `/leaderboard` — ထိပ်တန်းစာရင်း\n\n"
+        "└ 🌍 `/ranking` — ထိပ်တန်းစာရင်း\n\n"
         "💫 <i>Collect • Trade • Become a Legend</i>"
     )
     
@@ -105,7 +105,7 @@ async def start_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             "├ 💰 `/balance` — လက်ကျန်ကြည့်ရန်\n"
             "└ 🛍️ `/shop` — ဆိုင်ဖွင့်ရန်\n\n"
             "🏆 <b>COMMUNITY</b>\n"
-            "└ 🌍 `/leaderboard` — ထိပ်တန်းစာရင်း\n\n"
+            "└ 🌍 `/ranking` — ထိပ်တန်းစာရင်း\n\n"
             "💫 <i>Collect • Trade • Become a Legend</i>"
         )
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ 𝗕𝗔𝗖𝗞", callback_data="back_start")]])
