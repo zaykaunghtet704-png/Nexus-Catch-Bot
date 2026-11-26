@@ -34,7 +34,7 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         cid = str(card.get("card_id") or card.get("id") or card.get("_id"))
         name = escape(card.get("name", "Unknown"))
         anime = escape(card.get("anime", "Unknown"))
-        rarity = card.get("rarity", "Common")
+        rarity = escape(str(card.get("rarity", "Common")))
         img_url = card.get("img_url") or card.get("image") or "https://via.placeholder.com/300"
 
         caption = (
