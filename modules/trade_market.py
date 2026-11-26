@@ -21,7 +21,7 @@ from telegram.ext import (
 )
 
 from database import (
-    inventory_col,
+    atomic, inventory_col,
     market_col,
     users_col,
 )
