@@ -58,7 +58,11 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     streak = 1
     milestone_bonus = 0
     previous_stamp = user_data.get("last_daily")
-    condition = {"user_id": user_id, "last_daily": previous_stamp}
+    condition = {"user_id": user_id}
+    if "last_daily" in user_data:
+        condition["last_daily"] = previous_stamp
+    else:
+        condition["last_daily"] = {"$exists": False}
 
     try:
         with atomic():
@@ -103,8 +107,9 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"      🎁 <b>DAILY REWARD</b>\n"
         f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
         f"🎉 ဒီနေ့ရဲ့ ဆုလက်ဆောင် ရရှိပါပြီ!\n\n"
-        f"🪙 Coins: <b>+{bonus_coins:,}</b>\n"
-        f"💎 Gems: <b>+{bonus_gems}</b>\n\n"
+        f"🪙 Coins: <b>+{bonus_coins + milestone_bonus:,}</b>\n"
+        f"💎 Gems: <b>+{bonus_gems}</b>\n"
+        f"🔥 Daily Streak: <b>{streak} ရက်</b>\n\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"💰 လက်ကျန် Coins: <b>{total_coins:,}</b>\n"
         f"💎 လက်ကျန် Gems: <b>{total_gems}</b>\n\n"
