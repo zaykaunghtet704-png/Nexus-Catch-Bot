@@ -156,15 +156,28 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "rarity": actual_card.get("rarity"),
             "img_url": actual_card.get("img_url") or actual_card.get("image")
         }
+        catch_bonus = 0
         try:
             from datetime import datetime, timezone
-            week_info = datetime.now(timezone.utc).isocalendar()
+            now_utc = datetime.now(timezone.utc)
+            week_info = now_utc.isocalendar()
             week_key = f"{week_info.year}-W{week_info.week:02d}"
             with atomic():
                 inventory_col.insert_one(inv_item)
                 account = users_col.find_one({"user_id": user_id}) or {}
                 wallet_field = "coins" if "coins" in account else "balance"
-                users_col.update_one({"user_id": user_id}, {"$inc": {wallet_field: 100, "xp": 10}}, upsert=True)
+                booster_until = account.get("booster_until")
+                booster_uses = int(account.get("booster_uses", 0) or 0)
+                if booster_until and booster_uses > 0:
+                    try:
+                        if datetime.fromisoformat(booster_until) > now_utc:
+                            catch_bonus = 50
+                    except (TypeError, ValueError):
+                        catch_bonus = 0
+                increments = {wallet_field: 100 + catch_bonus, "xp": 10}
+                if catch_bonus:
+                    increments["booster_uses"] = -1
+                users_col.update_one({"user_id": user_id}, {"$inc": increments}, upsert=True)
                 weekly_catches_col.insert_one({
                     "user_id": user_id,
                     "chat_id": chat_id if update.effective_chat.type != "private" else None,
@@ -186,7 +199,7 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(
             f"🎉 <b>ဂုဏ်ယူပါတယ် {escape(user.first_name)}!</b>\n\n"
             f"<b>{actual_card['name']}</b> ({actual_card['rarity']}) ကို အောင်မြင်စွာ ဖမ်းယူနိုင်ခဲ့ပါပြီ!\n"
-            f"💰 +100 Coins | ⚡ +10 XP ရရှိသည်။",
+            f"💰 +{100 + catch_bonus} Coins | ⚡ +10 XP ရရှိသည်။",
             parse_mode=ParseMode.HTML
         )
     else:
