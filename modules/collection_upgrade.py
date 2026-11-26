@@ -203,7 +203,7 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             auction_id, amount = context.args[1], int(context.args[2])
             with atomic():
-                auction = auctions_col.find_one({"_id": auction_id})
+                auction = auctions_col.find_one_for_update({"_id": auction_id})
                 if not auction or datetime.fromisoformat(auction["expires_at"]) <= datetime.now(timezone.utc):
                     await msg.reply_text("❌ Auction မရှိတော့ပါ သို့မဟုတ် သက်တမ်းကုန်ပါပြီ။")
                     return
