@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from html import escape
 from telegram import Update
 from telegram.constants import ParseMode
@@ -34,7 +34,7 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_data = get_user(user_id)
 
     last_daily = user_data.get("last_daily")
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Race-safe 24-hour claim with consecutive-day streak tracking.
     if last_daily:
@@ -43,6 +43,8 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 last_daily = datetime.fromisoformat(last_daily)
             except Exception:
                 last_daily = None
+        if last_daily and last_daily.tzinfo is None:
+            last_daily = last_daily.replace(tzinfo=timezone.utc)
         if last_daily and (now - last_daily) < timedelta(hours=24):
             remaining = timedelta(hours=24) - (now - last_daily)
             hours, remainder = divmod(int(remaining.total_seconds()), 3600)
@@ -73,6 +75,8 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     fresh_last = datetime.fromisoformat(fresh_last)
                 except Exception:
                     fresh_last = None
+            if fresh_last and fresh_last.tzinfo is None:
+                fresh_last = fresh_last.replace(tzinfo=timezone.utc)
             if fresh_last and (now - fresh_last) < timedelta(hours=24):
                 await update.message.reply_text("⏳ Daily Reward ကို ရယူပြီးပါပြီ။")
                 return
