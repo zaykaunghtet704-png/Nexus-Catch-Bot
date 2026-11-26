@@ -22,7 +22,7 @@ def _week_key():
 
 
 def _balance_field(user_doc):
-    return "coins" if "coins" in user_doc else "balance"
+    return "balance" if "balance" in user_doc else "coins"
 
 
 async def weekly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -31,9 +31,11 @@ async def weekly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     coins, gems = 5000, 25
     try:
         with atomic():
+            current_user = users_col.find_one({"user_id": uid}) or {}
+            currency_field = _balance_field(current_user)
             result = users_col.update_one(
                 {"user_id": uid, "weekly_claim_week": {"$ne": week}},
-                {"$inc": {"coins": coins, "gems": gems},
+                {"$inc": {currency_field: coins, "gems": gems},
                  "$set": {"weekly_claim_week": week}},
                 upsert=True,
             )
