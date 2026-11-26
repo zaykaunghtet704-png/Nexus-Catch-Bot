@@ -185,6 +185,7 @@ async def post_init(application: Application) -> None:
         BotCommand("gift", "အခြားသူထံ ကတ်လက်ဆောင်ပေးရန်"),
         BotCommand("check", "Character အချက်အလက် စစ်ရန်"),
         BotCommand("redeem", "Gift Code ထုတ်ယူရန်"),
+        BotCommand("promo", "Promo Code ထုတ်ယူရန်"),
         BotCommand("exchange", "Duplicate Card လဲလှယ်ရန်"),
         BotCommand("haremstyle", "Harem Display ပုံစံပြောင်းရန်"),
         BotCommand("weekly", "အပတ်စဉ်ဆုယူရန်"),
