@@ -427,7 +427,7 @@ async def fav_command(
 
         item = inventory_col.find_one({
             "user_id": user.id,
-            "card_id": card_id,
+            "$or": [{"card_id": card_id}, {"id": card_id}],
         })
 
         if not item:
@@ -446,7 +446,7 @@ async def fav_command(
             {
                 "$set": {
                     "favorite_card": card_name,
-                    "favorite_card_id": card_id,
+                    "favorite_card_id": item.get("card_id") or item.get("id") or card_id,
                 }
             },
             upsert=True,
