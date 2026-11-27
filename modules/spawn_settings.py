@@ -44,7 +44,7 @@ def choose_weighted_card(cards: list):
         groups.setdefault(rarity, []).append(card)
     available = [(rarity, rates.get(rarity, 0.0)) for rarity in groups if rates.get(rarity, 0.0) > 0]
     if not available:
-        return random.choice(cards)
+        return None
     selected_rarity = random.choices(
         [item[0] for item in available],
         weights=[item[1] for item in available],
