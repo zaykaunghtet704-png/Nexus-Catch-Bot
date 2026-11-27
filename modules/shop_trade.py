@@ -30,19 +30,20 @@ def get_user(user_id: int):
     """PyMongo Safe User Fetch"""
     user_id = int(user_id)
     try:
-        user = users_col.find_one({"user_id": user_id})
-        if not user:
-            user = {
+        users_col.update_one(
+            {"user_id": user_id},
+            {"$setOnInsert": {
                 "user_id": user_id,
                 "coins": 0,
                 "gems": 0,
                 "xp": 0,
                 "title": "Novice Collector",
                 "vip_status": "None",
-                "last_daily": None
-            }
-            users_col.insert_one(user)
-        return user
+                "last_daily": None,
+            }},
+            upsert=True,
+        )
+        return users_col.find_one({"user_id": user_id}) or {"user_id": user_id, "coins": 0, "gems": 0, "xp": 0}
     except Exception:
         return {"user_id": user_id, "coins": 0, "gems": 0, "xp": 0, "title": "Novice Collector", "vip_status": "None"}
 
