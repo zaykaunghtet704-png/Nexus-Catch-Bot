@@ -108,6 +108,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "├ 🌟 <code>/fav [CardID]</code> — Favorite Card ရွေးရန်\n"
         "├ 🎟️ <code>/promo [Code]</code> — Promo Code သုံးရန်\n"
         "├ 🎁 <code>/weekly</code> — Weekly Reward\n"
+        "├ 📜 <code>/quest</code> — Daily Quest Progress\n"
         "├ 🔥 <code>/streak</code> — Daily Streak\n"
         "├ 📦 <code>/chest</code> — Card Chest\n"
         "├ ⚡ <code>/booster buy</code> — Lucky Booster\n"
