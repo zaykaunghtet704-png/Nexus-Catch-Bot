@@ -72,6 +72,11 @@ try:
 except ImportError:
     from spawn_settings import get_spawn_settings_handlers
 
+try:
+    from modules.gacha import get_gacha_handlers
+except ImportError:
+    from gacha import get_gacha_handlers
+
 # Force Join (Must Join) Handler & Middleware Import
 try:
     from modules.force_join import get_force_join_handlers, force_join_middleware
@@ -176,6 +181,9 @@ async def post_init(application: Application) -> None:
         BotCommand("catch", "ကတ်ဖမ်းရန်"),
         BotCommand("daily", "နေ့စဉ် ဆုလာဘ်ယူရန်"),
         BotCommand("balance", "လက်ကျန် Coins/Gems ကြည့်ရန်"),
+        BotCommand("gacha", "Gacha အချက်အလက်နှင့် Draw Commands"),
+        BotCommand("coindraw", "2,000 Coins ဖြင့် Card Draw"),
+        BotCommand("gemdraw", "20 Gems ဖြင့် Card Draw"),
         BotCommand("shop", "Item ဆိုင်ကြည့်ရန်"),
         BotCommand("market", "ကတ် အရောင်းအဝယ်ဈေးကွက်"),
         BotCommand("top", "Top Collectors စာရင်း"),
@@ -295,6 +303,12 @@ def main() -> None:
 
     for handler in get_quests_redeem_handlers():
         app.add_handler(handler)
+
+    # --------------------------------------
+    # GACHA (Separate Coin / Gem pools)
+    # --------------------------------------
+    for handler in get_gacha_handlers():
+        app.add_handler(handler, group=1)
 
     # --------------------------------------
     # SPAWN SETTINGS (/setdrop, /droprates)
