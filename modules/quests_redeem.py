@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
 
-from database import atomic, cards_col, codes_col, inventory_col, users_col
+from database import atomic, cards_col, codes_col, inventory_col, market_col, users_col
 
 # ── 1. Redeem Code System ─────────────────────────────────────────────────────
 
@@ -144,15 +144,87 @@ async def recycle_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ── 3. Quests ─────────────────────────────────────────────────────────────────
 
+def _date_value(value):
+    if value in (None, "", 0):
+        return None
+    try:
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value, timezone.utc).date()
+        if isinstance(value, str):
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        elif isinstance(value, datetime):
+            parsed = value
+        else:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).date()
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
 async def quest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = (
-        "📜 <b>DAILY QUESTS</b>\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        "1. နေ့စဉ် 1 ကြိမ် /daily ယူပါ - <b>[ပြီးမြောက်]</b>\n"
-        "2. Character 3 ကတ် ဖမ်းယူပါ - <b>(0/3)</b>\n"
-        "3. Market တွင် ကတ် 1 ကတ် တင်ရောင်းပါ - <b>(0/1)</b>\n\n"
-        "🎁 <i>Quests အားလုံး ပြီးပါက Extra +50 Gems ရရှိမည်!</i>"
+    user_id = int(update.effective_user.id)
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    def progress():
+        user_doc = users_col.find_one({"user_id": user_id}) or {}
+        daily_done = _date_value(user_doc.get("last_daily")) == datetime.fromisoformat(today).date()
+        caught_today = sum(
+            1 for item in inventory_col.find({"user_id": user_id})
+            if _date_value(item.get("obtained_at")) == datetime.fromisoformat(today).date()
+        )
+        listed_today = sum(
+            1 for item in market_col.find({"seller_id": user_id})
+            if _date_value(item.get("listed_at")) == datetime.fromisoformat(today).date()
+        )
+        return user_doc, daily_done, caught_today, listed_today
+
+    if context.args and context.args[0].lower() == "claim":
+        failure = None
+        try:
+            with atomic():
+                user_doc = users_col.find_one_for_update({"user_id": user_id}) or {}
+                user_doc, daily_done, caught_today, listed_today = progress()
+                if user_doc.get("daily_quest_claim_date") == today:
+                    failure = "⏳ ဒီနေ့ Quest Reward ကို ရယူပြီးပါပြီ။"
+                elif not daily_done or caught_today < 3 or listed_today < 1:
+                    failure = "❌ Quest မပြီးသေးပါ။ /quest ဖြင့် လက်ရှိ Progress ကို ကြည့်ပါ။"
+                else:
+                    result = users_col.update_one(
+                        {"user_id": user_id, "daily_quest_claim_date": {"$ne": today}},
+                        {"$inc": {"gems": 50}, "$set": {"daily_quest_claim_date": today}},
+                    )
+                    if result.modified_count != 1:
+                        failure = "⏳ Quest Reward ကို တစ်ကြိမ်သာ ရယူနိုင်ပါသည်။"
+        except Exception:
+            failure = "❌ Quest Reward ရယူရာတွင် Error ဖြစ်နေပါသည်။"
+        if failure:
+            await update.effective_message.reply_text(failure)
+            return
+        await update.effective_message.reply_text(
+            "🎉 <b>DAILY QUEST COMPLETED!</b>\n💎 <b>+50 Gems</b> ရရှိပါပြီ။",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    user_doc, daily_done, caught_today, listed_today = progress()
+    claimed = user_doc.get("daily_quest_claim_date") == today
+    daily_mark = "✅" if daily_done else "⬜"
+    catch_mark = "✅" if caught_today >= 3 else "⬜"
+    market_mark = "✅" if listed_today >= 1 else "⬜"
+    all_done = daily_done and caught_today >= 3 and listed_today >= 1
+    reward_status = "ရယူပြီးပါပြီ" if claimed else ("<code>/quest claim</code> ဖြင့် ရယူပါ" if all_done else "Quest အားလုံး ပြီးအောင်လုပ်ပါ")
+    await update.effective_message.reply_text(
+        "📜 <b>DAILY QUESTS</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"{daily_mark} Daily Reward ယူပါ — <b>{'1/1' if daily_done else '0/1'}</b>\n"
+        f"{catch_mark} Card 3 ကတ် ဖမ်းပါ — <b>{min(caught_today, 3)}/3</b>\n"
+        f"{market_mark} Market တွင် Card 1 ကတ် တင်ပါ — <b>{min(listed_today, 1)}/1</b>\n\n"
+        f"🎁 Reward: <b>+50 Gems</b>\n{reward_status}",
+        parse_mode=ParseMode.HTML,
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
 
 def get_quests_redeem_handlers():
     return [
