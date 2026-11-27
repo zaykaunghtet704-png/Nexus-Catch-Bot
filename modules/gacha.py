@@ -136,7 +136,8 @@ async def _draw(update: Update, context: ContextTypes.DEFAULT_TYPE, pool: str):
                     if debit.modified_count != 1:
                         failure = f"❌ {label} လက်ကျန် မလုံလောက်ပါ။"
                     else:
-                        pity_count = 0 if guaranteed else previous + 1
+                        high_hit = _rarity_key(selected.get("rarity")) in HIGH_RARITY
+                        pity_count = 0 if (guaranteed or high_hit) else previous + 1
                         gacha_pity_col.update_one(
                             {"user_id": user.id, "pool": pool},
                             {"$set": {"misses": pity_count, "last_draw_at": datetime.now(timezone.utc).isoformat()}},
