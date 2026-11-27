@@ -105,14 +105,30 @@ async def gift_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("❌ Bot သို့မဟုတ် မိမိကိုယ်တိုင်ထံ လက်ဆောင်မပေးနိုင်ပါ။")
         return
     if not context.args:
-        await message.reply_text("❌ <code>/gift [Coins ပမာဏ သို့မဟုတ် Card ID]</code>", parse_mode=ParseMode.HTML)
+        await message.reply_text("❌ <code>/gift [Coins]</code> သို့မဟုတ် <code>/gift card [Card ID]</code>", parse_mode=ParseMode.HTML)
         return
 
-    value = " ".join(context.args).strip()
-    try:
-        amount = int(value)
-    except ValueError:
+    # Numeric card IDs must not be mistaken for coin amounts.
+    explicit_card = context.args[0].lower() == "card"
+    value = " ".join(context.args[1:]).strip() if explicit_card else " ".join(context.args).strip()
+    owned_card_match = None
+    if explicit_card and not value:
+        await message.reply_text("❌ <code>/gift card [Card ID]</code>", parse_mode=ParseMode.HTML)
+        return
+    if explicit_card:
         amount = None
+    else:
+        owned_card_match = inventory_col.find_one({
+            "user_id": sender.id,
+            "$or": [{"card_id": value}, {"id": value}],
+        })
+        if owned_card_match:
+            amount = None
+        else:
+            try:
+                amount = int(value)
+            except ValueError:
+                amount = None
 
     try:
         with atomic():
