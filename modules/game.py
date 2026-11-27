@@ -73,138 +73,204 @@ async def set_spawn_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ ကျေးဇူးပြု၍ မှန်ကန်သော ဂဏန်းအပေါင်းကိုသာ ထည့်သွင်းပါ။")
 
 async def message_counter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Group ထဲတွင် စာရိုက်ပါက ကတ်အလိုအလျောက် ပေါ်စေမည့် Logic"""
-    if not update.effective_chat or update.effective_chat.type == "private":
+    """Count group messages and persist the spawned card in PostgreSQL."""
+    chat = update.effective_chat
+    if not chat or chat.type == "private":
         return
 
-    chat_id = update.effective_chat.id
-    
-    # Database မှ Group ၏ သတ်မှတ်ထားသော Threshold ကို ယူခြင်း (မရှိလျှင် Default 100)
-    chat_doc = chats_col.find_one({"chat_id": chat_id}) or {}
-    threshold = chat_doc.get("spawn_threshold", DEFAULT_SPAWN_THRESHOLD)
+    chat_id = chat.id
+    spawned_card = None
+    try:
+        with atomic():
+            chat_doc = chats_col.find_one_for_update({"chat_id": chat_id})
+            if not chat_doc:
+                chats_col.insert_one({
+                    "chat_id": chat_id,
+                    "chat_title": chat.title or "Group Chat",
+                    "spawn_threshold": DEFAULT_SPAWN_THRESHOLD,
+                    "message_count": 1,
+                    "active_card": None,
+                })
+                return
 
-    # Counter တိုးမြှင့်ခြင်း
-    current_count = chat_doc.get("message_count", 0) + 1
+            # Do not replace an unclaimed card with a new one.
+            if chat_doc.get("active_card"):
+                return
 
-    if current_count >= threshold:
-        # Counter ကို 0 သို့ ပြန်ပြောင်းခြင်း
-        chats_col.update_one({"chat_id": chat_id}, {"$set": {"message_count": 0}}, upsert=True)
-        
-        try:
-            pipeline = [{"$sample": {"size": 1}}]
-            random_cards = list(cards_col.aggregate(pipeline))
-        except Exception:
-            random_cards = []
-
-        if not random_cards:
-            return
-
-        card = random_cards[0]
-        SPAWNED_CARDS[chat_id] = card
-
-        caption = (
-            f"🍁 <b>A WILD CHARACTER APPEARED!</b>\n\n"
-            f"📺 <b>Anime:</b> {escape(str(card.get('anime', 'Unknown')))}\n"
-            f"🎴 <b>Rarity:</b> {escape(str(card.get('rarity', 'Common')))}\n\n"
-            f"ဖမ်းယူရန် <code>/catch [Character Name]</code> ကို ရိုက်ပါ။"
-        )
-
-        try:
-            img_url = card.get("img_url") or card.get("image")
-            if img_url:
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=img_url,
-                    caption=caption,
-                    parse_mode=ParseMode.HTML
+            threshold = max(1, int(chat_doc.get("spawn_threshold", DEFAULT_SPAWN_THRESHOLD) or DEFAULT_SPAWN_THRESHOLD))
+            current_count = int(chat_doc.get("message_count", 0) or 0) + 1
+            if current_count < threshold:
+                chats_col.update_one(
+                    {"_id": chat_doc["_id"]},
+                    {"$set": {"message_count": current_count, "chat_title": chat.title or "Group Chat"}},
                 )
-            else:
-                await context.bot.send_message(chat_id=chat_id, text=caption, parse_mode=ParseMode.HTML)
-        except Exception:
-            pass
-    else:
-        # လက်ရှိ Count ကို DB ထဲ ဆက်သိမ်းထားမည်
-        chats_col.update_one({"chat_id": chat_id}, {"$set": {"message_count": current_count}}, upsert=True)
+                return
+
+            all_cards = list(cards_col.find())
+            if not all_cards:
+                chats_col.update_one(
+                    {"_id": chat_doc["_id"]},
+                    {"$set": {"message_count": 0}},
+                )
+                return
+
+            spawned_card = random.choice(all_cards)
+            chats_col.update_one(
+                {"_id": chat_doc["_id"]},
+                {"$set": {
+                    "message_count": 0,
+                    "chat_title": chat.title or "Group Chat",
+                    "active_card": spawned_card,
+                    "spawned_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                }},
+            )
+            SPAWNED_CARDS[chat_id] = spawned_card
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Group message counter failed for %s", chat_id)
+        return
+
+    if not spawned_card:
+        return
+
+    caption = (
+        f"🍁 <b>A WILD CHARACTER APPEARED!</b>\n\n"
+        f"📺 <b>Anime:</b> {escape(str(spawned_card.get('anime', 'Unknown')))}\n"
+        f"🎴 <b>Rarity:</b> {escape(str(spawned_card.get('rarity', 'Common')))}\n\n"
+        f"ဖမ်းယူရန် <code>/catch [Character Name]</code> ကို ရိုက်ပါ။"
+    )
+    try:
+        image_url = spawned_card.get("img_url") or spawned_card.get("image")
+        if image_url:
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=image_url,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=caption,
+                parse_mode=ParseMode.HTML,
+            )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Could not announce spawned card in %s", chat_id)
+
 
 async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """ပေါ်နေသော ကတ်ကို ဖမ်းယူသည့် Command"""
-    chat_id = update.effective_chat.id
+    """Claim the currently active group card exactly once."""
+    chat = update.effective_chat
     user = update.effective_user
-    user_id = int(user.id)
-
-    if chat_id not in SPAWNED_CARDS:
-        await update.message.reply_text("❌ ဖမ်းယူရန် ကတ်မရှိသေးပါ။ စာများများ ရိုက်ပေးပါ!")
+    message = update.effective_message
+    if not chat or not user or not message:
         return
+    chat_id = chat.id
 
     if not context.args:
-        await update.message.reply_text("❌ ဖမ်းယူလိုသော Character အမည်ကို ထည့်သွင်းပါ!\nဥပမာ: <code>/catch Naruto</code>", parse_mode=ParseMode.HTML)
+        await message.reply_text(
+            "❌ ဖမ်းယူလိုသော Character အမည်ကို ထည့်ပါ။\nဥပမာ: <code>/catch Naruto</code>",
+            parse_mode=ParseMode.HTML,
+        )
         return
 
-    guess_name = " ".join(context.args).strip().lower()
-    actual_card = SPAWNED_CARDS[chat_id]
-    actual_name = actual_card.get("name", "").strip().lower()
+    guess_name = " ".join(context.args).strip().casefold()
+    actual_card = None
+    error_message = None
+    catch_bonus = 0
 
-    if guess_name == actual_name:
-        del SPAWNED_CARDS[chat_id]
+    try:
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc)
+        week_info = now_utc.isocalendar()
+        week_key = f"{week_info.year}-W{week_info.week:02d}"
 
-        card_id = actual_card.get("card_id") or actual_card.get("id")
-        inv_item = {
-            "user_id": user_id,
-            "card_id": card_id,
-            "name": actual_card.get("name"),
-            "anime": actual_card.get("anime"),
-            "rarity": actual_card.get("rarity"),
-            "img_url": actual_card.get("img_url") or actual_card.get("image"),
-            "chat_id": chat_id if update.effective_chat.type != "private" else None,
-        }
-        catch_bonus = 0
-        try:
-            from datetime import datetime, timezone
-            now_utc = datetime.now(timezone.utc)
-            week_info = now_utc.isocalendar()
-            week_key = f"{week_info.year}-W{week_info.week:02d}"
-            with atomic():
-                inventory_col.insert_one(inv_item)
-                account = users_col.find_one({"user_id": user_id}) or {}
+        with atomic():
+            chat_doc = chats_col.find_one_for_update({"chat_id": chat_id})
+            actual_card = (chat_doc or {}).get("active_card") or SPAWNED_CARDS.get(chat_id)
+
+            if not actual_card:
+                error_message = "❌ ဖမ်းယူရန် ကတ်မရှိသေးပါ။ Group ထဲတွင် စာများပို့ပြီး Card ပေါ်လာအောင် စောင့်ပါ။"
+            elif guess_name != str(actual_card.get("name", "")).strip().casefold():
+                error_message = "❌ Character အမည် မှားယွင်းနေပါသည်။ ပြန်လည် ကြိုးစားပါ။"
+            else:
+                # Lock the group record and clear the active card in the same
+                # transaction as the inventory and reward writes.
+                if chat_doc:
+                    chats_col.update_one(
+                        {"_id": chat_doc["_id"]},
+                        {"$set": {"active_card": None, "last_caught_by": user.id, "last_caught_at": now_utc.isoformat()}},
+                    )
+
+                card_id = actual_card.get("card_id") or actual_card.get("id")
+                inventory_col.insert_one({
+                    "user_id": user.id,
+                    "card_id": card_id,
+                    "name": actual_card.get("name"),
+                    "anime": actual_card.get("anime"),
+                    "rarity": actual_card.get("rarity"),
+                    "edition": actual_card.get("edition", "Normal"),
+                    "img_url": actual_card.get("img_url") or actual_card.get("image"),
+                    "chat_id": chat_id if chat.type != "private" else None,
+                    "obtained_at": now_utc.isoformat(),
+                })
+
+                account = users_col.find_one({"user_id": user.id}) or {}
                 wallet_field = "coins" if "coins" in account else "balance"
                 booster_until = account.get("booster_until")
                 booster_uses = int(account.get("booster_uses", 0) or 0)
                 if booster_until and booster_uses > 0:
                     try:
-                        if datetime.fromisoformat(booster_until) > now_utc:
+                        if datetime.fromisoformat(str(booster_until).replace("Z", "+00:00")) > now_utc:
                             catch_bonus = 50
                     except (TypeError, ValueError):
                         catch_bonus = 0
+
                 increments = {wallet_field: 100 + catch_bonus, "xp": 10}
                 if catch_bonus:
                     increments["booster_uses"] = -1
-                users_col.update_one({"user_id": user_id}, {"$inc": increments}, upsert=True)
+                users_col.update_one(
+                    {"user_id": user.id},
+                    {"$inc": increments, "$set": {
+                        "first_name": user.first_name or "Collector",
+                        "username": user.username or "",
+                    }},
+                    upsert=True,
+                )
+
                 weekly_catches_col.insert_one({
-                    "user_id": user_id,
-                    "chat_id": chat_id if update.effective_chat.type != "private" else None,
+                    "user_id": user.id,
+                    "chat_id": chat_id if chat.type != "private" else None,
                     "week": week_key,
-                    "caught_at": datetime.now(timezone.utc).isoformat(),
+                    "caught_at": now_utc.isoformat(),
                 })
-                if update.effective_chat.type != "private":
+                if chat.type != "private":
                     group_stats_col.update_one(
                         {"chat_id": chat_id, "week": week_key},
-                        {"$set": {"title": update.effective_chat.title or "Group"},
+                        {"$set": {"title": chat.title or "Group"},
                          "$inc": {"weekly_catches": 1}},
                         upsert=True,
                     )
-        except Exception:
-            SPAWNED_CARDS[chat_id] = actual_card
-            await update.message.reply_text("❌ Catch သိမ်းဆည်းရာတွင် Error ဖြစ်နေပါသည်။ ထပ်မံကြိုးစားပါ။")
-            return
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Card catch transaction failed")
+        await message.reply_text("❌ Catch သိမ်းဆည်းရာတွင် Error ဖြစ်နေပါသည်။ Card နှင့် Reward ကို Database မှာ မပြောင်းလဲဘဲ ထားထားပါသည်။")
+        return
 
-        await update.message.reply_text(
-            f"🎉 <b>ဂုဏ်ယူပါတယ် {escape(user.first_name)}!</b>\n\n"
-            f"<b>{escape(str(actual_card.get('name', 'Unknown')))}</b> ({escape(str(actual_card.get('rarity', 'Common')))}) ကို အောင်မြင်စွာ ဖမ်းယူနိုင်ခဲ့ပါပြီ!\n"
-            f"💰 +{100 + catch_bonus} Coins | ⚡ +10 XP ရရှိသည်။",
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        await update.message.reply_text("❌ Character အမည် မှားယွင်းနေပါသည်။ ပြန်လည် ကြိုးစားပါ။")
+    if error_message:
+        await message.reply_text(error_message)
+        return
+
+    SPAWNED_CARDS.pop(chat_id, None)
+    await message.reply_text(
+        f"🎉 <b>ဂုဏ်ယူပါတယ် {escape(user.first_name or 'Collector')}!</b>\n\n"
+        f"<b>{escape(str(actual_card.get('name', 'Unknown')))}</b> "
+        f"({escape(str(actual_card.get('rarity', 'Common')))}) ကို အောင်မြင်စွာ ဖမ်းယူနိုင်ခဲ့ပါပြီ!\n"
+        f"🪙 +{100 + catch_bonus} Coins | ⚡ +10 XP ရရှိသည်။",
+        parse_mode=ParseMode.HTML,
+    )
+
 
 async def collection_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/collection Command"""
