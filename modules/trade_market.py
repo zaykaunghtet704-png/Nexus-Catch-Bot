@@ -130,6 +130,7 @@ async def sell_command(
                 "edition": item.get("edition", "Normal"),
                 "img_url": item.get("img_url"),
                 "price": price,
+                "listed_at": datetime.now(timezone.utc).isoformat(),
             }
 
             # Insert listing first
