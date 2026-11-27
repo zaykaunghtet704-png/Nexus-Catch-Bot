@@ -79,9 +79,18 @@ async def check_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         try:
             target_chat = int(chat_id_val) if (chat_id_val.startswith("-") or chat_id_val.isdigit()) else chat_id_val
             member = await bot.get_chat_member(target_chat, user_id)
-            if member.status in ["banned", "kicked"]:
-                await update.message.reply_text("❌ သင်သည် လိုအပ်သော Channel မှ Ban ခံထားရသဖြင့် Bot သုံးခွင့်မရှိပါ။")
+            if member.status in ("banned", "kicked"):
+                await update.effective_message.reply_text("❌ သင်သည် လိုအပ်သော Channel မှ Ban ခံထားရသဖြင့် Bot သုံးခွင့်မရှိပါ။")
                 return False
+
+            is_member = (
+                member.status in ("creator", "administrator", "member")
+                or (member.status == "restricted" and bool(getattr(member, "is_member", False)))
+            )
+            if not is_member:
+                not_joined_buttons.append([
+                    InlineKeyboardButton(title or "Join Channel", url=link)
+                ])
         except Exception:
             not_joined_buttons.append([
                 InlineKeyboardButton(title, url=link)
