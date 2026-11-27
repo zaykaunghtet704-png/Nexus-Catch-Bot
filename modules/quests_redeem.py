@@ -174,9 +174,8 @@ async def quest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             1 for item in inventory_col.find({"user_id": user_id})
             if _date_value(item.get("obtained_at")) == datetime.fromisoformat(today).date()
         )
-        listed_today = sum(
-            1 for item in market_col.find({"seller_id": user_id})
-            if _date_value(item.get("listed_at")) == datetime.fromisoformat(today).date()
+        listed_today = int(
+            _date_value(user_doc.get("market_listed_date")) == datetime.fromisoformat(today).date()
         )
         return user_doc, daily_done, caught_today, listed_today
 
