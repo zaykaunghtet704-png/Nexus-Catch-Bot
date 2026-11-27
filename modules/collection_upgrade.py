@@ -117,9 +117,9 @@ async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or context.args[0].lower() not in CHESTS:
         await update.effective_message.reply_text(
             "📦 <b>CARD CHESTS</b>\n"
-            "• <code>/chest common</code> — 500 Coins\n"
-            "• <code>/chest rare</code> — 2,000 Coins\n"
-            "• <code>/chest legendary</code> — 50 Gems",
+            "• <code>/chest common</code> — 500 Coins (Common–Rare)\n"
+            "• <code>/chest rare</code> — 2,000 Coins (Rare–Mythic)\n"
+            "• <code>/chest legendary</code> — 50 Gems (Legendary+)",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -127,7 +127,7 @@ async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cost, label = CHESTS[kind]
     cards = list(cards_col.find())
     if not cards:
-        await update.effective_message.reply_text("❌ Card Database ထဲတွင် ဖွင့်ရန်ကတ် မရှိသေးပါ။")
+        await update.effective_message.reply_text("❌ ဒီ Chest အမျိုးအစားအတွက် သက်ဆိုင်ရာ Rarity ကတ် မရှိသေးပါ။")
         return
     card = random.choice(cards)
     uid = update.effective_user.id
