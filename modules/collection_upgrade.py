@@ -165,6 +165,7 @@ async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "edition": card.get("edition", "Normal"),
                     "img_url": card.get("img_url") or card.get("image"),
                     "obtained_at": datetime.now(timezone.utc).isoformat(),
+                    "source": "chest",
                 })
     except Exception:
         failure = "❌ Chest ဖွင့်ရာတွင် Error ဖြစ်နေပါသည်။"
