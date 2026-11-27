@@ -363,7 +363,7 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 winner = auction.get("highest_bidder")
                 card = dict(auction.get("card") or {})
                 if winner:
-                    inventory_col.insert_one({"user_id": winner, **card, "obtained_at": datetime.now(timezone.utc).isoformat()})
+                    inventory_col.insert_one({"user_id": winner, **card, "obtained_at": datetime.now(timezone.utc).isoformat(), "source": "auction"})
                     seller_doc = users_col.find_one({"user_id": auction["seller_id"]})
                     if not seller_doc:
                         raise RuntimeError("Auction seller account is missing; settlement rolled back")
@@ -375,7 +375,7 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if credit.matched_count != 1:
                         raise RuntimeError("Auction seller payment failed; settlement rolled back")
                 else:
-                    inventory_col.insert_one({"user_id": auction["seller_id"], **card})
+                    inventory_col.insert_one({"user_id": auction["seller_id"], **card, "source": "auction_return"})
                 auctions_col.delete_one({"_id": auction_id})
             await msg.reply_text("🏁 Auction ပိတ်ပြီးပါပြီ။ " + ("အနိုင်ရသူထံ Card ပို့ပြီး Seller ကို ငွေလွှဲပြီးပါပြီ။" if winner else "Bid မရှိသောကြောင့် Card ကို ပိုင်ရှင်ထံ ပြန်ပို့ပြီးပါပြီ။"))
             return
