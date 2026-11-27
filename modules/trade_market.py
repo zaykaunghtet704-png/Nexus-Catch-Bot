@@ -94,7 +94,7 @@ async def sell_command(
         with atomic():
             item = inventory_col.find_one({
                 "user_id": user.id,
-                "card_id": card_id,
+                "$or": [{"card_id": card_id}, {"id": card_id}],
             })
 
             if not item:
@@ -119,7 +119,7 @@ async def sell_command(
                 "seller_id": user.id,
                 "seller_name": user.first_name or "Unknown",
                 "inventory_id": item["_id"],
-                "card_id": item.get("card_id"),
+                "card_id": item.get("card_id") or item.get("id"),
                 "name": item.get(
                     "name",
                     item.get("card_name", "Unknown Card"),
@@ -304,175 +304,97 @@ async def buy_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     message = update.effective_message
     user = update.effective_user
-
     if not message or not user:
         return
-
     if not context.args:
         await message.reply_text(
-            "🛒 <b>BUY CARD</b>\n\n"
-            "အသုံးပြုပုံ:\n"
-            "<code>/buy [Market ID]</code>",
+            "🛒 <b>BUY CARD</b>\n\nအသုံးပြုပုံ: <code>/buy [Market ID]</code>",
             parse_mode=ParseMode.HTML,
         )
         return
 
-    try:
-        market_id = context.args[0]
-    except Exception:
-        await message.reply_text(
-            "❌ Market ID မှားယွင်းနေပါသည်။"
-        )
-        return
+    market_id = context.args[0].strip()
+    class BuyAbort(Exception):
+        pass
 
     try:
-
         with atomic():
-            # Atomically reserve the listing.
-            # Only one buyer can successfully remove it.
-            listing = market_col.find_one_and_delete({
+            # Keep the original listing row locked until payment and transfer finish.
+            listing = market_col.find_one_for_update({
                 "_id": market_id,
                 "seller_id": {"$ne": user.id},
             })
-
             if not listing:
+                raise BuyAbort("❌ Market ID မရှိတော့ပါ သို့မဟုတ် မိမိ Card ကို ပြန်ဝယ်ရန် ကြိုးစားနေပါသည်။")
 
-                await message.reply_text(
-                    "❌ Market ID မရှိတော့ပါ သို့မဟုတ် "
-                    "မိမိ Card ကို ပြန်ဝယ်ရန် ကြိုးစားနေပါသည်။"
-                )
-                return
-
-            price = safe_int(listing.get("price", 0))
-            seller_id = listing.get("seller_id")
-
+            price = safe_int(listing.get("price", 0), -1)
             if price <= 0:
-                market_col.insert_one(listing)
-                await message.reply_text(
-                    "❌ Listing စျေးနှုန်း မမှန်ပါ။"
-                )
-                return
+                raise BuyAbort("❌ Listing စျေးနှုန်း မမှန်ပါ။")
 
-            buyer = users_col.find_one({
-                "user_id": user.id
-            }) or {}
-
-            # Support both existing balance and legacy coins
-            balance_field = (
-                "coins"
-                if "coins" in buyer
-                else "balance"
-            )
-            balance = safe_int(buyer.get(balance_field, 0))
-
+            buyer = users_col.find_one({"user_id": user.id}) or {}
+            buyer_field = "coins" if "coins" in buyer else "balance"
+            balance = safe_int(buyer.get(buyer_field, 0))
             if balance < price:
-
-                market_col.insert_one(listing)
-
-                await message.reply_text(
+                raise BuyAbort(
                     "❌ Coins မလုံလောက်ပါ။\n"
-                    f"💰 လိုအပ်ချက်: {price:,}\n"
-                    f"💰 လက်ကျန်: {balance:,}"
+                    f"💰 လိုအပ်ချက်: {price:,}\n💰 လက်ကျန်: {balance:,}"
                 )
-                return
 
-            # Deduct using the same wallet field displayed by the profile.
+            seller_id = listing.get("seller_id")
+            seller_doc = users_col.find_one({"user_id": seller_id})
+            if not seller_doc:
+                raise BuyAbort("❌ Seller Account မတွေ့ပါ။ Owner ထံ အသိပေးပါ။")
+            seller_field = "coins" if "coins" in seller_doc else "balance"
+
             debit = users_col.update_one(
-                {
-                    "user_id": user.id,
-                    balance_field: {"$gte": price},
-                },
-                {
-                    "$inc": {
-                        balance_field: -price
-                    }
-                },
+                {"user_id": user.id, buyer_field: {"$gte": price}},
+                {"$inc": {buyer_field: -price}},
             )
-
             if debit.modified_count != 1:
+                raise BuyAbort("❌ Coins ဖြတ်တောက်မှု မအောင်မြင်ပါ။ ထပ်မံကြိုးစားပါ။")
 
-                market_col.insert_one(listing)
-
-                await message.reply_text(
-                    "❌ Coins ဖြတ်တောက်မှု မအောင်မြင်ပါ။"
-                )
-                return
-
-            # Credit seller
-            seller_doc = users_col.find_one({"user_id": seller_id}) or {}
-            seller_balance_field = "coins" if "coins" in seller_doc else "balance"
-            seller = users_col.update_one(
+            credit = users_col.update_one(
                 {"user_id": seller_id},
-                {"$inc": {seller_balance_field: price}},
+                {"$inc": {seller_field: price}},
             )
+            if credit.matched_count != 1:
+                raise BuyAbort("❌ Seller ထံ ငွေလွှဲမရပါ။")
 
-            if seller.matched_count == 0:
-
-                users_col.update_one(
-                    {"user_id": user.id},
-                    {"$inc": {balance_field: price}},
-                )
-
-                market_col.insert_one(listing)
-
-                await message.reply_text(
-                    "❌ Seller Account မတွေ့ရှိပါ။ "
-                    "ငွေပြန်အမ်းပြီးပါပြီ။"
-                )
-                return
-
-            # Transfer card to buyer
-            card = {
+            card_id = listing.get("card_id") or listing.get("id")
+            inventory_col.insert_one({
                 "user_id": user.id,
-                "card_id": listing.get("card_id"),
-                "name": listing.get("name"),
-                "anime": listing.get("anime"),
-                "rarity": listing.get("rarity"),
+                "card_id": card_id,
+                "name": listing.get("name") or listing.get("card_name") or "Unknown Card",
+                "anime": listing.get("anime", "Unknown"),
+                "rarity": listing.get("rarity", "Common"),
                 "edition": listing.get("edition", "Normal"),
-                "img_url": listing.get("img_url"),
-            }
+                "img_url": listing.get("img_url") or listing.get("image"),
+                "obtained_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            })
+            removed = market_col.delete_one({"_id": market_id})
+            if removed.deleted_count != 1:
+                raise BuyAbort("❌ Listing ကို အတည်ပြုမဖယ်ရှားနိုင်ပါ။")
 
-            try:
-                inventory_col.insert_one(card)
-
-            except Exception:
-
-                # Refund buyer and seller
-                users_col.update_one(
-                    {"user_id": user.id},
-                    {"$inc": {balance_field: price}},
-                )
-
-                users_col.update_one(
-                    {"user_id": seller_id},
-                    {"$inc": {seller_balance_field: -price}},
-                )
-
-                market_col.insert_one(listing)
-
-                raise
-
-        await message.reply_text(
-            "🎉 <b>PURCHASE SUCCESSFUL!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🎴 Card: <b>{safe_text(listing.get('name'))}</b>\n"
-            f"✨ Rarity: {safe_text(listing.get('rarity'))}\n"
-            f"💰 Paid: <b>{price:,} Coins</b>\n\n"
-            "🃏 Card ကို သင့် Inventory ထဲသို့ ထည့်သွင်းပြီးပါပြီ။\n"
-            "━━━━━━━━━━━━━━━━━━━━",
-            parse_mode=ParseMode.HTML,
-        )
-
+    except BuyAbort as exc:
+        await message.reply_text(str(exc))
+        return
     except Exception:
         logger.exception("Buy command error")
+        await message.reply_text("❌ ဝယ်ယူမှု မအောင်မြင်ပါ။ ငွေ/ကတ် ပြောင်းလဲမှုများကို Database Transaction ဖြင့် ပြန်လည်ကာကွယ်ထားပါသည်။")
+        return
 
-        await message.reply_text(
-            "❌ ဝယ်ယူရာတွင် Error ဖြစ်နေပါသည်။ "
-            "Owner ထံ ဆက်သွယ်ပါ။"
-        )
+    await message.reply_text(
+        "🎉 <b>PURCHASE SUCCESSFUL!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎴 Card: <b>{safe_text(listing.get('name') or listing.get('card_name'))}</b>\n"
+        f"✨ Rarity: {safe_text(listing.get('rarity'))}\n"
+        f"💰 Paid: <b>{price:,} Coins</b>\n\n"
+        "🃏 Card ကို သင့် Inventory ထဲသို့ ထည့်သွင်းပြီးပါပြီ။\n"
+        "━━━━━━━━━━━━━━━━━━━━",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 # ==========================================
