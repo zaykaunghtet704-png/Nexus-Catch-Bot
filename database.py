@@ -473,8 +473,7 @@ class PostgresCollection:
     def find_one_and_update(self, query, update, upsert=False, return_document=ReturnDocument.BEFORE):
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                docs = self._load(cur, for_update=True)
-                target = next((d for d in docs if _matches(d, query or {})), None)
+                target = self._lock_matching(cur, query)
                 if target:
                     new_doc = self._apply_update(target, update)
                     body = dict(new_doc)
