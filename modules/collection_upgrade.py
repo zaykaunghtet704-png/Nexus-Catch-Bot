@@ -255,7 +255,11 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = context.args[0].lower()
     try:
         if action == "list":
-            rows = list(auctions_col.find())
+            now = datetime.now(timezone.utc)
+            rows = [
+                auction for auction in auctions_col.find()
+                if datetime.fromisoformat(str(auction.get("expires_at", "")).replace("Z", "+00:00")) > now
+            ]
             if not rows:
                 await msg.reply_text("🔨 လက်ရှိ Auction မရှိသေးပါ။")
                 return
@@ -359,9 +363,16 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 card = dict(auction.get("card") or {})
                 if winner:
                     inventory_col.insert_one({"user_id": winner, **card, "obtained_at": datetime.now(timezone.utc).isoformat()})
-                    seller_doc = users_col.find_one({"user_id": auction["seller_id"]}) or {}
+                    seller_doc = users_col.find_one({"user_id": auction["seller_id"]})
+                    if not seller_doc:
+                        raise RuntimeError("Auction seller account is missing; settlement rolled back")
                     seller_field = _balance_field(seller_doc)
-                    users_col.update_one({"user_id": auction["seller_id"]}, {"$inc": {seller_field: int(auction.get("highest_bid", 0))}})
+                    credit = users_col.update_one(
+                        {"user_id": auction["seller_id"]},
+                        {"$inc": {seller_field: int(auction.get("highest_bid", 0))}},
+                    )
+                    if credit.matched_count != 1:
+                        raise RuntimeError("Auction seller payment failed; settlement rolled back")
                 else:
                     inventory_col.insert_one({"user_id": auction["seller_id"], **card})
                 auctions_col.delete_one({"_id": auction_id})
