@@ -183,6 +183,7 @@ async def post_init(application: Application) -> None:
         BotCommand("ranking", "Global Ranking ကြည့်ရန်"),
         BotCommand("search", "Character ရှာဖွေရန်"),
         BotCommand("gift", "အခြားသူထံ ကတ်လက်ဆောင်ပေးရန်"),
+        BotCommand("fav", "အကြိုက်ဆုံး Card ရွေးရန်"),
         BotCommand("check", "Character အချက်အလက် စစ်ရန်"),
         BotCommand("redeem", "Gift Code ထုတ်ယူရန်"),
         BotCommand("promo", "Promo Code ထုတ်ယူရန်"),
