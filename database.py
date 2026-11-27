@@ -63,7 +63,7 @@ def _session():
 @contextmanager
 def atomic():
     """Run multiple collection operations in one PostgreSQL transaction."""
-    active = getattr(_ACTIVE_TRANSACTION, "connection", None)
+    active = _ACTIVE_TRANSACTION.get()
     if active is not None:
         yield active
         return
@@ -348,12 +348,13 @@ class PostgresCollection:
                     _set_path(result, key, arr)
             elif op == "$addToSet":
                 for key, value in fields.items():
-                    arr = list(result.get(key) or [])
+                    current = _path(result, key)
+                    arr = list(current if isinstance(current, list) else [])
                     values = value.get("$each", []) if isinstance(value, dict) and "$each" in value else [value]
                     for item in values:
                         if item not in arr:
                             arr.append(item)
-                    result[key] = arr
+                    _set_path(result, key, arr)
             elif op == "$pull":
                 for key, value in fields.items():
                     current = _path(result, key)
