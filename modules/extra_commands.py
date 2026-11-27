@@ -119,7 +119,7 @@ async def gift_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sender_doc = users_col.find_one({"user_id": sender.id}) or {}
             recipient_doc = users_col.find_one({"user_id": recipient.id}) or {}
             sender_wallet = "coins" if "coins" in sender_doc else "balance"
-            recipient_wallet = "coins" if "coins" in recipient_doc else "balance"
+            recipient_wallet = "coins" if (not recipient_doc or "coins" in recipient_doc) else "balance"
 
             if amount is not None:
                 if amount <= 0:
@@ -132,20 +132,19 @@ async def gift_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if debit.modified_count != 1:
                     await message.reply_text("❌ သင့်တွင် Coins မလုံလောက်ပါ။")
                     return
-                if recipient_doc:
-                    users_col.update_one(
-                        {"user_id": recipient.id},
-                        {"$inc": {recipient_wallet: amount}},
-                    )
-                else:
-                    users_col.insert_one({
-                        "user_id": recipient.id,
-                        "first_name": recipient.first_name,
-                        "username": recipient.username,
-                        "coins": amount,
+                recipient_update = {"$inc": {recipient_wallet: amount}}
+                if not recipient_doc:
+                    recipient_update["$setOnInsert"] = {
+                        "first_name": recipient.first_name or "Collector",
+                        "username": recipient.username or "",
                         "gems": 0,
                         "xp": 0,
-                    })
+                    }
+                users_col.update_one(
+                    {"user_id": recipient.id},
+                    recipient_update,
+                    upsert=True,
+                )
                 gift_label = f"🪙 {amount:,} Coins"
             else:
                 card = inventory_col.find_one({
@@ -166,14 +165,17 @@ async def gift_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 new_card["user_id"] = recipient.id
                 inventory_col.insert_one(new_card)
                 if not recipient_doc:
-                    users_col.insert_one({
-                        "user_id": recipient.id,
-                        "first_name": recipient.first_name,
-                        "username": recipient.username,
-                        "coins": 0,
-                        "gems": 0,
-                        "xp": 0,
-                    })
+                    users_col.update_one(
+                        {"user_id": recipient.id},
+                        {"$setOnInsert": {
+                            "first_name": recipient.first_name or "Collector",
+                            "username": recipient.username or "",
+                            "coins": 0,
+                            "gems": 0,
+                            "xp": 0,
+                        }},
+                        upsert=True,
+                    )
                 gift_label = f"🎴 {escape(str(card.get('name') or value))} (ID: {escape(value)})"
     except Exception:
         await message.reply_text("❌ Gift ပေးပို့ရာတွင် Error ဖြစ်နေပါသည်။")
