@@ -80,34 +80,36 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         condition["last_daily"] = {"$exists": False}
 
+    failure = None
     try:
         with atomic():
             fresh = users_col.find_one({"user_id": user_id}) or {}
             fresh_last = _as_utc_datetime(fresh.get("last_daily"))
             if fresh_last and (now - fresh_last) < timedelta(hours=24):
-                await update.message.reply_text("⏳ Daily Reward ကို ရယူပြီးပါပြီ။")
-                return
-            if fresh_last and (now - fresh_last) <= timedelta(hours=48):
-                streak = int(fresh.get("daily_streak", 0) or 0) + 1
-            milestone_bonus = 100 if streak % 7 == 0 else 0
-            wallet_field = "coins" if "coins" in fresh else "balance"
-            result = users_col.update_one(
-                condition,
-                {
-                    "$inc": {wallet_field: bonus_coins + milestone_bonus, "gems": bonus_gems},
-                    "$set": {
-                        "last_daily": now,
-                        "daily_streak": streak,
-                        "first_name": user.first_name,
-                        "username": user.username,
+                failure = "⏳ Daily Reward ကို ရယူပြီးပါပြီ။"
+            else:
+                if fresh_last and (now - fresh_last) <= timedelta(hours=48):
+                    streak = int(fresh.get("daily_streak", 0) or 0) + 1
+                milestone_bonus = 100 if streak % 7 == 0 else 0
+                wallet_field = "coins" if "coins" in fresh else "balance"
+                result = users_col.update_one(
+                    condition,
+                    {
+                        "$inc": {wallet_field: bonus_coins + milestone_bonus, "gems": bonus_gems},
+                        "$set": {
+                            "last_daily": now,
+                            "daily_streak": streak,
+                            "first_name": user.first_name or "Collector",
+                            "username": user.username or "",
+                        },
                     },
-                },
-            )
-            if result.modified_count != 1:
-                await update.message.reply_text("⏳ Daily Reward တစ်ကြိမ်သာ ရယူနိုင်ပါသည်။")
-                return
+                )
+                if result.modified_count != 1:
+                    failure = "⏳ Daily Reward တစ်ကြိမ်သာ ရယူနိုင်ပါသည်။"
     except Exception:
-        await update.message.reply_text("❌ Daily Bonus ရယူရာတွင် Error ဖြစ်နေပါသည်။")
+        failure = "❌ Daily Bonus ရယူရာတွင် Error ဖြစ်နေပါသည်။"
+    if failure:
+        await update.message.reply_text(failure)
         return
 
     updated_user = get_user(user_id)
