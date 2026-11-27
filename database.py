@@ -595,6 +595,10 @@ with _session() as _conn:
             "CREATE INDEX IF NOT EXISTS nexus_documents_collection_idx "
             "ON nexus_documents(collection_name)"
         )
+        _cur.execute(
+            "CREATE INDEX IF NOT EXISTS nexus_documents_document_gin_idx "
+            "ON nexus_documents USING GIN(document jsonb_path_ops)"
+        )
 
 db = PostgresDatabase()
 users_col = db["users"]
