@@ -278,11 +278,30 @@ class PostgresCollection:
     def __init__(self, name):
         self.name = name
 
-    def _load(self, cursor=None, for_update=False):
+    def _load(self, cursor=None, query=None, for_update=False):
+        # Push simple exact-match fields into PostgreSQL JSONB containment so
+        # common user_id/chat_id/code lookups do not scan whole collections.
+        clauses = ["collection_name = %s"]
+        params = [self.name]
+        if isinstance(query, dict):
+            exact = {
+                key: value for key, value in query.items()
+                if not key.startswith("$")
+                and key != "_id"
+                and "." not in key
+                and not isinstance(value, dict)
+            }
+            if "_id" in query and not isinstance(query["_id"], dict):
+                clauses.append("document_id = %s")
+                params.append(str(query["_id"]))
+            if exact:
+                clauses.append("document @> %s::jsonb")
+                params.append(Json(exact, dumps=lambda x: json.dumps(x, default=_json_default)))
         cursor.execute(
-            "SELECT document_id, document FROM nexus_documents "
-            "WHERE collection_name = %s" + (" FOR UPDATE" if for_update else ""),
-            (self.name,),
+            "SELECT document_id, document FROM nexus_documents WHERE "
+            + " AND ".join(clauses)
+            + (" FOR UPDATE" if for_update else ""),
+            tuple(params),
         )
         rows = cursor.fetchall()
         result = []
@@ -294,7 +313,7 @@ class PostgresCollection:
 
     def _lock_matching(self, cursor, query=None):
         """Lock only the matching row, not every document in a collection."""
-        for candidate in self._load(cursor):
+        for candidate in self._load(cursor, query=query):
             if not _matches(candidate, query or {}):
                 continue
             cursor.execute(
