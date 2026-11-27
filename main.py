@@ -190,6 +190,7 @@ async def post_init(application: Application) -> None:
         BotCommand("exchange", "Duplicate Card လဲလှယ်ရန်"),
         BotCommand("haremstyle", "Harem Display ပုံစံပြောင်းရန်"),
         BotCommand("weekly", "အပတ်စဉ်ဆုယူရန်"),
+        BotCommand("quest", "Daily Quest Progress / Reward"),
         BotCommand("streak", "Daily Streak ကြည့်ရန်"),
         BotCommand("chest", "Card Chest ဖွင့်ရန်"),
         BotCommand("booster", "Lucky Booster ဝယ်ရန်/ကြည့်ရန်"),
