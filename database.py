@@ -10,7 +10,7 @@ import json
 import os
 import re
 import uuid
-import threading
+from contextvars import ContextVar
 from enum import Enum
 
 import psycopg2
@@ -40,14 +40,14 @@ def _connect():
     return psycopg2.connect(url, **kwargs)
 
 
-_ACTIVE_TRANSACTION = threading.local()
+_ACTIVE_TRANSACTION = ContextVar('nexus_active_transaction', default=None)
 
 
 @contextmanager
 def _session():
     # Reuse an active transaction so operations across collections can commit
     # or roll back together. Outside atomic(), preserve the original behavior.
-    active = getattr(_ACTIVE_TRANSACTION, "connection", None)
+    active = _ACTIVE_TRANSACTION.get()
     if active is not None:
         yield active
         return
@@ -71,11 +71,11 @@ def atomic():
     connection = _connect()
     try:
         with connection:
-            _ACTIVE_TRANSACTION.connection = connection
+            token = _ACTIVE_TRANSACTION.set(connection)
             try:
                 yield connection
             finally:
-                del _ACTIVE_TRANSACTION.connection
+                _ACTIVE_TRANSACTION.reset(token)
     finally:
         connection.close()
 
@@ -94,6 +94,41 @@ def _path(document, path):
         value = value[part]
     return value
 
+def _set_path(document, path, value):
+    parts = path.split(".")
+    target = document
+    for part in parts[:-1]:
+        child = target.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            target[part] = child
+        target = child
+    target[parts[-1]] = copy.deepcopy(value)
+
+
+def _unset_path(document, path):
+    parts = path.split(".")
+    target = document
+    for part in parts[:-1]:
+        target = target.get(part)
+        if not isinstance(target, dict):
+            return
+    target.pop(parts[-1], None)
+
+
+def _sort_value(value):
+    if value is _MISSING:
+        return (0, 0)
+    if value is None:
+        return (1, 0)
+    if isinstance(value, bool):
+        return (2, int(value))
+    if isinstance(value, (int, float)):
+        return (3, float(value))
+    if isinstance(value, str):
+        return (4, value.casefold())
+    return (5, str(value))
+
 
 def _compare(value, condition):
     if not isinstance(condition, dict) or not any(str(k).startswith("$") for k in condition):
@@ -106,7 +141,7 @@ def _compare(value, condition):
             if exists != bool(expected):
                 return False
         elif op == "$ne":
-            if value == expected:
+            if value == expected or (isinstance(value, list) and expected in value):
                 return False
         elif op == "$in":
             if isinstance(value, list):
@@ -212,7 +247,7 @@ class Cursor:
                 self.sort(field, order)
         else:
             self.documents.sort(
-                key=lambda d: (_path(d, key) is None, _path(d, key)),
+                key=lambda d: _sort_value(_path(d, key)),
                 reverse=(direction < 0),
             )
         return self
@@ -295,18 +330,22 @@ class PostgresCollection:
         for op, fields in update.items():
             if op == "$set" or (op == "$setOnInsert" and inserting):
                 for key, value in fields.items():
-                    result[key] = copy.deepcopy(value)
+                    _set_path(result, key, value)
             elif op == "$inc":
                 for key, value in fields.items():
-                    result[key] = (result.get(key) or 0) + value
+                    current = _path(result, key)
+                    if current is _MISSING or current is None:
+                        current = 0
+                    _set_path(result, key, current + value)
             elif op == "$push":
                 for key, value in fields.items():
-                    arr = list(result.get(key) or [])
+                    current = _path(result, key)
+                    arr = list(current if isinstance(current, list) else [])
                     if isinstance(value, dict) and "$each" in value:
                         arr.extend(value["$each"])
                     else:
                         arr.append(value)
-                    result[key] = arr
+                    _set_path(result, key, arr)
             elif op == "$addToSet":
                 for key, value in fields.items():
                     arr = list(result.get(key) or [])
@@ -317,10 +356,13 @@ class PostgresCollection:
                     result[key] = arr
             elif op == "$pull":
                 for key, value in fields.items():
-                    result[key] = [x for x in (result.get(key) or []) if x != value]
+                    current = _path(result, key)
+                    arr = list(current if isinstance(current, list) else [])
+                    result_arr = [x for x in arr if not _compare(x, value)]
+                    _set_path(result, key, result_arr)
             elif op == "$unset":
                 for key in fields:
-                    result.pop(key, None)
+                    _unset_path(result, key)
         return result
 
     def update_one(self, query, update, upsert=False):
