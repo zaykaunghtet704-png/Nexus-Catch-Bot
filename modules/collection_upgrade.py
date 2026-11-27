@@ -130,6 +130,7 @@ async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML,
         )
         return
+
     kind = context.args[0].lower()
     cost, label, allowed_rarities = CHESTS[kind]
     allowed = {rarity.casefold() for rarity in allowed_rarities}
@@ -140,37 +141,42 @@ async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not cards:
         await update.effective_message.reply_text("❌ ဒီ Chest အမျိုးအစားအတွက် သက်ဆိုင်ရာ Rarity ကတ် မရှိသေးပါ။")
         return
+
     card = random.choice(cards)
     uid = update.effective_user.id
+    failure = None
     try:
         with atomic():
-            user = users_col.find_one({"user_id": uid}) or {"user_id": uid}
-            currency = "gems" if kind == "legendary" else _balance_field(user)
+            user_doc = users_col.find_one({"user_id": uid}) or {}
+            currency = "gems" if kind == "legendary" else _balance_field(user_doc)
             debit = users_col.update_one(
                 {"user_id": uid, currency: {"$gte": cost}},
                 {"$inc": {currency: -cost}},
             )
             if debit.modified_count != 1:
-                await update.effective_message.reply_text("❌ လက်ကျန်ငွေ မလုံလောက်ပါ။")
-                return
-            inventory_col.insert_one({
-                "user_id": uid,
-                "card_id": card.get("card_id") or card.get("id"),
-                "name": card.get("name", "Unknown"),
-                "anime": card.get("anime", "Unknown"),
-                "rarity": card.get("rarity", "Common"),
-                "edition": card.get("edition", "Normal"),
-                "img_url": card.get("img_url") or card.get("image"),
-                "obtained_at": datetime.now(timezone.utc).isoformat(),
-            })
+                failure = "❌ လက်ကျန်ငွေ မလုံလောက်ပါ။"
+            else:
+                inventory_col.insert_one({
+                    "user_id": uid,
+                    "card_id": card.get("card_id") or card.get("id"),
+                    "name": card.get("name", "Unknown"),
+                    "anime": card.get("anime", "Unknown"),
+                    "rarity": card.get("rarity", "Common"),
+                    "edition": card.get("edition", "Normal"),
+                    "img_url": card.get("img_url") or card.get("image"),
+                    "obtained_at": datetime.now(timezone.utc).isoformat(),
+                })
     except Exception:
-        await update.effective_message.reply_text("❌ Chest ဖွင့်ရာတွင် Error ဖြစ်နေပါသည်။")
+        failure = "❌ Chest ဖွင့်ရာတွင် Error ဖြစ်နေပါသည်။"
+    if failure:
+        await update.effective_message.reply_text(failure)
         return
+
     await update.effective_message.reply_text(
         f"🎉 <b>{escape(label)} OPENED!</b>\n\n"
         f"🎴 <b>{escape(str(card.get('name', 'Unknown')))}</b>\n"
         f"✨ {escape(str(card.get('rarity', 'Common')))}\n"
-        f"🪙 Cost: {cost} {'Gems' if kind == 'legendary' else 'Coins'}",
+        f"💰 Cost: {cost:,} {'Gems' if kind == 'legendary' else 'Coins'}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -180,35 +186,50 @@ async def booster_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = context.args[0].lower() if context.args else "status"
     if action == "buy":
         now = datetime.now(timezone.utc)
+        failure = None
         try:
             with atomic():
                 user_doc = users_col.find_one({"user_id": uid}) or {}
                 active_until = user_doc.get("booster_until")
                 if active_until:
                     try:
-                        if datetime.fromisoformat(active_until) > now and int(user_doc.get("booster_uses", 0)) > 0:
-                            await update.effective_message.reply_text("⚡ Booster အသက်ဝင်နေဆဲပါ။ ကျန်အသုံးပြုခွင့်ကို /booster status ဖြင့်ကြည့်ပါ။")
-                            return
+                        if datetime.fromisoformat(str(active_until).replace("Z", "+00:00")) > now and int(user_doc.get("booster_uses", 0)) > 0:
+                            failure = "⚡ Booster အသက်ဝင်နေဆဲပါ။ ကျန်အသုံးပြုခွင့်ကို /booster status ဖြင့်ကြည့်ပါ။"
                     except (TypeError, ValueError):
                         pass
-                field = _balance_field(user_doc)
-                debit = users_col.update_one(
-                    {"user_id": uid, field: {"$gte": 3000}},
-                    {"$inc": {field: -3000},
-                     "$set": {"booster_uses": 5, "booster_until": (now + timedelta(hours=24)).isoformat()}},
-                )
-                if debit.modified_count != 1:
-                    await update.effective_message.reply_text("❌ Lucky Booster ဝယ်ရန် 3,000 Coins မလုံလောက်ပါ။")
-                    return
+                if not failure:
+                    field = _balance_field(user_doc)
+                    debit = users_col.update_one(
+                        {"user_id": uid, field: {"$gte": 3000}},
+                        {"$inc": {field: -3000},
+                         "$set": {"booster_uses": 5, "booster_until": (now + timedelta(hours=24)).isoformat()}},
+                    )
+                    if debit.modified_count != 1:
+                        failure = "❌ Lucky Booster ဝယ်ရန် 3,000 Coins မလုံလောက်ပါ။"
         except Exception:
-            await update.effective_message.reply_text("❌ Booster ဝယ်ယူရာတွင် Error ဖြစ်နေပါသည်။")
+            failure = "❌ Booster ဝယ်ယူရာတွင် Error ဖြစ်နေပါသည်။"
+        if failure:
+            await update.effective_message.reply_text(failure)
             return
-        await update.effective_message.reply_text("⚡ <b>LUCKY BOOSTER ACTIVATED!</b>\n\n🎯 နောက် Catch ၅ ကြိမ်အတွက် +50 Coins စီ Bonus ရမည်။\n⏳ သက်တမ်း: 24 နာရီ", parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text(
+            "⚡ <b>LUCKY BOOSTER ACTIVATED!</b>\n\n"
+            "🎯 နောက် Catch ၅ ကြိမ်အတွက် +50 Coins စီ Bonus ရမည်။\n"
+            "⏳ သက်တမ်း: 24 နာရီ",
+            parse_mode=ParseMode.HTML,
+        )
         return
 
     doc = users_col.find_one({"user_id": uid}) or {}
     uses = int(doc.get("booster_uses", 0) or 0)
     expiry = doc.get("booster_until") or "မရှိသေးပါ"
+    expired = False
+    if doc.get("booster_until"):
+        try:
+            expired = datetime.fromisoformat(str(doc["booster_until"]).replace("Z", "+00:00")) <= datetime.now(timezone.utc)
+        except (TypeError, ValueError):
+            expired = True
+    if expired:
+        uses = 0
     await update.effective_message.reply_text(
         "⚡ <b>LUCKY BOOSTER</b>\n\n"
         f"🎯 ကျန်အသုံးပြုခွင့်: <b>{uses}/5</b>\n"
