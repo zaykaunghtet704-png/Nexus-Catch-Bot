@@ -164,7 +164,14 @@ async def add_must_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def force_join_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.effective_message:
         return
-    
+
+    # Drop-rate commands must reach their own handlers even when a force-join
+    # channel is misconfigured. /setdrop remains protected by its owner check.
+    message_text = (update.effective_message.text or "").strip()
+    command = message_text.split(maxsplit=1)[0].split("@", 1)[0].lower() if message_text else ""
+    if command in ("/droprates", "/setdrop"):
+        return
+
     user_id = update.effective_user.id
     if user_id in ADMIN_IDS:
         return
