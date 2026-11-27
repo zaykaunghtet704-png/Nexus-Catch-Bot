@@ -130,7 +130,7 @@ async def recycle_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 return
 
             rarity = str(item.get("rarity", "Common"))
-            gem_reward = 2 if "Common" in rarity or "Uncommon" in rarity else 5
+            gem_reward = 2 if rarity.casefold() in {"common", "uncommon"} else 5
             users_col.update_one({"user_id": user_id}, {"$inc": {"gems": gem_reward}}, upsert=True)
     except Exception:
         await update.message.reply_text("❌ Duplicate Exchange လုပ်ဆောင်ရာတွင် Error ဖြစ်နေပါသည်။")
