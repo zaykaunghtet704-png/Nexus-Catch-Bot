@@ -57,7 +57,7 @@ async def set_drop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not user or not _is_owner(user.id):
         await update.effective_message.reply_text("❌ ဒီ Command ကို Bot Owner သာ အသုံးပြုနိုင်ပါသည်။")
         return
-    if len(context.args) != 2:
+    if len(context.args) < 2:
         await update.effective_message.reply_text(
             "အသုံးပြုပုံ: <code>/setdrop [Rarity] [Percent]</code>\n"
             "ဥပမာ: <code>/setdrop Legendary 5</code>\n"
