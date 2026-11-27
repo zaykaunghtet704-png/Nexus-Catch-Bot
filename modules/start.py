@@ -132,40 +132,8 @@ async def start_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     data = query.data
     if data == "help_menu":
-        text = (
-            "╭━━━━━━━━━━━━━━━━━━╮\n"
-            "       📚 <b>NEXUS CATCH • HELP</b>\n"
-            "╰━━━━━━━━━━━━━━━━━━╯\n\n"
-            "🌟 <b>COLLECTION</b>\n"
-            "├ 🃏 <code>/catch</code> — ကတ်ဖမ်းရန်\n"
-            "├ 📚 <code>/harem</code> — ကတ်စုဆောင်းမှုကြည့်ရန်\n"
-            "├ 🔎 <code>/check</code> — Card ID စစ်ရန်\n"
-            "└ 👤 <code>/profile</code> — ကိုယ်ရေးအချက်အလက်\n\n"
-            "🪙 <b>ECONOMY</b>\n"
-            "├ 🎁 <code>/daily</code> — နေ့စဉ်ဆုယူရန်\n"
-            "├ 💰 <code>/balance</code> — လက်ကျန်ကြည့်ရန်\n"
-            "└ 🛍️ <code>/shop</code> — ဆိုင်ဖွင့်ရန်\n\n"
-            "🏆 <b>COMMUNITY</b>\n"
-            "└ 🌍 <code>/ranking</code> — ထိပ်တန်းစာရင်း\n\n"
-            "✨ <b>NEW FEATURES</b>\n"
-            "├ 🎨 <code>/haremstyle compact</code> — Harem ပုံစံ\n"
-            "├ ♻️ <code>/exchange [CardID]</code> — Duplicate လဲရန်\n"
-            "├ 🎁 <code>/weekly</code> — Weekly Reward\n"
-            "├ 🔥 <code>/streak</code> — Daily Streak\n"
-            "├ 📦 <code>/chest</code> — Card Chest\n"
-            "├ ⚡ <code>/booster buy</code> — Lucky Booster\n"
-            "├ 🔎 <code>/findowner [CardID]</code> — Card ပိုင်ရှင်\n"
-            "├ 🔨 <code>/auction</code> — Auction\n"
-            "├ 🛒 <code>/market rarity=...</code> — Market Filter\n"
-            "├ 🏆 <code>/weeklyranking</code> — Weekly Ranking\n"
-            "└ 🏘️ <code>/topgroups</code> — Top Groups\n\n"
-            "💫 <i>Collect • Trade • Become a Legend</i>"
-        )
-        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ 𝗕𝗔𝗖𝗞", callback_data="back_start")]])
-        try:
-            await query.edit_message_text(text, reply_markup=back_keyboard, parse_mode=ParseMode.HTML)
-        except Exception:
-            pass
+        await help_command(update, context)
+        return
 
     elif data == "shop_menu":
         text = (
