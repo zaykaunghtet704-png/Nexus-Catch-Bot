@@ -133,13 +133,8 @@ async def sell_command(
                 "listed_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            # Insert listing first and persist today's quest progress.
+            # Insert listing first, then remove the owned inventory copy.
             result = market_col.insert_one(listing)
-            users_col.update_one(
-                {"user_id": user.id},
-                {"$set": {"market_listed_date": datetime.now(timezone.utc).isoformat()}},
-                upsert=True,
-            )
 
             try:
                 deleted = inventory_col.delete_one({
@@ -162,6 +157,12 @@ async def sell_command(
                     "_id": result.inserted_id
                 })
                 raise
+
+            users_col.update_one(
+                {"user_id": user.id},
+                {"$set": {"market_listed_date": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
 
         await message.reply_text(
             "🛒 <b>CARD LISTED SUCCESSFULLY</b>\n"
