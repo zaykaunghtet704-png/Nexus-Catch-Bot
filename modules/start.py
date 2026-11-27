@@ -124,7 +124,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     elif update.callback_query:
-        await update.callback_query.message.edit_text(text, parse_mode=ParseMode.HTML)
+        back_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ 𝗕𝗔𝗖𝗞", callback_data="back_start")]
+        ])
+        await update.callback_query.message.edit_text(
+            text,
+            reply_markup=back_keyboard,
+            parse_mode=ParseMode.HTML,
+        )
 
 async def start_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start Menu ရှိ Help Menu နှင့် Shop Menu ခလုတ်များအတွက် Handler"""
