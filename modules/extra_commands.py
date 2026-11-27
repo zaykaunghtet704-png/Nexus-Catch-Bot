@@ -179,6 +179,7 @@ async def gift_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     return
                 new_card = {k: v for k, v in card.items() if k != "_id"}
                 new_card["user_id"] = recipient.id
+                new_card["source"] = "gift"
                 inventory_col.insert_one(new_card)
                 if not recipient_doc:
                     users_col.update_one(
