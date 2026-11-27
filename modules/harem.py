@@ -8,22 +8,26 @@ from database import inventory_col, users_col, cards_col
 
 PAGE_SIZE = 10  # စာမျက်နှာတစ်ခုတွင် ပြသမည့် Anime / Rarity အရေအတွက်
 
-# ── Rarity Icons & Emoji Mapping (Exact 13 Rarities) ────────────
+# Rarity labels are aligned with the active card database configuration.
 RARITY_ICONS = {
-    "Premium Edition": "👑",
-    "Supreme": "🌀",
-    "Cataphract": "⚔️",
-    "CrossVerse": "💎",
-    "Divine": "⚜️",
-    "Mystical": "🔥",
-    "Ancient": "📜",
-    "Mythic": "🔴",
-    "Legendary": "🏆",
-    "Epic": "✨",
-    "Rare": "🎁",
+    "Common": "🧊",
     "Uncommon": "🔮",
-    "Common": "🧊"
+    "Rare": "🎁",
+    "Epic": "✨",
+    "Legendary": "🏆",
+    "Mythic": "🔴",
+    "Divine": "⚜️",
+    "Celestial": "🌌",
+    "Eternal": "♾️",
+    "Ultimate": "⚡",
+    "Supreme": "🌀",
+    "Transcendent": "🌠",
+    "Premium Edition": "👑",
 }
+try:
+    from config import RARITIES
+except ImportError:
+    RARITIES = list(RARITY_ICONS)
 
 def get_user_doc(user_id: int):
     """PyMongo Synchronous Safe User Fetch"""
@@ -239,6 +243,9 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
     query_filter = {"user_id": user_id}
     if rarity_filter != "ALL":
         query_filter["rarity"] = {"$regex": rarity_filter, "$options": "i"}
+    event_filter = user_doc.get("harem_event_filter", "ALL")
+    if event_filter != "ALL":
+        query_filter["edition"] = {"$regex": str(event_filter), "$options": "i"}
 
     try:
         user_inventory = list(inventory_col.find(query_filter))
@@ -246,7 +253,7 @@ async def send_harem_page(chat_id: int, user_id: int, user_name: str, page: int,
         user_inventory = []
 
     if not user_inventory:
-        text = "❌ <b>သင့်ထံတွင် Character/Card များ မရှိသေးပါ။</b>\n/claim သို့မဟုတ် /catch ဖြင့် စတင်ဖမ်းယူပါ!"
+        text = "❌ <b>ရွေးချယ်ထားသော Filter နဲ့ ကိုက်ညီတဲ့ Card မရှိပါ။</b>\n/chmode မှာ Filter ပြန်ပြောင်းနိုင်ပါတယ်။"
         if message_id:
             try:
                 await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode=ParseMode.HTML)
