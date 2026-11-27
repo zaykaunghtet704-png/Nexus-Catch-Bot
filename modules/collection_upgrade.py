@@ -8,7 +8,7 @@ from telegram.constants import ParseMode
 from telegram.ext import CommandHandler, ContextTypes
 
 from database import (
-    atomic, db, users_col, inventory_col, cards_col, market_col,
+    atomic, db, users_col, inventory_col, cards_col, market_col, lock_query,
 )
 
 auctions_col = db["auctions"]
@@ -29,32 +29,39 @@ async def weekly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     week = _week_key()
     coins, gems = 5000, 25
+    failure = None
     try:
         with atomic():
+            # Serialize first-time claims too, when no user row exists yet.
+            lock_query("users", {"user_id": uid})
             current_user = users_col.find_one({"user_id": uid}) or {}
-            currency_field = _balance_field(current_user)
             if current_user.get("weekly_claim_week") == week:
-                await update.effective_message.reply_text("⏳ ဒီအပတ် Weekly Reward ကို ရယူပြီးပါပြီ။ နောက်အပတ်မှ ပြန်လာခဲ့ပါ။")
-                return
-            if current_user:
-                result = users_col.update_one(
-                    {"user_id": uid, "weekly_claim_week": {"$ne": week}},
-                    {"$inc": {currency_field: coins, "gems": gems},
-                     "$set": {"weekly_claim_week": week}},
-                )
-                if result.modified_count != 1:
-                    await update.effective_message.reply_text("⏳ Weekly Reward ကို တစ်ကြိမ်သာ ရယူနိုင်ပါသည်။")
-                    return
+                failure = "⏳ ဒီအပတ် Weekly Reward ကို ရယူပြီးပါပြီ။ နောက်အပတ်မှ ပြန်လာခဲ့ပါ။"
             else:
-                users_col.insert_one({
-                    "user_id": uid,
-                    currency_field: coins,
-                    "gems": gems,
-                    "weekly_claim_week": week,
-                })
+                currency_field = _balance_field(current_user)
+                if current_user:
+                    result = users_col.update_one(
+                        {"user_id": uid},
+                        {"$inc": {currency_field: coins, "gems": gems},
+                         "$set": {"weekly_claim_week": week}},
+                    )
+                    if result.modified_count != 1:
+                        failure = "❌ Weekly Reward ကို အပ်ဒိတ်လုပ်မရပါ။"
+                else:
+                    users_col.insert_one({
+                        "user_id": uid,
+                        currency_field: coins,
+                        "gems": gems,
+                        "weekly_claim_week": week,
+                        "first_name": update.effective_user.first_name or "Collector",
+                        "username": update.effective_user.username or "",
+                    })
     except Exception:
-        await update.effective_message.reply_text("❌ Weekly Reward ရယူရာတွင် Error ဖြစ်နေပါသည်။")
+        failure = "❌ Weekly Reward ရယူရာတွင် Error ဖြစ်နေပါသည်။"
+    if failure:
+        await update.effective_message.reply_text(failure)
         return
+
     await update.effective_message.reply_text(
         "╭━━━━━━━━━━━━━━━━━━╮\n🎁 <b>WEEKLY REWARD</b>\n╰━━━━━━━━━━━━━━━━━━╯\n\n"
         f"🪙 Coins: <b>+{coins:,}</b>\n💎 Gems: <b>+{gems}</b>\n"
