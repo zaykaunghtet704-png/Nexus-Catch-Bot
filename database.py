@@ -345,7 +345,7 @@ class PostgresCollection:
     def find(self, query=None, projection=None):
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                docs = self._load(cur)
+                docs = self._load(cur, query=query)
         return Cursor(_project(d, projection) for d in docs if _matches(d, query or {}))
 
     def find_one(self, query=None, projection=None):
@@ -451,7 +451,7 @@ class PostgresCollection:
         matched = modified = 0
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                candidates = self._load(cur)
+                candidates = self._load(cur, query=query)
                 for candidate in candidates:
                     target = self._lock_matching(cur, {"_id": candidate["_id"]})
                     if target and _matches(target, query or {}):
@@ -482,7 +482,7 @@ class PostgresCollection:
         deleted = 0
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                candidates = self._load(cur)
+                candidates = self._load(cur, query=query)
                 ids = []
                 for candidate in candidates:
                     target = self._lock_matching(cur, {"_id": candidate["_id"]})
