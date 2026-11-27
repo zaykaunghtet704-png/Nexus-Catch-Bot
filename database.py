@@ -279,6 +279,25 @@ class PostgresCollection:
             result.append(doc)
         return result
 
+    def _lock_matching(self, cursor, query=None):
+        """Lock only the matching row, not every document in a collection."""
+        for candidate in self._load(cursor):
+            if not _matches(candidate, query or {}):
+                continue
+            cursor.execute(
+                "SELECT document_id, document FROM nexus_documents "
+                "WHERE collection_name=%s AND document_id=%s FOR UPDATE",
+                (self.name, str(candidate["_id"])),
+            )
+            row = cursor.fetchone()
+            if not row:
+                continue
+            fresh = dict(row["document"] or {})
+            fresh["_id"] = row["document_id"]
+            if _matches(fresh, query or {}):
+                return fresh
+        return None
+
     def insert_one(self, document):
         doc = copy.deepcopy(document)
         doc_id = str(doc.pop("_id", None) or uuid.uuid4().hex)
@@ -302,11 +321,10 @@ class PostgresCollection:
         return docs.documents[0] if docs.documents else None
 
     def find_one_for_update(self, query=None):
-        """Fetch a matching document while locking its collection rows."""
+        """Fetch and lock only the matching document."""
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                docs = self._load(cur, for_update=True)
-                target = next((d for d in docs if _matches(d, query or {})), None)
+                target = self._lock_matching(cur, query)
                 return copy.deepcopy(target) if target else None
 
     def count_documents(self, query=None):
@@ -369,8 +387,7 @@ class PostgresCollection:
     def update_one(self, query, update, upsert=False):
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                docs = self._load(cur, for_update=True)
-                target = next((d for d in docs if _matches(d, query or {})), None)
+                target = self._lock_matching(cur, query)
                 if target:
                     new_doc = self._apply_update(target, update)
                     body = dict(new_doc)
@@ -396,9 +413,10 @@ class PostgresCollection:
         matched = modified = 0
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                docs = self._load(cur, for_update=True)
-                for target in docs:
-                    if _matches(target, query or {}):
+                candidates = self._load(cur)
+                for candidate in candidates:
+                    target = self._lock_matching(cur, {"_id": candidate["_id"]})
+                    if target and _matches(target, query or {}):
                         matched += 1
                         new_doc = self._apply_update(target, update)
                         body = dict(new_doc)
@@ -413,8 +431,7 @@ class PostgresCollection:
     def delete_one(self, query):
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                docs = self._load(cur, for_update=True)
-                target = next((d for d in docs if _matches(d, query or {})), None)
+                target = self._lock_matching(cur, query)
                 if not target:
                     return DeleteResult()
                 cur.execute(
@@ -427,8 +444,12 @@ class PostgresCollection:
         deleted = 0
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                docs = self._load(cur, for_update=True)
-                ids = [str(d["_id"]) for d in docs if _matches(d, query or {})]
+                candidates = self._load(cur)
+                ids = []
+                for candidate in candidates:
+                    target = self._lock_matching(cur, {"_id": candidate["_id"]})
+                    if target and _matches(target, query or {}):
+                        ids.append(str(target["_id"]))
                 for doc_id in ids:
                     cur.execute(
                         "DELETE FROM nexus_documents WHERE collection_name=%s AND document_id=%s",
@@ -440,8 +461,7 @@ class PostgresCollection:
     def find_one_and_delete(self, query):
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                docs = self._load(cur, for_update=True)
-                target = next((d for d in docs if _matches(d, query or {})), None)
+                target = self._lock_matching(cur, query)
                 if not target:
                     return None
                 cur.execute(
