@@ -102,9 +102,12 @@ async def _transfer_wallet(update: Update, currency: str):
             if debit.modified_count != 1:
                 error = f"သင့်တွင် {('Coins' if currency == 'coin' else 'Gems')} မလုံလောက်ပါ။"
             else:
+                recipient_doc = users_col.find_one({"user_id": recipient.id}) or {}
+                recipient_field = (("coins" if "coins" in recipient_doc else "balance")
+                                   if currency == "coin" else "gems")
                 users_col.update_one(
                     {"user_id": recipient.id},
-                    {"$inc": {field: amount},
+                    {"$inc": {recipient_field: amount},
                      "$setOnInsert": {"first_name": recipient.first_name or "Collector",
                                       "username": recipient.username or "", "xp": 0}},
                     upsert=True,
