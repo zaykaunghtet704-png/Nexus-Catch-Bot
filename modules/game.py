@@ -4,6 +4,7 @@ modules/game.py - Game Spawn, Catch & Collection Module
 """
 
 import random
+from datetime import datetime, timezone
 from html import escape
 from telegram import Update
 from telegram.constants import ParseMode
@@ -121,7 +122,7 @@ async def message_counter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     "message_count": 0,
                     "chat_title": chat.title or "Group Chat",
                     "active_card": spawned_card,
-                    "spawned_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                    "spawned_at": datetime.now(timezone.utc).isoformat(),
                 }},
             )
             SPAWNED_CARDS[chat_id] = spawned_card
@@ -181,7 +182,6 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     catch_bonus = 0
 
     try:
-        from datetime import datetime, timezone
         now_utc = datetime.now(timezone.utc)
         week_info = now_utc.isocalendar()
         week_key = f"{week_info.year}-W{week_info.week:02d}"
