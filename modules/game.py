@@ -220,6 +220,7 @@ async def catch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     "img_url": actual_card.get("img_url") or actual_card.get("image"),
                     "chat_id": chat_id if chat.type != "private" else None,
                     "obtained_at": now_utc.isoformat(),
+                    "source": "catch",
                 })
 
                 account = users_col.find_one({"user_id": user.id}) or {}
