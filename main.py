@@ -301,7 +301,9 @@ def main() -> None:
     # --------------------------------------
 
     for handler in get_spawn_settings_handlers():
-        app.add_handler(handler)
+        # Keep these commands in a dedicated group so another module's
+        # same-command handler cannot silently shadow them in group 0.
+        app.add_handler(handler, group=1)
 
     # --------------------------------------
     # FORCE JOIN (/addjoin)
