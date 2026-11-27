@@ -104,9 +104,12 @@ async def find_owner_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 CHESTS = {
-    "common": (500, "Common Chest"),
-    "rare": (2000, "Rare Chest"),
-    "legendary": (50, "Legendary Crate"),
+    "common": (500, "Common Chest", {"Common", "Uncommon", "Rare"}),
+    "rare": (2000, "Rare Chest", {"Rare", "Epic", "Legendary", "Mythic"}),
+    "legendary": (50, "Legendary Crate", {
+        "Legendary", "Mythic", "Divine", "Celestial", "Eternal",
+        "Ultimate", "Supreme", "Transcendent", "Premium Edition",
+    }),
 }
 
 
@@ -250,7 +253,7 @@ async def auction_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     return
                 result = auctions_col.insert_one({
                     "seller_id": user.id, "seller_name": user.first_name,
-                    "card": {k: card.get(k) for k in ("card_id", "name", "anime", "rarity", "edition", "img_url")},
+                    "card": {**{k: card.get(k) for k in ("name", "anime", "rarity", "edition", "img_url")}, "card_id": card.get("card_id") or card.get("id")},
                     "min_bid": minimum, "highest_bid": 0, "highest_bidder": None,
                     "expires_at": (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat(),
                 })
