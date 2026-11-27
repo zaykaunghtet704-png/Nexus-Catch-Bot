@@ -10,6 +10,7 @@ Commands:
 """
 
 import logging
+from datetime import datetime, timezone
 from html import escape
 
 
@@ -371,7 +372,7 @@ async def buy_command(
                 "rarity": listing.get("rarity", "Common"),
                 "edition": listing.get("edition", "Normal"),
                 "img_url": listing.get("img_url") or listing.get("image"),
-                "obtained_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                "obtained_at": datetime.now(timezone.utc).isoformat(),
             })
             removed = market_col.delete_one({"_id": market_id})
             if removed.deleted_count != 1:
