@@ -85,14 +85,20 @@ async def message_counter(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         with atomic():
             chat_doc = chats_col.find_one_for_update({"chat_id": chat_id})
             if not chat_doc:
-                chats_col.insert_one({
-                    "chat_id": chat_id,
-                    "chat_title": chat.title or "Group Chat",
-                    "spawn_threshold": DEFAULT_SPAWN_THRESHOLD,
-                    "message_count": 1,
-                    "active_card": None,
-                })
-                return
+                chats_col.update_one(
+                    {"chat_id": chat_id},
+                    {"$setOnInsert": {
+                        "chat_id": chat_id,
+                        "chat_title": chat.title or "Group Chat",
+                        "spawn_threshold": DEFAULT_SPAWN_THRESHOLD,
+                        "message_count": 0,
+                        "active_card": None,
+                    }},
+                    upsert=True,
+                )
+                chat_doc = chats_col.find_one_for_update({"chat_id": chat_id})
+                if not chat_doc:
+                    return
 
             # Do not replace an unclaimed card with a new one.
             if chat_doc.get("active_card"):
