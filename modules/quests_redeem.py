@@ -9,39 +9,55 @@ from database import atomic, cards_col, codes_col, inventory_col, users_col
 # ── 1. Redeem Code System ─────────────────────────────────────────────────────
 
 async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/redeem [Code] - one-time, max-use-aware atomic reward claim."""
-    user_id = int(update.effective_user.id)
+    """/redeem or /promo [Code] - one-time, max-use-aware atomic reward claim."""
+    user = update.effective_user
+    if not user:
+        return
+    user_id = int(user.id)
     if not context.args:
-        await update.message.reply_text("❌ <code>/redeem [Code]</code> ဟု အသုံးပြုပါ", parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text(
+            "🎟️ <b>PROMO / GIFT CODE</b>\nအသုံးပြုပုံ: <code>/promo [Code]</code>",
+            parse_mode=ParseMode.HTML,
+        )
         return
 
     code_str = context.args[0].strip().upper()
     card_to_award = None
+    coins_reward = 0
+    gems_reward = 0
+
+    class RedeemAbort(Exception):
+        pass
+
     try:
         with atomic():
             code_doc = codes_col.find_one_for_update({"code": code_str})
             if not code_doc:
-                await update.message.reply_text("❌ Code မှားယွင်းနေပါသည် (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ။")
-                return
+                raise RedeemAbort("❌ Code မှားယွင်းနေပါသည် (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ။")
 
             used_by = code_doc.get("used_by", []) or []
             if user_id in used_by:
-                await update.message.reply_text("❌ သင် ဤ Code ကို အသုံးပြုပြီးဖြစ်ပါသည်။")
-                return
+                raise RedeemAbort("❌ သင် ဤ Code ကို အသုံးပြုပြီးဖြစ်ပါသည်။")
 
             max_uses = int(code_doc.get("max_uses", 0) or 0)
             used_count = max(int(code_doc.get("used_count", 0) or 0), len(used_by))
             if max_uses > 0 and used_count >= max_uses:
-                await update.message.reply_text("❌ ဤ Code ၏ အသုံးပြုနိုင်သည့် အကြိမ်ရေ ကုန်ဆုံးသွားပါပြီ။")
-                return
+                raise RedeemAbort("❌ ဤ Code ၏ အသုံးပြုနိုင်သည့် အကြိမ်ရေ ကုန်ဆုံးသွားပါပြီ။")
+
+            card_id = code_doc.get("card_id")
+            if card_id:
+                card_to_award = cards_col.find_one({
+                    "$or": [{"card_id": card_id}, {"id": card_id}]
+                })
+                if not card_to_award:
+                    raise RedeemAbort("❌ ဒီ Promo Code နဲ့ပေးမည့် Card ID ကို Database ထဲတွင် မတွေ့ပါ။ Owner ကို အသိပေးပါ။")
 
             claim = codes_col.update_one(
-                {"code": code_str, "used_by": {"$nin": [user_id]}},
+                {"_id": code_doc["_id"], "used_by": {"$nin": [user_id]}},
                 {"$addToSet": {"used_by": user_id}, "$inc": {"used_count": 1}},
             )
             if claim.modified_count != 1:
-                await update.message.reply_text("❌ Code ကို အသုံးပြု၍မရတော့ပါ။")
-                return
+                raise RedeemAbort("❌ Code ကို အသုံးပြု၍မရတော့ပါ။")
 
             coins_reward = max(0, int(code_doc.get("coins", 0) or 0))
             gems_reward = max(0, int(code_doc.get("gems", 0) or 0))
@@ -49,40 +65,42 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             wallet_field = "coins" if "coins" in account else "balance"
             users_col.update_one(
                 {"user_id": user_id},
-                {"$inc": {wallet_field: coins_reward, "gems": gems_reward}},
+                {"$inc": {wallet_field: coins_reward, "gems": gems_reward},
+                 "$set": {"first_name": user.first_name or "Collector", "username": user.username or ""}},
                 upsert=True,
             )
 
-            card_id = code_doc.get("card_id")
-            if card_id:
-                card_to_award = cards_col.find_one({
-                    "$or": [{"card_id": card_id}, {"id": card_id}]
+            if card_to_award:
+                inventory_col.insert_one({
+                    "user_id": user_id,
+                    "card_id": card_to_award.get("card_id") or card_to_award.get("id"),
+                    "name": card_to_award.get("name"),
+                    "anime": card_to_award.get("anime"),
+                    "rarity": card_to_award.get("rarity"),
+                    "edition": card_to_award.get("edition", "Normal"),
+                    "img_url": card_to_award.get("img_url") or card_to_award.get("image"),
+                    "obtained_at": datetime.utcnow().isoformat(),
                 })
-                if card_to_award:
-                    inventory_col.insert_one({
-                        "user_id": user_id,
-                        "card_id": card_to_award.get("card_id") or card_to_award.get("id"),
-                        "name": card_to_award.get("name"),
-                        "anime": card_to_award.get("anime"),
-                        "rarity": card_to_award.get("rarity"),
-                        "img_url": card_to_award.get("img_url") or card_to_award.get("image"),
-                    })
+    except RedeemAbort as exc:
+        await update.effective_message.reply_text(str(exc))
+        return
     except Exception:
-        await update.message.reply_text("❌ Code ထုတ်ယူရာတွင် Error ဖြစ်နေပါသည်။ ထပ်မံမကြိုးစားမီ Owner ကို အသိပေးပါ။")
+        await update.effective_message.reply_text("❌ Code ထုတ်ယူရာတွင် Error ဖြစ်နေပါသည်။ Database ကို မပြောင်းလဲဘဲ ပြန်လည်စစ်ဆေးထားပါသည်။")
         return
 
     card_line = ""
     if card_to_award:
         card_line = f"\n🎴 Card: <b>{escape(str(card_to_award.get('name', 'Unknown')))}</b>"
-    await update.message.reply_text(
-        f"╭━━━━━━━━━━━━━━━━━━╮\n"
-        f"       🎉 <b>REDEEM SUCCESS</b>\n"
-        f"╰━━━━━━━━━━━━━━━━━━╯\n\n"
-        f"🎁 သင့်ဆုလက်ဆောင်ကို လက်ခံရရှိပါပြီ!\n"
+    await update.effective_message.reply_text(
+        "╭━━━━━━━━━━━━━━━━━━╮\n"
+        "       🎉 <b>REDEEM SUCCESS</b>\n"
+        "╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        "🎁 သင့်ဆုလက်ဆောင်ကို လက်ခံရရှိပါပြီ!\n"
         f"🪙 Coins: <b>+{coins_reward:,}</b>\n"
         f"💎 Gems: <b>+{gems_reward}</b>{card_line}",
-        parse_mode=ParseMode.HTML
+        parse_mode=ParseMode.HTML,
     )
+
 
 # ── 2. Card Recycle / Disassemble System ──────────────────────────────────────
 
