@@ -124,8 +124,12 @@ async def chest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     kind = context.args[0].lower()
-    cost, label = CHESTS[kind]
-    cards = list(cards_col.find())
+    cost, label, allowed_rarities = CHESTS[kind]
+    allowed = {rarity.casefold() for rarity in allowed_rarities}
+    cards = [
+        item for item in cards_col.find()
+        if str(item.get("rarity", "Common")).casefold() in allowed
+    ]
     if not cards:
         await update.effective_message.reply_text("❌ ဒီ Chest အမျိုးအစားအတွက် သက်ဆိုင်ရာ Rarity ကတ် မရှိသေးပါ။")
         return
