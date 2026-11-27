@@ -80,6 +80,19 @@ def atomic():
         connection.close()
 
 
+def lock_query(collection_name, query):
+    """Serialize upserts for the same collection/query inside atomic()."""
+    connection = _ACTIVE_TRANSACTION.get()
+    if connection is None:
+        raise RuntimeError("lock_query() must be called inside atomic()")
+    key = json.dumps(query or {}, sort_keys=True, default=_json_default)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))",
+            (str(collection_name), key),
+        )
+
+
 def _json_default(value):
     if hasattr(value, "isoformat"):
         return value.isoformat()
@@ -387,6 +400,12 @@ class PostgresCollection:
     def update_one(self, query, update, upsert=False):
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if upsert:
+                    key = json.dumps(query or {}, sort_keys=True, default=_json_default)
+                    cur.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))",
+                        (self.name, key),
+                    )
                 target = self._lock_matching(cur, query)
                 if target:
                     new_doc = self._apply_update(target, update)
@@ -473,6 +492,12 @@ class PostgresCollection:
     def find_one_and_update(self, query, update, upsert=False, return_document=ReturnDocument.BEFORE):
         with _session() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if upsert:
+                    key = json.dumps(query or {}, sort_keys=True, default=_json_default)
+                    cur.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))",
+                        (self.name, key),
+                    )
                 target = self._lock_matching(cur, query)
                 if target:
                     new_doc = self._apply_update(target, update)
