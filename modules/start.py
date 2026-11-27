@@ -35,6 +35,33 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         upsert=True
     )
 
+    # Backfill missing defaults for partial/legacy user documents without
+    # overwriting existing balances or collection progress.
+    users_col.update_one(
+        {
+            "user_id": user.id,
+            "balance": {"$exists": False},
+            "coins": {"$exists": False},
+        },
+        {"$set": {"balance": 500}},
+    )
+    users_col.update_one(
+        {"user_id": user.id, "gems": {"$exists": False}},
+        {"$set": {"gems": 10}},
+    )
+    users_col.update_one(
+        {"user_id": user.id, "xp": {"$exists": False}},
+        {"$set": {"xp": 0}},
+    )
+    users_col.update_one(
+        {"user_id": user.id, "is_vip": {"$exists": False}},
+        {"$set": {"is_vip": False}},
+    )
+    users_col.update_one(
+        {"user_id": user.id, "is_gbanned": {"$exists": False}},
+        {"$set": {"is_gbanned": False}},
+    )
+
     if chat.type == "private":
         bot_username = context.bot.username
         keyboard = [
