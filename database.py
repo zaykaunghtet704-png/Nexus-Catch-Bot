@@ -550,7 +550,7 @@ class PostgresCollection:
                 docs = list(grouped.values())
             elif "$sort" in stage:
                 for field, direction in reversed(list(stage["$sort"].items())):
-                    docs.sort(key=lambda d: (d.get(field) is None, d.get(field)), reverse=direction < 0)
+                    docs.sort(key=lambda d: _sort_value(d.get(field, _MISSING)), reverse=direction < 0)
             elif "$limit" in stage:
                 docs = docs[:int(stage["$limit"])]
         return Cursor(docs)
