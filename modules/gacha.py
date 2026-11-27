@@ -47,7 +47,13 @@ RARITY_EMOJI = {
 }
 
 def _rarity_key(value):
-    return " ".join(str(value or "common").casefold().split()).strip()
+    raw = " ".join(str(value or "common").casefold().split()).strip()
+    # Existing cards may store labels such as "⚪ Common" or "💎 CrossVerse".
+    all_keys = set(COIN_RATES) | set(GEM_RATES)
+    for key in sorted(all_keys, key=len, reverse=True):
+        if raw == key or raw.endswith(" " + key):
+            return key
+    return raw
 
 def _pool_choice(pool, pity_due=False):
     cards = list(cards_col.find())
@@ -62,7 +68,11 @@ def _pool_choice(pool, pity_due=False):
             rarity = random.choice(sorted(eligible))
             return random.choice(groups[rarity]), True
         # If no high-tier card exists yet, guarantee the best available tier.
-        rarity = max(groups, key=lambda r: (COIN_RATES.get(r, 0), r))
+        rarity_order = ["common", "uncommon", "rare", "epic", "legendary", "mythic",
+                        "ancient", "divine", "immortal", "cosmic", "primordial",
+                        "omnipotent", "supreme", "transcendent", "premium edition",
+                        "crossverse", "cataphract"]
+        rarity = max(groups, key=lambda r: rarity_order.index(r) if r in rarity_order else -1)
         return random.choice(groups[rarity]), True
     rates = COIN_RATES if pool == "coin" else GEM_RATES
     available = [(r, rates.get(r, 0)) for r in groups if rates.get(r, 0) > 0]
