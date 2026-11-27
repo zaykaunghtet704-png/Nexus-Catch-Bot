@@ -133,8 +133,13 @@ async def sell_command(
                 "listed_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            # Insert listing first
+            # Insert listing first and persist today's quest progress.
             result = market_col.insert_one(listing)
+            users_col.update_one(
+                {"user_id": user.id},
+                {"$set": {"market_listed_date": datetime.now(timezone.utc).isoformat()}},
+                upsert=True,
+            )
 
             try:
                 deleted = inventory_col.delete_one({
