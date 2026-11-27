@@ -147,24 +147,18 @@ async def chmode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif data == "chmode_menu_rarity":
         text = f"{header}<b>❄️ CHOOSE YOUR PREFERRED RARITY</b>"
-        # Rarity (၁၃) မျိုး အထက်မှ အောက် အစဉ်လိုက် တစ်တန်းစီ ပြသသော Buttons
+        # Build this menu from the same rarity list used by the card database.
         keyboard = [
-            [InlineKeyboardButton("👑 RARITY: Premium Edition", callback_data="chmode_rarity_Premium Edition")],
-            [InlineKeyboardButton("🌀 RARITY: Supreme", callback_data="chmode_rarity_Supreme")],
-            [InlineKeyboardButton("⚔️ RARITY: Cataphract", callback_data="chmode_rarity_Cataphract")],
-            [InlineKeyboardButton("💎 RARITY: CrossVerse", callback_data="chmode_rarity_CrossVerse")],
-            [InlineKeyboardButton("⚜️ RARITY: Divine", callback_data="chmode_rarity_Divine")],
-            [InlineKeyboardButton("🔥 RARITY: Mystical", callback_data="chmode_rarity_Mystical")],
-            [InlineKeyboardButton("📜 RARITY: Ancient", callback_data="chmode_rarity_Ancient")],
-            [InlineKeyboardButton("🔴 RARITY: Mythic", callback_data="chmode_rarity_Mythic")],
-            [InlineKeyboardButton("🏆 RARITY: Legendary", callback_data="chmode_rarity_Legendary")],
-            [InlineKeyboardButton("✨ RARITY: Epic", callback_data="chmode_rarity_Epic")],
-            [InlineKeyboardButton("🎁 RARITY: Rare", callback_data="chmode_rarity_Rare")],
-            [InlineKeyboardButton("🔮 RARITY: Uncommon", callback_data="chmode_rarity_Uncommon")],
-            [InlineKeyboardButton("🧊 RARITY: Common", callback_data="chmode_rarity_Common")],
-            [InlineKeyboardButton("⏩ Skip Rarity", callback_data="chmode_rarity_ALL")],
-            [InlineKeyboardButton("📊 CLOSE", callback_data="chmode_close")]
+            [InlineKeyboardButton(
+                f"{RARITY_ICONS.get(rarity, '🎴')} RARITY: {rarity}",
+                callback_data=f"chmode_rarity_{rarity}",
+            )]
+            for rarity in reversed(RARITIES)
         ]
+        keyboard.extend([
+            [InlineKeyboardButton("⏩ Skip Rarity", callback_data="chmode_rarity_ALL")],
+            [InlineKeyboardButton("📊 CLOSE", callback_data="chmode_close")],
+        ])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
     elif data.startswith("chmode_rarity_"):
