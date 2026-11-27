@@ -53,7 +53,9 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     level, bar = calculate_level(xp)
 
     total_cards = inventory_col.count_documents({"user_id": target_user_id})
-    unique_cards = len(inventory_col.distinct("card_id", {"user_id": target_user_id}))
+    unique_card_ids = set(inventory_col.distinct("card_id", {"user_id": target_user_id}))
+    unique_card_ids.update(inventory_col.distinct("id", {"user_id": target_user_id}))
+    unique_cards = len({str(card_id) for card_id in unique_card_ids if card_id not in (None, "")})
     total_global_cards = cards_col.count_documents({}) or 1
     harem_pct = (unique_cards / total_global_cards) * 100
 
