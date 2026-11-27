@@ -79,7 +79,8 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     "rarity": card_to_award.get("rarity"),
                     "edition": card_to_award.get("edition", "Normal"),
                     "img_url": card_to_award.get("img_url") or card_to_award.get("image"),
-                    "obtained_at": datetime.utcnow().isoformat(),
+                    "obtained_at": datetime.now(timezone.utc).isoformat(),
+                    "source": "promo",
                 })
     except RedeemAbort as exc:
         await update.effective_message.reply_text(str(exc))
@@ -172,7 +173,8 @@ async def quest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         daily_done = _date_value(user_doc.get("last_daily")) == datetime.fromisoformat(today).date()
         caught_today = sum(
             1 for item in inventory_col.find({"user_id": user_id})
-            if _date_value(item.get("obtained_at")) == datetime.fromisoformat(today).date()
+            if item.get("source") not in {"market", "chest", "gift", "promo", "auction", "admin"}
+            and _date_value(item.get("obtained_at")) == datetime.fromisoformat(today).date()
         )
         listed_today = int(
             _date_value(user_doc.get("market_listed_date")) == datetime.fromisoformat(today).date()
