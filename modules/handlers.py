@@ -59,22 +59,21 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_global_cards = cards_col.count_documents({}) or 1
     harem_pct = (unique_cards / total_global_cards) * 100
 
-    # Rarity (၁၃) ခု အမြင့်ဆုံးမှ အနိမ့်ဆုံး အစီအစဉ်အတိုင်း Emoji များနှင့်တကွ
-    rarity_list = [
-        ("Premium Edition", "👑"),
-        ("Supreme", "🌀"),
-        ("Cataphract", "⚔️"),
-        ("CrossVerse", "💎"),
-        ("Divine", "⚜️️"),
-        ("Mystical", "🔥"),
-        ("Ancient", "📜"),
-        ("Mythic", "🔴"),
-        ("Legendary", "🏆"),
-        ("Epic", "✨"),
-        ("Rare", "🎁"),
-        ("Uncommon", "🔮"),
-        ("Common", "🧊")
-    ]
+    try:
+        from config import RARITIES
+    except ImportError:
+        RARITIES = [
+            "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic",
+            "Divine", "Celestial", "Eternal", "Ultimate", "Supreme",
+            "Transcendent", "Premium Edition",
+        ]
+    rarity_icons = {
+        "Premium Edition": "👑", "Transcendent": "🌠", "Supreme": "🌀",
+        "Ultimate": "⚡", "Eternal": "♾️", "Celestial": "🌌",
+        "Divine": "⚜️", "Mythic": "🔴", "Legendary": "🏆",
+        "Epic": "✨", "Rare": "🎁", "Uncommon": "🔮", "Common": "🧊",
+    }
+    rarity_list = [(name, rarity_icons.get(name, "🎴")) for name in reversed(RARITIES)]
 
     rarity_lines = []
     for r_name, r_emoji in rarity_list:
